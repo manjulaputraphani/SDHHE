@@ -12,7 +12,7 @@ A complete shop-management application: GST billing, stock tracking with batch/F
 
 | Module | Details |
 |---|---|
-| **Dashboard** | Overview + Graphs + Funds + Investors tabs. 14-day sales chart (₹, Indian short form ₹1.2L), pie/bar analytics (Recharts), "Funds with us" = actual cash position (investments + received − paid), stock value & receivables shown separately, total credit given |
+| **Dashboard** | Overview + Graphs + Funds + Investors tabs. 14-day sales chart (₹, Indian short form ₹1.2L), pie/bar analytics (Recharts), "Funds with us" = actual cash position (investments + received − paid), stock value & receivables shown separately, total credit given. Working capital cards: investment (opening balance), stock value, cash in bank (cash ledger), credit outstanding, amount in rotation (stock + cash + credit). Credit aging bar chart (Current / 1–30 / 31–60 / 61–90 / 90+ days) + 30-day rotation trend line chart. |
 | **Items (Inventory)** | One row per item; `unit` = kg / l / pcs; category, minimum stock, image URL, live stock and value computed from open batches |
 | **Purchases** | Supplier, qty, unit price, payment mode, notes, purchase expenses (transport / loading / commission) that raise the stock cost; editing/deleting an old purchase rebuilds that item's cost pool from the remaining batches |
 | **Batches & costing** | Every purchase = one batch. Costing method per settings: **FIFO** (oldest first) or **weighted average** (value pool per item: `stock_value_paise` + `avg_cost_paise`) |
@@ -20,7 +20,7 @@ A complete shop-management application: GST billing, stock tracking with batch/F
 | **Billing (GST invoices)** | Bill number `SD-YYYY-NNNNNN`, HSN per line, buyer GSTIN + address, CGST/SGST (exact split, basis points, rounded paise), discount, sale expenses (delivery, packing) charged to the deal, cost snapshot per line so later purchases never change past profit |
 | **Printing & email** | GST invoice layout follows the SDHHE sample PDF; print via hidden iframe + system dialog (Save as PDF); email via Rust `lettre` SMTP (Gmail app password in OS keychain), HTML invoice body |
 | **Customers** | Real master — one row per client matched by phone (digits only) → GSTIN → name; details updated in place; bill count, billed total, outstanding credit per client |
-| **Credit (udhaar)** | Unpaid part of a live bill shows "Credit ₹X"; `recordBillPayment` clears it (payment never above bill total); dashboard shows total credit; cancelled bills never count |
+| **Credit (udhaar)** | Unpaid part of a live bill shows "Credit ₹X"; `recordBillPayment` clears it (payment never above bill total); dashboard shows total credit; cancelled bills never count. Credit aging by days overdue (bucketed: Current, 1–30, 31–60, 61–90, 90+ days, 30-day credit period) with per-bill outstanding table. |
 | **Expenses** | Categories (Rent, Transport, …), `expense_type` = purchase / sale / general, optional link to a purchase or sale; bill photos stored as base64 in Postgres (`expense_bills`, 4 MB cap) |
 | **Reports** | India financial year (1 Apr → 31 Mar, label "2026-27"), turnover excludes GST and subtracts discounts, profit per deal, lot-wise reports |
 | **Team / RBAC** | Owner / CA / Staff roles, 13 modules × view/create/edit/delete/export, per-role permission grid, member access with expiry (`access_until`), last-active-owner guard, login sessions (12 h max) |
@@ -56,7 +56,7 @@ A complete shop-management application: GST billing, stock tracking with batch/F
 | Server (web) | Cloudflare Workers (`web-worker/`), `@noble/hashes` for argon2id verification (Workers block dynamic WASM) |
 | Charts / export | Recharts 3, jspdf, xlsx (Excel export) |
 | Validation | zod 4 |
-| Tests | Vitest 4 + React Testing Library (248 tests), DB integration tests (`vitest.db.config.ts`), Playwright e2e |
+| Tests | Vitest 4 + React Testing Library (290 tests), DB integration tests (`vitest.db.config.ts`), Playwright e2e |
 | AI | Ollama (cloud models) — suggestions + read-only chat |
 
 ## 4. Project structure
@@ -109,6 +109,9 @@ sale_bills(id, bill_number SD-YYYY-NNNNNN, customer_id, date, subtotal, discount
 sale_items(id, sale_bill_id fk, item_id fk, qty, price_paise, hsn,
       avg_cost_paise snapshot, cost_paise snapshot, movement_id fk)
 investments(id, …)                      # funds / investors (Dashboard → Funds)
+cash_ledger(id, type sale|purchase|expense|withdrawal|deposit|adjustment|opening,
+      amount_paise, ref_type, ref_id, entry_date, note, actor, created_at)  # every money movement
+opening_balance(id, amount_paise, as_of_date, note, created_at)            # starting cash position
 app_users(id, name, phone, role owner|ca|staff, access_until, active, …)
 user_sessions(id, user_id, started_at, ended_at, duration)   # 12 h max
 activity_log(id, actor, action, entity, entity_id, at)        # audit trail
@@ -204,7 +207,7 @@ Android plan (PWA → TWA APK) and remaining release decisions: `docs/RELEASE_PL
 - **Component tests** with React Testing Library for every page.
 - **DB integration tests** against a Neon dev branch.
 - **E2E** with Playwright for Setup → Lock → Home.
-- 248 tests green; typecheck clean across root, `web/` and `web-worker/`.
+- 290 tests green; typecheck clean across root, `web/` and `web-worker/`.
 
 ## 12. How this repo is built (AI-assisted workflow)
 
