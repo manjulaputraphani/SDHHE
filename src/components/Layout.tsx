@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
 import CoffeeIcon from "./CoffeeIcon";
 import ThemeToggle from "./ThemeToggle";
 import { getAuditActor } from "../db/activity";
@@ -46,19 +47,59 @@ const GROUPS: { heading: string; links: Link[] }[] = [
 
 export default function Layout() {
   const actor = getAuditActor();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  // Close sidebar on route change
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
   const groups = GROUPS.map((group) => ({
     ...group,
     links: group.links.filter((link) => can(link.module, link.action ?? "view")),
   })).filter((group) => group.links.length > 0);
 
+  // On desktop, always show sidebar. On mobile, hide until opened.
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
   return (
-    <div className="flex min-h-screen bg-bg text-ink">
-      <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col overflow-y-auto bg-nav text-nav-text">
+    <div className="flex min-h-screen bg-bg text-ink relative">
+      {/* Mobile top bar */}
+      {isMobile && (
+        <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between bg-surface border-b border-line px-4 py-3">
+          <button
+            type="button"
+            className="rounded-lg bg-surface-2 px-3 py-2 text-ink hover:bg-surface-3"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <span className="font-semibold text-[15px] text-ink tracking-tight">
+            SREE DURGA HARIHARA
+          </span>
+          <ThemeToggle onDark className="ml-auto" />
+        </header>
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          transition-all duration-300 ease-in-out
+          flex h-screen flex-col overflow-y-auto bg-nav text-nav-text border-r border-nav-line
+          ${isMobile
+            ? `fixed top-0 left-0 z-50 w-64 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`
+            : "sticky top-0 w-60 shrink-0"}
+        `}
+      >
         <div className="flex items-center gap-3 border-b border-nav-line px-4 py-5">
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-nav-text/15 text-nav-text">
             <CoffeeIcon />
           </span>
-          <span className="min-w-0">
+          <span className={isMobile ? "hidden" : "min-w-0"}>
             <span className="block text-[11.5px] font-semibold uppercase leading-snug tracking-[0.08em] text-nav-text">
               SREE DURGA HARIHARA ENTERPRISES
             </span>
@@ -66,6 +107,18 @@ export default function Layout() {
               Inventory · Billing · Accounts
             </span>
           </span>
+          {isMobile && (
+            <button
+              type="button"
+              className="ml-auto rounded-lg bg-nav-text/10 p-2 text-nav-text hover:bg-nav-text/20"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close menu"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
@@ -87,6 +140,9 @@ export default function Layout() {
                           : "text-nav-muted hover:bg-nav-hover hover:text-nav-text"
                       }`
                     }
+                    onClick={() => {
+                      if (isMobile) setSidebarOpen(false);
+                    }}
                   >
                     {link.label}
                   </NavLink>
@@ -102,8 +158,21 @@ export default function Layout() {
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1">
-        <main className="mx-auto max-w-6xl px-8 py-8">
+      {/* Mobile backdrop */}
+      {isMobile && sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <div
+        className={`min-w-0 flex-1 transition-all duration-300 ${
+          isMobile ? "pt-16" : ""
+        }`}
+      >
+        <main className={`mx-auto max-w-6xl px-8 py-8 ${isMobile ? "px-4 pt-2 pb-4" : "px-8 py-8"}`}>
           <Outlet />
         </main>
       </div>

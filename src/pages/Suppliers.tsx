@@ -133,11 +133,14 @@ export default function Suppliers() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header className="space-y-3 sm:flex sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">Supplier Dues</h1>
           <p className="text-sm text-muted">
-            What you owe suppliers · total outstanding {formatRupees(totalDues)}
+            What you owe suppliers · total outstanding{" "}
+            <span className={totalDues > 0 ? "font-medium text-error-ink" : "text-muted"}>
+              {formatRupees(totalDues)}
+            </span>
           </p>
         </div>
         <NavLink to="/purchases/new" className="btn-primary">
@@ -146,12 +149,14 @@ export default function Suppliers() {
       </header>
 
       {/* Add supplier */}
-      <section className="space-y-3 card p-4">
-        <div>
-          <h2 className="text-sm font-medium">Add supplier</h2>
+      <section className="space-y-3 card p-4 sm:p-5">
+        <div className="flex items-center justify-between space-y-2 sm:space-y-0 sm:flex-row">
+          <div>
+            <h2 className="text-sm font-medium">Add supplier</h2>
+          </div>
         </div>
-        <form onSubmit={handleAddSupplier} className="grid gap-2 sm:grid-cols-4 items-end">
-          <div className="space-y-1">
+        <form onSubmit={handleAddSupplier} className="grid gap-3 sm:grid-cols-3 items-end">
+          <div className="space-y-1 sm:col-span-2">
             <label className="label text-xs" htmlFor="supplier-name">Name</label>
             <input
               id="supplier-name"
@@ -159,19 +164,21 @@ export default function Suppliers() {
               className="input"
               value={addForm.name}
               onChange={(e) => setAddForm({ ...addForm, name: e.currentTarget.value })}
+              placeholder="e.g. Sri Traders"
             />
           </div>
           <div className="space-y-1">
             <label className="label text-xs" htmlFor="supplier-phone">Phone</label>
             <input
               id="supplier-phone"
-              type="text"
+              type="tel"
               className="input"
               value={addForm.phone}
               onChange={(e) => setAddForm({ ...addForm, phone: e.currentTarget.value })}
+              placeholder="99999 99999"
             />
           </div>
-          <button type="submit" className="btn-primary">
+          <button type="submit" className="btn-primary w-full sm:w-auto">
             Add
           </button>
         </form>
@@ -185,7 +192,6 @@ export default function Suppliers() {
             <thead>
               <tr className="border-b border-line text-xs text-muted">
                 <th className="pb-2 font-medium">Supplier</th>
-                <th className="pb-2 font-medium">Phone</th>
                 <th className="pb-2 font-medium text-right">Purchased</th>
                 <th className="pb-2 font-medium text-right">Paid</th>
                 <th className="pb-2 font-medium text-right">Outstanding</th>
@@ -194,19 +200,22 @@ export default function Suppliers() {
             <tbody>
               {dues.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-muted text-center">
+                  <td colSpan={4} className="px-3 py-6 text-muted text-center">
                     No suppliers yet. Add your first supplier above.
                   </td>
                 </tr>
               ) : (
                 dues.map((d) => (
                   <tr key={d.id} className="border-b border-line/50">
-                    <td className="px-3 py-2 font-medium">{d.name}</td>
-                    <td className="px-3 py-2 text-muted">{d.phone ?? "—"}</td>
-                    <td className="px-3 py-2 text-right">{formatRupees(d.totalPurchasedPaise)}</td>
-                    <td className="px-3 py-2 text-right">{formatRupees(d.totalPaidPaise)}</td>
-                    <td className="px-3 py-2 text-right font-medium">
-                      {d.outstandingPaise > 0 ? formatRupees(d.outstandingPaise) : "—"}
+                    <td className="px-3 py-2.5 font-medium">{d.name}</td>
+                    <td className="px-3 py-2.5 text-right">{formatRupees(d.totalPurchasedPaise)}</td>
+                    <td className="px-3 py-2.5 text-right">{formatRupees(d.totalPaidPaise)}</td>
+                    <td className="px-3 py-2.5 text-right font-medium">
+                      {d.outstandingPaise > 0 ? (
+                        <span className={`badge badge-bad`}>{formatRupees(d.outstandingPaise)}</span>
+                      ) : (
+                        <span className="badge badge-ok">Paid</span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -217,15 +226,17 @@ export default function Suppliers() {
       </section>
 
       {/* Record payment */}
-      <section className="space-y-3 card p-4">
-        <div>
-          <h2 className="text-sm font-medium">Record payment to supplier</h2>
-          <p className="text-sm text-muted">
-            Select a purchase with an outstanding balance and enter the amount paid.
-          </p>
+      <section className="space-y-3 card p-4 sm:p-5">
+        <div className="flex items-center justify-between space-y-2 sm:space-y-0 sm:flex-row">
+          <div>
+            <h2 className="text-sm font-medium">Record payment to supplier</h2>
+            <p className="text-sm text-muted">
+              Select a purchase with an outstanding balance and enter the amount paid.
+            </p>
+          </div>
         </div>
-        <form onSubmit={handleRecordPayment} className="grid gap-3 sm:grid-cols-5 items-end">
-          <div className="space-y-1">
+        <form onSubmit={handleRecordPayment} className="grid gap-3 sm:grid-cols-2 items-end">
+          <div className="space-y-1 sm:col-span-2">
             <label className="label text-xs" htmlFor="payment-purchase">Purchase</label>
             <select
               id="payment-purchase"
@@ -248,9 +259,11 @@ export default function Suppliers() {
             <input
               id="payment-amount"
               type="text"
+              inputMode="decimal"
               className="input"
               value={payForm.amount}
               onChange={(e) => setPayForm({ ...payForm, amount: e.currentTarget.value })}
+              placeholder="0"
             />
           </div>
           <div className="space-y-1">
@@ -286,11 +299,12 @@ export default function Suppliers() {
               className="input"
               value={payForm.note}
               onChange={(e) => setPayForm({ ...payForm, note: e.currentTarget.value })}
+              placeholder="e.g. UPI payment"
             />
           </div>
           <button
             type="submit"
-            className="btn-primary"
+            className="btn-primary w-full sm:w-auto"
             disabled={paying || !payForm.purchaseId}
           >
             {paying ? "Recording…" : "Record Payment"}
@@ -315,12 +329,12 @@ export default function Suppliers() {
               <tbody>
                 {recentPayments.map((p) => (
                   <tr key={p.id} className="border-b border-line/50">
-                    <td className="px-3 py-2">{p.paymentDate}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2.5">{p.paymentDate}</td>
+                    <td className="px-3 py-2.5 text-sm">
                       {p.itemName} · {p.purchaseDate}
                     </td>
-                    <td className="px-3 py-2 text-right">{formatRupees(p.amountPaise)}</td>
-                    <td className="px-3 py-2 text-muted">{p.paymentMode ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right">{formatRupees(p.amountPaise)}</td>
+                    <td className="px-3 py-2.5 text-muted">{p.paymentMode ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

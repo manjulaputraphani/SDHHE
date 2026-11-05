@@ -101,19 +101,19 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header className="space-y-3 sm:flex sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">Dashboard</h1>
           <p className="text-sm text-muted">{monthLabel(month)}</p>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1 sm:space-y-0 sm:flex sm:items-end gap-3">
           <label className="block text-xs font-medium text-ink" htmlFor="dashboard-month">
             Month
           </label>
           <input
             id="dashboard-month"
             type="month"
-            className="input text-sm"
+            className="input text-sm w-full sm:w-48"
             value={month}
             onChange={(e) => setMonth(e.currentTarget.value)}
           />
