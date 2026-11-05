@@ -26,7 +26,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Item HSN code** (2026-11-05): `items.hsn_code` (migration `drizzle/0003_item_hsn_code.sql`, applied to Neon). HSN field on the item form + list in web and desktop; bill lines fall back to the item HSN when the line HSN is blank. Web item edit now preserves min stock. 293 tests pass, tsc clean, deployed `sdhhe-api` version `b33ef219`.
 - **Item units** (2026-11-05): item form now offers only `kg` and `60 kg bag` (1 bag = 60 kg = 60,000 g); `l` and `pcs` removed from the form. Bag factor wired through costing, stock valuation SQL, analytics, dashboard, cash ledger and web display. 294 tests pass, deployed `sdhhe-api` version `15de4fe4`.
 - **Purchases date** (2026-11-05): Date field on the web Purchases form (defaults to today, past dates allowed). If left blank it silently falls back to today; same fallback added to desktop AddPurchase. 294 tests pass, deployed `sdhhe-api` version `0476dd7f`.
-- **Owner purchase-date edit** (2026-11-05): Recent purchases now has an owner-only "Edit date" action. `PUT /api/purchases/:id` (owner only) updates the purchase + batch + PURCHASE movement, replays FIFO and rebuilds WAC. 296 tests pass, deployed `sdhhe-api` version `b968cb86`.
+- **Owner purchase edit** (2026-11-05): Recent purchases now has an owner-only **Edit** action opening a full modal (date, qty, rate, transport, supplier, payment mode, note). `PUT /api/purchases/:id` (owner only) reuses `updatePurchase`, updating purchase + batch + PURCHASE movement (incl. expenses), replaying FIFO and rebuilding WAC. 296 tests pass, deployed `sdhhe-api` version `e8680d02`.
 
 ## Next tasks
 1. Owner approves/rejects analytics work → commit T-11.

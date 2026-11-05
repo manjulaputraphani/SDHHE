@@ -82,6 +82,21 @@ import {
 
 type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "stock" | "expenses" | "suppliers" | "activity" | "team" | "settings";
 
+type PurchaseRow = {
+  id: number;
+  name: string;
+  unit: string;
+  qty_base: number;
+  unit_price_paise: number;
+  total_paise: number;
+  paid_paise: number;
+  purchase_date: string;
+  expenses_paise: number;
+  payment_mode: string | null;
+  note: string | null;
+  supplier_name: string | null;
+};
+
 function IconEye() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -259,10 +274,12 @@ export default function App() {
   const [aiBusy, setAiBusy] = useState(false);
   const [lastBillId, setLastBillId] = useState<number | null>(null);
   const [stats, setStats] = useState<{ today_sales: number; month_sales: number; month_profit: number; month_expenses: number; credit_paise: number; credit_bills: number; low_stock: number } | null>(null);
-  const [purchasesList, setPurchasesList] = useState<Array<{ id: number; name: string; unit: string; qty_base: number; unit_price_paise: number; total_paise: number; paid_paise: number; purchase_date: string; expenses_paise: number; supplier_name: string | null }>>([]);
+  const [purchasesList, setPurchasesList] = useState<PurchaseRow[]>([]);
   const [expensesList, setExpensesList] = useState<Array<{ id: number; category: string; amountPaise: number; date: string; paymentMode: string | null; paidTo: string | null; note: string | null }>>([]);
   const [stockEntries, setStockEntries] = useState<StockEntryRow[]>([]);
   const [purchase, setPurchase] = useState({ itemId: "" as number | "", qty: "", rate: "", supplier: "", expenses: "", date: new Date().toISOString().slice(0, 10) });
+  const [editingPurchase, setEditingPurchase] = useState<PurchaseRow | null>(null);
+  const [purchaseEdit, setPurchaseEdit] = useState({ qty: "", rate: "", expenses: "", date: "", supplier: "", paymentMode: "Cash", note: "" });
   const [purchaseMsg, setPurchaseMsg] = useState<string | null>(null);
   const [purchaseSaving, setPurchaseSaving] = useState(false);
   const [stock, setStock] = useState({ itemId: "" as number | "", type: "USAGE", qty: "", note: "" });
@@ -652,18 +669,37 @@ export default function App() {
     }
   }
 
-  async function editPurchaseDate(row: { id: number; name: string; purchase_date: string }) {
-    const input = window.prompt(`Purchase date for ${row.name} (YYYY-MM-DD)`, row.purchase_date);
-    if (input === null) return;
-    const date = input.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setPurchaseMsg("Enter the date as YYYY-MM-DD");
-      return;
-    }
+  function openPurchaseEdit(row: PurchaseRow) {
+    setPurchaseMsg(null);
+    setEditingPurchase(row);
+    setPurchaseEdit({
+      qty: String(row.qty_base / unitFactor(row.unit)),
+      rate: String(row.unit_price_paise / 100),
+      expenses: String(row.expenses_paise / 100),
+      date: row.purchase_date,
+      supplier: row.supplier_name ?? "",
+      paymentMode: row.payment_mode ?? "Cash",
+      note: row.note ?? "",
+    });
+  }
+
+  async function savePurchaseEdit() {
+    if (!editingPurchase) return;
     try {
-      await api.updatePurchaseDate(row.id, date);
+      await api.updatePurchase(editingPurchase.id, {
+        qty: Number(purchaseEdit.qty),
+        unitPricePaise: Math.round(Number(purchaseEdit.rate) * 100),
+        expensesPaise: Math.round(Number(purchaseEdit.expenses || "0") * 100),
+        date: purchaseEdit.date || todayIso(),
+        supplierName: purchaseEdit.supplier,
+        paymentMode: purchaseEdit.paymentMode,
+        note: purchaseEdit.note,
+      });
+      setEditingPurchase(null);
       setPurchasesList((await api.purchases()).purchases);
-      setPurchaseMsg(`Purchase date changed to ${date}`);
+      setItems((await api.items()).items);
+      void api.stats().then((r) => setStats(r.stats)).catch(() => {});
+      setPurchaseMsg("Purchase updated");
     } catch (err) {
       setPurchaseMsg(err instanceof Error ? err.message : String(err));
     }
@@ -1894,9 +1930,9 @@ export default function App() {
                           align: "right" as const,
                           mobileLabel: "Actions",
                           hideOnMobile: true,
-                          cell: (p: (typeof purchasesList)[number]) => (
-                            <button className="btn-mini" onClick={() => void editPurchaseDate(p)}>
-                              Edit date
+                          cell: (p: PurchaseRow) => (
+                            <button className="btn-mini" onClick={() => openPurchaseEdit(p)}>
+                              Edit
                             </button>
                           ),
                         },
@@ -1911,6 +1947,56 @@ export default function App() {
                   />
                 }
               />
+
+              {editingPurchase && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1C1612]/50 p-4">
+                  <div className="card w-full max-w-lg space-y-3 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-lg font-semibold tracking-tight">Edit purchase — {editingPurchase.name}</h2>
+                      <button className="btn-mini" onClick={() => setEditingPurchase(null)}>Close</button>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="label">Date</label>
+                        <input className="input" type="date" value={purchaseEdit.date} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, date: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Qty ({editingPurchase.unit})</label>
+                        <input className="input" type="number" value={purchaseEdit.qty} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, qty: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Rate ₹ / {editingPurchase.unit}</label>
+                        <input className="input" type="number" value={purchaseEdit.rate} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, rate: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Transport ₹</label>
+                        <input className="input" type="number" value={purchaseEdit.expenses} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, expenses: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Supplier</label>
+                        <input className="input" placeholder="Supplier" value={purchaseEdit.supplier} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, supplier: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Payment mode</label>
+                        <select className="input" value={purchaseEdit.paymentMode} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, paymentMode: e.currentTarget.value })}>
+                          <option value="Cash">Cash</option>
+                          <option value="UPI">UPI</option>
+                          <option value="Card">Card</option>
+                          <option value="Credit">Credit</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1 sm:col-span-2">
+                        <label className="label">Note</label>
+                        <input className="input" placeholder="Note" value={purchaseEdit.note} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, note: e.currentTarget.value })} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button className="btn-mini" onClick={() => setEditingPurchase(null)}>Cancel</button>
+                      <button className="btn btn-primary" onClick={() => void savePurchaseEdit()}>Save changes</button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </section>
           );
         })()}

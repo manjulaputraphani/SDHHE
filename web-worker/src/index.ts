@@ -20,7 +20,7 @@ import { logActivity } from "../../src/db/activity";
 import { createItem, deleteItem, updateItem } from "../../src/db/items";
 import { cancelSaleBill, createCustomer, createSaleBill, deleteSaleBill, recordBillPayment } from "../../src/db/billing";
 import { deleteCustomer, listCustomers, updateCustomer } from "../../src/db/customers";
-import { addPurchase, deletePurchase, updatePurchaseDate } from "../../src/db/purchases";
+import { addPurchase, deletePurchase, updatePurchase } from "../../src/db/purchases";
 import { saveStockEntry } from "../../src/db/stock";
 import { createExpense, deleteExpense, updateExpense } from "../../src/db/expenses";
 import { setAuditActor, type AuditActor } from "../../src/db/activity";
@@ -685,7 +685,7 @@ export default {
 
       if (url.pathname === "/api/purchases" && request.method === "GET") {
         const rows = await sqlQuery(env, `select p.id, p.qty_base, p.unit_price_paise, p.total_paise, p.paid_paise, p.purchase_date,
-            p.expenses_paise, i.name, i.unit, s.name as supplier_name
+            p.expenses_paise, p.payment_mode, p.note, i.name, i.unit, s.name as supplier_name
           from purchases p
           join items i on i.id = p.item_id
           left join suppliers s on s.id = p.supplier_id
@@ -1093,8 +1093,7 @@ export default {
         if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
         const id = Number(url.pathname.split("/").pop());
         if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid purchase id" }, { status: 400 });
-        const date = String((body as { date?: unknown }).date ?? "");
-        await asActor(actor, () => updatePurchaseDate(env.DATABASE_URL as string, id, date));
+        await asActor(actor, () => updatePurchase(env.DATABASE_URL as string, id, body));
         return json({ ok: true });
       }
 

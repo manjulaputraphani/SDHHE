@@ -243,7 +243,12 @@ export const purchaseEditSchema = z.object({
     .number({ message: "Price is required" })
     .int("Price must be whole paise")
     .min(0, "Price cannot be negative"),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a valid date"),
+  expensesPaise: z
+    .number({ message: "Transport must be a number" })
+    .int("Transport must be whole paise")
+    .min(0, "Transport cannot be negative")
+    .optional(),
+  date: z.string().refine(isValidIsoDate, "Choose a valid date"),
   supplierName: z.string().trim().max(80, "Supplier name is too long").optional(),
   paymentMode: z.enum(PAYMENT_MODES).optional(),
   note: z.string().trim().max(200, "Note is too long").optional(),
@@ -345,6 +350,7 @@ export async function updatePurchase(
         itemId: purchases.itemId,
         qtyBase: purchases.qtyBase,
         purchaseDate: purchases.purchaseDate,
+        expensesPaise: purchases.expensesPaise,
         unit: items.unit,
       })
       .from(purchases)
@@ -358,6 +364,7 @@ export async function updatePurchase(
     const factor = baseFactor(unit);
     const qtyBase = toBase(data.qty, unit);
     const totalPaise = costPaise(qtyBase, data.unitPricePaise, unit);
+    const expensesPaise = data.expensesPaise ?? row.expensesPaise;
     const supplierId = await findOrCreateSupplier(tx, data.supplierName?.trim() || null);
 
     await tx
@@ -366,6 +373,7 @@ export async function updatePurchase(
         qtyBase,
         unitPricePaise: data.unitPricePaise,
         totalPaise,
+        expensesPaise,
         purchaseDate: data.date,
         supplierId,
         paymentMode: data.paymentMode ?? null,
@@ -399,7 +407,7 @@ export async function updatePurchase(
     if (purchaseMovement) {
       await tx
         .update(stockMovements)
-        .set({ qtyChange: qtyBase, costPaise: totalPaise, movementDate: data.date })
+        .set({ qtyChange: qtyBase, costPaise: totalPaise + expensesPaise, movementDate: data.date })
         .where(eq(stockMovements.id, purchaseMovement.id));
     }
 
@@ -421,71 +429,6 @@ export function isValidIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-/**
- * Change only the date of a purchase (owner use). Keeps the batch, the mirrored
- * PURCHASE movement and FIFO replay in sync, then rebuilds the WAC pool.
- */
-export async function updatePurchaseDate(
-  url: string,
-  purchaseId: number,
-  date: string,
-): Promise<void> {
-  if (!isValidIsoDate(date)) throw new Error("Choose a valid date");
-
-  await withTransaction(url, async (tx) => {
-    const [row] = await tx
-      .select({
-        id: purchases.id,
-        itemId: purchases.itemId,
-        qtyBase: purchases.qtyBase,
-        purchaseDate: purchases.purchaseDate,
-        unit: items.unit,
-      })
-      .from(purchases)
-      .innerJoin(items, eq(items.id, purchases.itemId))
-      .where(eq(purchases.id, purchaseId))
-      .for("update");
-
-    if (!row) throw new Error("Purchase not found");
-    if (row.purchaseDate === date) return;
-
-    await tx.update(purchases).set({ purchaseDate: date }).where(eq(purchases.id, purchaseId));
-    await tx.update(batches).set({ purchaseDate: date }).where(eq(batches.purchaseId, purchaseId));
-
-    // Keep the PURCHASE movement in step with the purchase it mirrors.
-    const [purchaseMovement] = await tx
-      .select({ id: stockMovements.id })
-      .from(stockMovements)
-      .where(
-        and(
-          eq(stockMovements.itemId, row.itemId),
-          eq(stockMovements.type, "PURCHASE"),
-          eq(stockMovements.movementDate, row.purchaseDate),
-          eq(stockMovements.qtyChange, row.qtyBase),
-        ),
-      )
-      .limit(1);
-
-    if (purchaseMovement) {
-      await tx
-        .update(stockMovements)
-        .set({ movementDate: date })
-        .where(eq(stockMovements.id, purchaseMovement.id));
-    }
-
-    // A date change can change FIFO order, so replay later movements and rebuild WAC.
-    await replayAndWriteBack(tx, row.itemId, baseFactor(row.unit as Unit));
-    await rebuildItemPool(tx, row.itemId);
-
-    await logActivity(tx, {
-      event: "purchase.date",
-      summary: `Purchase #${purchaseId} date changed ${row.purchaseDate} → ${date}`,
-      entity: "purchase",
-      entityId: purchaseId,
-    });
-  });
 }
 
 /** Delete a purchase, its batch and its PURCHASE movement, then replay. */
