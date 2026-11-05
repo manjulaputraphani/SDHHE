@@ -20,7 +20,7 @@ import { logActivity } from "../../src/db/activity";
 import { createItem, deleteItem, updateItem } from "../../src/db/items";
 import { cancelSaleBill, createCustomer, createSaleBill, deleteSaleBill, recordBillPayment } from "../../src/db/billing";
 import { deleteCustomer, listCustomers, updateCustomer } from "../../src/db/customers";
-import { addPurchase, deletePurchase } from "../../src/db/purchases";
+import { addPurchase, deletePurchase, updatePurchaseDate } from "../../src/db/purchases";
 import { saveStockEntry } from "../../src/db/stock";
 import { createExpense, deleteExpense, updateExpense } from "../../src/db/expenses";
 import { setAuditActor, type AuditActor } from "../../src/db/activity";
@@ -92,7 +92,9 @@ function routePermission(
   if (/^\/api\/expenses\/\d+$/.test(pathname)) return { module: "expenses", action: method === "DELETE" ? "delete" : "edit" };
 
   if (pathname === "/api/purchases") return { module: "purchases", action: read ? "view" : "create" };
-  if (/^\/api\/purchases\/\d+$/.test(pathname)) return { module: "purchases", action: "delete" };
+  if (/^\/api\/purchases\/\d+$/.test(pathname)) {
+    return { module: "purchases", action: method === "DELETE" ? "delete" : "edit" };
+  }
 
   if (pathname === "/api/suppliers") return { module: "suppliers", action: read ? "view" : "create" };
   if (pathname === "/api/supplier-dues") return { module: "suppliers", action: "view" };
@@ -1085,6 +1087,15 @@ export default {
       // ---- W3c transactional writes (Neon WebSocket pool, verified on Workers) ----
       if (url.pathname === "/api/purchases" && request.method === "POST") {
         return json({ purchase: await asActor(actor, () => addPurchase(db, body)) });
+      }
+
+      if (url.pathname.match(/^\/api\/purchases\/\d+$/) && request.method === "PUT") {
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+        const id = Number(url.pathname.split("/").pop());
+        if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid purchase id" }, { status: 400 });
+        const date = String((body as { date?: unknown }).date ?? "");
+        await asActor(actor, () => updatePurchaseDate(env.DATABASE_URL as string, id, date));
+        return json({ ok: true });
       }
 
       if (url.pathname.startsWith("/api/purchases/") && request.method === "DELETE") {

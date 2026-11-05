@@ -652,6 +652,23 @@ export default function App() {
     }
   }
 
+  async function editPurchaseDate(row: { id: number; name: string; purchase_date: string }) {
+    const input = window.prompt(`Purchase date for ${row.name} (YYYY-MM-DD)`, row.purchase_date);
+    if (input === null) return;
+    const date = input.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setPurchaseMsg("Enter the date as YYYY-MM-DD");
+      return;
+    }
+    try {
+      await api.updatePurchaseDate(row.id, date);
+      setPurchasesList((await api.purchases()).purchases);
+      setPurchaseMsg(`Purchase date changed to ${date}`);
+    } catch (err) {
+      setPurchaseMsg(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   async function pickStockItem(id: number | "") {
     setStock({ ...stock, itemId: id });
     setStockMsg(null);
@@ -1857,8 +1874,10 @@ export default function App() {
                 title="Recent purchases"
                 rows={purchasesList}
                 rowKey={(p) => p.id}
-                minWidthClass="min-w-[820px]"
-                widths={["w-[12%]", "w-[24%]", "w-[12%]", "w-[14%]", "w-[12%]", "w-[15%]", "w-[11%]"]}
+                minWidthClass="min-w-[900px]"
+                widths={user?.role === "owner"
+                  ? ["w-[10%]", "w-[22%]", "w-[10%]", "w-[12%]", "w-[10%]", "w-[13%]", "w-[10%]", "w-[13%]"]
+                  : ["w-[12%]", "w-[24%]", "w-[12%]", "w-[14%]", "w-[12%]", "w-[15%]", "w-[11%]"]}
                 columns={[
                   { key: "date", header: "Date", cell: (p) => formatDate(p.purchase_date), className: "whitespace-nowrap" },
                   { key: "item", header: "Item", cell: (p) => <span className="font-medium">{p.name}</span> },
@@ -1867,6 +1886,22 @@ export default function App() {
                   { key: "transport", header: "Transport", align: "right", cell: (p) => money(p.expenses_paise) },
                   { key: "supplier", header: "Supplier", cell: (p) => p.supplier_name ?? "—" },
                   { key: "total", header: "Total", align: "right", cell: (p) => money(p.total_paise) },
+                  ...(user?.role === "owner"
+                    ? [
+                        {
+                          key: "actions",
+                          header: "",
+                          align: "right" as const,
+                          mobileLabel: "Actions",
+                          hideOnMobile: true,
+                          cell: (p: (typeof purchasesList)[number]) => (
+                            <button className="btn-mini" onClick={() => void editPurchaseDate(p)}>
+                              Edit date
+                            </button>
+                          ),
+                        },
+                      ]
+                    : []),
                 ]}
                 empty={
                   <EmptyState

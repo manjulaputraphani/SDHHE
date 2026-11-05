@@ -264,6 +264,8 @@ export const api = {
   purchases: () => request<{ purchases: Array<{ id: number; name: string; unit: string; qty_base: number; unit_price_paise: number; total_paise: number; paid_paise: number; purchase_date: string; expenses_paise: number; supplier_name: string | null }> }>("/api/purchases"),
   addPurchase: (body: { itemId: number; qty: number; unitPricePaise: number; expensesPaise?: number; date: string; supplierName?: string; paymentMode?: string }) =>
     request<{ purchase: { purchaseId: number } }>("/api/purchases", { method: "POST", body: JSON.stringify(body) }),
+  updatePurchaseDate: (id: number, date: string) =>
+    request<{ ok: boolean }>(`/api/purchases/${id}`, { method: "PUT", body: JSON.stringify({ date }) }),
   suppliers: () => request<{ suppliers: Supplier[] }>("/api/suppliers"),
   createSupplier: (body: { name: string; phone?: string }) =>
     request<{ supplier: Supplier }>("/api/suppliers", { method: "POST", body: JSON.stringify(body) }),
