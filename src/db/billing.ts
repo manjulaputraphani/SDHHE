@@ -17,6 +17,7 @@ import {
   type CustomerInput as CustomerMasterInput,
 } from "./customers";
 import { PAYMENT_MODES } from "./purchases";
+import { recordCashEntry } from "./cashLedger";
 import { getCostingMethod, getCostPool, saveCostPool } from "./costing";
 import { billYear, formatBillNo, nextSequence } from "../logic/billNumber";
 import { lineProfit } from "../logic/profit";
@@ -240,6 +241,19 @@ export async function createSaleBillInTx(tx: TxDb, input: unknown): Promise<Sale
       })
       .returning({ id: saleBills.id });
 
+    // Cash ledger: money received from this sale (paid amount only).
+    if (paidPaise > 0) {
+      await recordCashEntry(tx, {
+        type: "sale",
+        amountPaise: paidPaise,
+        refType: "sale",
+        refId: bill.id,
+        entryDate: data.date,
+        note: `Bill ${billNo}`,
+        actor: undefined,
+      });
+    }
+
     await tx.insert(saleItems).values(lines.map((line) => ({ saleId: bill.id, ...line })));
 
     const profitPaise = lines.reduce((sum, l) => sum + l.profitPaise, 0);
@@ -418,6 +432,17 @@ export async function recordBillPayment(
 
   const paidPaise = Math.min(bill.totalPaise, bill.paidPaise + amountPaise);
   await db.update(saleBills).set({ paidPaise }).where(eq(saleBills.id, saleId));
+
+  // Cash ledger: money received against this bill.
+  await recordCashEntry(db, {
+    type: "sale",
+    amountPaise: amountPaise,
+    refType: "sale",
+    refId: saleId,
+    entryDate: new Date().toISOString().slice(0, 10),
+    note: `Payment on ${bill.billNo}`,
+  });
+
   await logActivity(db, {
     event: "sale.payment",
     summary: `Payment received on ${bill.billNo}: ${formatRupees(paidPaise - bill.paidPaise)}`,

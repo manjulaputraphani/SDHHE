@@ -37,6 +37,12 @@ import {
 import { sendEmail } from "../lib/email";
 import { endSession } from "../db/sessions";
 import { getCostingMethod, setCostingMethod, type CostingMethod } from "../db/costing";
+import {
+  getOpeningBalance,
+  saveOpeningBalance,
+  type OpeningBalance,
+} from "../db/cashLedger";
+import { formatRupees } from "../logic/units";
 
 const PIN_RE = /^\d{4,6}$/;
 
@@ -74,6 +80,11 @@ export default function Settings({
   const [shopStatus, setShopStatus] = useState<string | null>(null);
   const [costingMethod, setCostingMethodState] = useState<CostingMethod>("WAC");
   const [costingStatus, setCostingStatus] = useState<string | null>(null);
+  const [openingBalance, setOpeningBalanceState] = useState<OpeningBalance | null>(null);
+  const [openingAmount, setOpeningAmount] = useState("");
+  const [openingDate, setOpeningDate] = useState("");
+  const [openingNote, setOpeningNote] = useState("");
+  const [openingStatus, setOpeningStatus] = useState<string | null>(null);
   const [members, setMembers] = useState<AppUser[]>([]);
   const [membersStatus, setMembersStatus] = useState<string | null>(null);
   const [memberName, setMemberName] = useState("");
@@ -98,6 +109,12 @@ export default function Settings({
     getCostingMethod(db)
       .then(setCostingMethodState)
       .catch(() => setCostingMethodState("WAC"));
+  }, [db]);
+
+  useEffect(() => {
+    getOpeningBalance(db)
+      .then(setOpeningBalanceState)
+      .catch(() => setOpeningBalanceState(null));
   }, [db]);
 
   async function loadMembers() {
@@ -780,6 +797,87 @@ export default function Settings({
             <option value="FIFO">FIFO (batch-wise)</option>
           </select>
           {costingStatus && <span className="text-sm text-muted">{costingStatus}</span>}
+        </div>
+      </section>
+
+      <section className="space-y-3 card p-4">
+        <div>
+          <h2 className="text-sm font-medium">Opening balance (investment)</h2>
+          <p className="text-sm text-muted">
+            Starting cash/bank balance used for working-capital calculations.
+          </p>
+        </div>
+        {openingBalance && (
+          <p className="text-xs text-muted">
+            Current: {formatRupees(openingBalance.amountPaise)} as of{" "}
+            {openingBalance.asOfDate}
+          </p>
+        )}
+        <div className="grid gap-2 sm:grid-cols-3 items-end">
+          <div className="space-y-1">
+            <label className="label text-xs" htmlFor="opening-amount">
+              Amount (₹)
+            </label>
+            <input
+              id="opening-amount"
+              type="text"
+              className="input text-sm"
+              value={openingAmount}
+              onChange={(e) => setOpeningAmount(e.currentTarget.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="label text-xs" htmlFor="opening-date">
+              As of date
+            </label>
+            <input
+              id="opening-date"
+              type="date"
+              className="input text-sm"
+              value={openingDate}
+              onChange={(e) => setOpeningDate(e.currentTarget.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="label text-xs" htmlFor="opening-note">Note</label>
+            <input
+              id="opening-note"
+              type="text"
+              className="input text-sm"
+              value={openingNote}
+              onChange={(e) => setOpeningNote(e.currentTarget.value)}
+            />
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={async () => {
+              const amountRupees = parseFloat(openingAmount.replace(/,/g, ""));
+              if (!openingDate || !Number.isFinite(amountRupees) || amountRupees < 0) {
+                setOpeningStatus("Enter a valid amount and date");
+                return;
+              }
+              const amountPaise = Math.round(amountRupees * 100);
+              try {
+                await saveOpeningBalance(db, {
+                  amountPaise,
+                  asOfDate: openingDate,
+                  note: openingNote.trim() || null,
+                });
+                setOpeningStatus("Opening balance saved");
+                setOpeningAmount("");
+                setOpeningNote("");
+                void getOpeningBalance(db).then(setOpeningBalanceState);
+              } catch (err) {
+                setOpeningStatus(
+                  err instanceof Error ? err.message : String(err),
+                );
+              }
+            }}
+          >
+            Save
+          </button>
+          {openingStatus && <span className="text-sm text-muted">{openingStatus}</span>}
         </div>
       </section>
 

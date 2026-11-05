@@ -6,6 +6,7 @@ import { expenseBills, expenses, items, purchases, saleBills } from "./schema";
 import { getCostPool, saveCostPool } from "./costing";
 import { PAYMENT_MODES } from "./purchases";
 import { formatRupees, type Unit } from "../logic/units";
+import { recordCashEntry } from "./cashLedger";
 
 export const EXPENSE_CATEGORIES = [
   "Rent",
@@ -205,6 +206,17 @@ export async function createExpense(db: Db, input: unknown): Promise<ExpenseRow>
     relatedPurchaseId: data.relatedPurchaseId ?? null,
   });
   await replaceBill(db, created.id, data.bill);
+
+  // Cash ledger: money out for this expense.
+  await recordCashEntry(db, {
+    type: "expense",
+    amountPaise: -data.amountPaise,
+    refType: "expense",
+    refId: created.id,
+    entryDate: data.date,
+    note: `${data.category}: ${data.note?.trim() ?? ""}`.trim() || data.category,
+  });
+
   await logActivity(db, {
     event: "expense.create",
     summary: summaryOf(data, "added"),

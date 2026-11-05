@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
 import { getDashboard, type DashboardData } from "../db/dashboard";
+import {
+  creditAging,
+  rotationTrend,
+  type CreditAgingRow,
+  type RotationDay,
+  type WorkingCapital,
+  workingCapital,
+} from "../db/cashLedger";
 import { useDb } from "../lib/db-context";
 import { useSuggestions } from "../lib/useSuggestions";
 import { formatQuantity, formatRupees, type Unit } from "../logic/units";
@@ -45,6 +64,9 @@ export default function Dashboard() {
   const db = useDb();
   const [month, setMonth] = useState(currentMonth);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [wc, setWc] = useState<WorkingCapital | null>(null);
+  const [aging, setAging] = useState<CreditAgingRow[] | null>(null);
+  const [trend, setTrend] = useState<RotationDay[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { suggestions, dismiss } = useSuggestions(db, month);
@@ -54,6 +76,10 @@ export default function Dashboard() {
     setError(null);
     try {
       setData(await getDashboard(db, month));
+      setWc(await workingCapital(db));
+      const agingResult = await creditAging(db);
+      setAging(agingResult.rows);
+      setTrend(await rotationTrend(db, 30));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -64,6 +90,14 @@ export default function Dashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const bucketTotals = aging?.reduce(
+    (acc, row) => {
+      acc[row.ageBucket] = (acc[row.ageBucket] ?? 0) + row.outstandingPaise;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
 
   return (
     <div className="space-y-6">
@@ -116,6 +150,100 @@ export default function Dashboard() {
             <Card label="Wastage cost" value={formatRupees(data.wastagePaise)} tone="warn" />
             <Card label="Stock value" value={formatRupees(data.stockValuePaise)} />
           </section>
+
+          {wc && (
+            <>
+              <section className="space-y-3">
+                <h2 className="text-lg font-medium">Working capital</h2>
+                <p className="text-xs text-muted">
+                  As of {wc.asOfDate} · auto-recalculates when a sale or payment is recorded
+                </p>
+                <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <Card label="Investment" value={formatRupees(wc.investmentPaise)} />
+                  <Card label="Stock value" value={formatRupees(wc.stockValuePaise)} />
+                  <Card label="Cash in bank" value={formatRupees(wc.cashInBankPaise)} />
+                  <Card
+                    label="Credit outstanding"
+                    value={formatRupees(wc.creditOutstandingPaise)}
+                    tone="warn"
+                  />
+                  <Card
+                    label="Amount in rotation"
+                    value={formatRupees(wc.amountInRotationPaise)}
+                  />
+                </section>
+              </section>
+
+              {aging && aging.length > 0 && (
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-medium">Credit aging (unpaid bills)</h2>
+                    <Link to="/bills" className="text-sm underline">
+                      View all bills
+                    </Link>
+                  </div>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart
+                      data={[
+                        { name: "Current", value: bucketTotals?.current ?? 0 },
+                        { name: "1–30 days", value: bucketTotals?.["1-30"] ?? 0 },
+                        { name: "31–60 days", value: bucketTotals?.["31-60"] ?? 0 },
+                        { name: "61–90 days", value: bucketTotals?.["61-90"] ?? 0 },
+                        { name: "90+ days", value: bucketTotals?.["90+"] ?? 0 },
+                      ] as { name: string; value: number }[]}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <ul className="divide-y divide-line card text-sm">
+                    {aging.map((row) => (
+                      <li key={`${row.billNo}:${row.customerId}`} className="px-3 py-2 flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-ink">{row.billNo}</p>
+                          <p className="text-xs text-muted">
+                            {row.customerName} · {row.billDate}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium text-ink">
+                            {formatRupees(row.outstandingPaise)}
+                          </p>
+                          <p className={`text-xs ${row.daysOverdue > 30 ? "text-error-ink" : "text-muted"}`}>
+                            {row.daysOverdue} days overdue
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {trend && (
+                <section className="space-y-2">
+                  <h2 className="text-lg font-medium">Rotation trend (net sales, last 30 days)</h2>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={trend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="netSalesPaise"
+                        stroke="#4f46e5"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </section>
+              )}
+            </>
+          )}
 
           {data.priceAlerts.length > 0 && (
             <section className="space-y-2">

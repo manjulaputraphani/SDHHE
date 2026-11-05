@@ -320,3 +320,27 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   dismissed: boolean("dismissed").notNull().default(false),
 });
+
+/** Cash / bank ledger — every money movement in or out of the business. */
+export const cashLedger = pgTable("cash_ledger", {
+  id: serial("id").primaryKey(),
+  /** 'opening' | 'sale' | 'purchase' | 'expense' | 'withdrawal' | 'deposit' | 'adjustment' */
+  type: text("type").notNull(),
+  amountPaise: integer("amount_paise").notNull(),
+  /** Related sale / purchase / expense id (nullable for opening/withdrawal/deposit). */
+  refType: text("ref_type"),
+  refId: integer("ref_id"),
+  entryDate: date("entry_date").notNull(),
+  note: text("note"),
+  actor: text("actor"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Opening balance snapshot — set once, reused as the starting cash position. */
+export const openingBalance = pgTable("opening_balance", {
+  id: serial("id").primaryKey(),
+  amountPaise: integer("amount_paise").notNull(),
+  asOfDate: date("as_of_date").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

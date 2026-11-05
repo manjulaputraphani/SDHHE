@@ -34,6 +34,8 @@ export default defineConfig({
     "public.sale_items",
     "public.settings",
     "public.ai_suggestions",
+    "public.cash_ledger",
+    "public.opening_balance",
   ],
   dbCredentials: { url },
 });

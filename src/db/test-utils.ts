@@ -22,6 +22,8 @@ const OUR_TABLES = [
   "role_permissions",
   "user_sessions",
   "investments",
+  "cash_ledger",
+  "opening_balance",
 ] as const;
 
 function rowsOf<T>(result: unknown): T[] {
