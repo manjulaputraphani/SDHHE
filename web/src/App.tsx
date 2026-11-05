@@ -299,6 +299,7 @@ export default function App() {
   const [activityBusy, setActivityBusy] = useState(false);
   const [expense, setExpense] = useState({ category: "", amount: "", paidTo: "", note: "", type: "general", date: new Date().toISOString().slice(0, 10) });
   const [expenseMsg, setExpenseMsg] = useState<string | null>(null);
+  const [expenseSaving, setExpenseSaving] = useState(false);
   const [suppliersList, setSuppliersList] = useState<Array<{ id: number; name: string; phone: string | null }>>([]);
   const [supplierDuesList, setSupplierDuesList] = useState<Array<{ id: number; name: string; phone: string | null; total_purchased_paise: number; total_paid_paise: number; outstanding_paise: number }>>([]);
   const [supplierPaymentsList, setSupplierPaymentsList] = useState<Array<{ id: number; purchase_id: number; purchase_date: string; item_name: string; amount_paise: number; payment_date: string; payment_mode: string | null; note: string | null }>>([]);
@@ -813,6 +814,8 @@ export default function App() {
   }
 
   async function addExpenseNow() {
+    if (expenseSaving) return;
+    setExpenseSaving(true);
     setExpenseMsg(null);
     try {
       await api.addExpense({
@@ -831,6 +834,8 @@ export default function App() {
       setCategories((await api.expenseCategories()).categories);
     } catch (err) {
       setExpenseMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExpenseSaving(false);
     }
   }
 
@@ -1559,8 +1564,8 @@ export default function App() {
                   onChange={(e) => setExpense({ ...expense, amount: e.currentTarget.value })}
                   onKeyDown={(e) => { if (e.key === "Enter") void addExpenseNow(); }}
                 />
-                <button className="btn btn-primary h-full whitespace-nowrap" onClick={() => void addExpenseNow()}>
-                  <span className="flex items-center gap-1.5"><IconPlus size={15} /> Add</span>
+                <button className="btn btn-primary h-full whitespace-nowrap" disabled={expenseSaving} onClick={() => void addExpenseNow()}>
+                  <span className="flex items-center gap-1.5"><IconPlus size={15} /> {expenseSaving ? "Adding…" : "Add"}</span>
                 </button>
               </div>
               {expenseMsg && <p role="status" className="mt-2 text-sm text-muted">{expenseMsg}</p>}
@@ -2181,7 +2186,7 @@ export default function App() {
                   </div>
                 </div>
                 {can("expenses", "create") && (
-                  <button className="btn btn-primary w-full whitespace-nowrap sm:col-span-full min-[1200px]:col-span-1 min-[1200px]:w-auto" onClick={() => void addExpenseNow()}>Add expense</button>
+                  <button className="btn btn-primary w-full whitespace-nowrap sm:col-span-full min-[1200px]:col-span-1 min-[1200px]:w-auto" disabled={expenseSaving} onClick={() => void addExpenseNow()}>{expenseSaving ? "Saving…" : "Add expense"}</button>
                 )}
               </FormRow>
               <datalist id="expense-categories">
