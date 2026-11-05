@@ -44,6 +44,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Margin default** (2026-11-05): New Bill helper and Roasting margin now default to **6%** (was 20%). Deployed `sdhhe-api` version `fc8361a8`.
 - **Web working capital & rotation** (2026-11-05): Dashboard now shows amount in rotation (stock + cash + credit), **rotation times this month**, days to rotate, inventory turnover, net profit, stock value, cash, plus a **30-day net-sales rotation trend chart** (custom SVG). New `/api/rotation` + `rotationSummary`; `rotationTrend` fixed to use actual net sales (`subtotal_paise`) instead of unpaid credit. Deployed `sdhhe-api` version `c204e60b`.
 - **Rotation mobile polish** (2026-11-05): chart y-axis labels moved to HTML (readable on phones), tap tooltip stays visible, `touch-pan-y` keeps page scrolling, stock/cash/credit shown as a 3-column mini-grid. Deployed `sdhhe-api` version `a3383f6f`.
+- **Web visual refresh** (2026-11-05): new `Refresh`/`Banknote` icons; icon badges on dashboard + rotation cards; refined card/button/input styling; soft page gradient; gold accent on active nav and dashboard/section headers. Deployed `sdhhe-api` version `5b8247d0`.
 
 ## Next tasks
 1. Add the **Roasting** screen to the desktop app (shared `createRoasting`/`listRoastings` already work; only web UI exists).

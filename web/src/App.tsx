@@ -47,6 +47,7 @@ import SalesChart from "./components/SalesChart";
 import RotationChart from "./components/RotationChart";
 import {
   IconActivity,
+  IconBanknote,
   IconBarChart,
   IconBill,
   IconCalculator,
@@ -68,6 +69,7 @@ import {
   IconPhone,
   IconPlus,
   IconPurchases,
+  IconRefresh,
   IconReports,
   IconScale,
   IconSettings,
@@ -1525,10 +1527,10 @@ export default function App() {
                 {group.links.map((link) => (
                   <button
                     key={link.key}
-                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm ${
+                    className={`flex items-center gap-2.5 rounded-lg border-l-2 px-3 py-2 text-left text-sm transition-colors ${
                       view === link.key
-                        ? "bg-nav-active font-medium text-nav-text"
-                        : "text-nav-muted hover:bg-nav-hover hover:text-nav-text"
+                        ? "border-accent bg-nav-active font-medium text-nav-text shadow-sm"
+                        : "border-transparent text-nav-muted hover:bg-nav-hover hover:text-nav-text"
                     }`}
                     onClick={() => { setView(link.key); setBill(null); }}
                   >
@@ -1615,10 +1617,10 @@ export default function App() {
                       {group.links.map((link) => (
                         <button
                           key={link.key}
-                          className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm ${
+                          className={`flex items-center gap-2.5 rounded-lg border-l-2 px-3 py-2.5 text-left text-sm transition-colors ${
                             view === link.key
-                              ? "bg-nav-active font-medium text-nav-text"
-                              : "text-nav-muted hover:bg-nav-hover hover:text-nav-text"
+                              ? "border-accent bg-nav-active font-medium text-nav-text shadow-sm"
+                              : "border-transparent text-nav-muted hover:bg-nav-hover hover:text-nav-text"
                           }`}
                           onClick={() => {
                             setView(link.key);
@@ -1689,32 +1691,78 @@ export default function App() {
           </section>
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Dashboard</h1>
+              <div>
+                <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight md:text-2xl">
+                  <span className="size-2 rounded-full bg-accent" aria-hidden="true" />
+                  Dashboard
+                </h1>
+                <p className="mt-0.5 text-xs text-muted">Sales, stock, expenses and money in rotation — live.</p>
+              </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {[
-                ["Today's sales", money(stats?.today_sales ?? 0), ""],
-                ["This month", money(stats?.month_sales ?? 0), ""],
-                ["Month profit", money(stats?.month_profit ?? 0), ""],
-                ["Month expenses", money(stats?.month_expenses ?? 0), ""],
-                ["Credit given", money(stats?.credit_paise ?? 0), `${stats?.credit_bills ?? 0} unpaid bills`],
-              ].map(([label, value, hint]) => (
-                <div key={label} className="card p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</p>
-                  <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
-                  {hint ? <p className="mt-0.5 text-[11px] text-muted">{hint}</p> : null}
+                {
+                  label: "Today's sales",
+                  value: money(stats?.today_sales ?? 0),
+                  hint: "",
+                  icon: <IconIndianRupee size={16} />,
+                  tone: "bg-accent-soft text-accent-ink",
+                },
+                {
+                  label: "This month",
+                  value: money(stats?.month_sales ?? 0),
+                  hint: "",
+                  icon: <IconBarChart size={16} />,
+                  tone: "bg-secondary-soft text-secondary-ink",
+                },
+                {
+                  label: "Month profit",
+                  value: money(stats?.month_profit ?? 0),
+                  hint: "",
+                  icon: <IconInvestments size={16} />,
+                  tone: "bg-success-soft text-success-ink",
+                },
+                {
+                  label: "Month expenses",
+                  value: money(stats?.month_expenses ?? 0),
+                  hint: "",
+                  icon: <IconExpenses size={16} />,
+                  tone: "bg-error-soft text-error-ink",
+                },
+                {
+                  label: "Credit given",
+                  value: money(stats?.credit_paise ?? 0),
+                  hint: `${stats?.credit_bills ?? 0} unpaid bills`,
+                  icon: <IconBill size={16} />,
+                  tone: "bg-accent-soft text-accent-ink",
+                },
+              ].map((card) => (
+                <div key={card.label} className="card card-hover p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">{card.label}</p>
+                    <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${card.tone}`}>
+                      {card.icon}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-2xl font-semibold tracking-tight">{card.value}</p>
+                  {card.hint ? <p className="mt-0.5 text-[11px] text-muted">{card.hint}</p> : null}
                 </div>
               ))}
               <button
                 type="button"
                 onClick={() => setShowLowStock((open) => !open)}
                 aria-expanded={showLowStock}
-                className={`card p-4 text-left transition ${
+                className={`card card-hover p-4 text-left transition ${
                   lowStockCount > 0 ? "border-accent bg-accent-soft" : ""
                 }`}
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Low stock items</p>
-                <p className={`mt-1 text-2xl font-semibold tracking-tight ${lowStockCount > 0 ? "text-accent-ink" : ""}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Low stock items</p>
+                  <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${lowStockCount > 0 ? "bg-accent text-on-primary" : "bg-surface-2 text-muted"}`}>
+                    <IconStock size={16} />
+                  </span>
+                </div>
+                <p className={`mt-2 text-2xl font-semibold tracking-tight ${lowStockCount > 0 ? "text-accent-ink" : ""}`}>
                   {lowStockCount}
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted">{lowStockCount > 0 ? "View items" : "All good"}</p>
@@ -1724,50 +1772,71 @@ export default function App() {
             {rotation && (
               <section className="space-y-3">
                 <div>
-                  <h2 className="text-lg font-semibold tracking-tight">Working capital & rotation</h2>
+                  <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+                    <span className="size-2 rounded-full bg-accent" aria-hidden="true" />
+                    Working capital &amp; rotation
+                  </h2>
                   <p className="text-xs text-muted">
                     This month to date · as of {formatDate(rotation.asOfDate)}
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <div className="card p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Amount in rotation</p>
-                    <p className="mt-1 text-2xl font-semibold tracking-tight">{money(rotation.amountInRotationPaise)}</p>
+                  <div className="card card-hover p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Amount in rotation</p>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink"><IconExpenses size={16} /></span>
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight">{money(rotation.amountInRotationPaise)}</p>
                     <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] text-muted">
                       <span>Stock<br /><span className="font-medium text-ink">{money(rotation.stockValuePaise)}</span></span>
                       <span>Cash<br /><span className="font-medium text-ink">{money(rotation.cashInBankPaise)}</span></span>
                       <span>Credit<br /><span className="font-medium text-ink">{money(rotation.creditOutstandingPaise)}</span></span>
                     </div>
                   </div>
-                  <div className="card p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Rotation this month</p>
-                    <p className="mt-1 text-2xl font-semibold tracking-tight">{rotation.rotationTimes.toFixed(2)}×</p>
+                  <div className="card card-hover p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Rotation this month</p>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-secondary-soft text-secondary-ink"><IconRefresh size={16} /></span>
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight">{rotation.rotationTimes.toFixed(2)}×</p>
                     <p className="mt-0.5 text-[11px] text-muted">
                       {rotation.daysToRotate === null ? "No sales yet" : `${rotation.daysToRotate.toFixed(1)} days to rotate`}
                     </p>
                   </div>
-                  <div className="card p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Inventory turnover</p>
-                    <p className="mt-1 text-2xl font-semibold tracking-tight">{rotation.inventoryTurnover.toFixed(2)}×</p>
+                  <div className="card card-hover p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Inventory turnover</p>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-primary"><IconStock size={16} /></span>
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight">{rotation.inventoryTurnover.toFixed(2)}×</p>
                     <p className="mt-0.5 text-[11px] text-muted">COGS ÷ stock value</p>
                   </div>
-                  <div className="card p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Net profit (after expenses)</p>
-                    <p className={`mt-1 text-2xl font-semibold tracking-tight ${rotation.netProfitPaise < 0 ? "text-error-ink" : ""}`}>
+                  <div className="card card-hover p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Net profit (after expenses)</p>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-success-soft text-success-ink"><IconInvestments size={16} /></span>
+                    </div>
+                    <p className={`mt-2 text-2xl font-semibold tracking-tight ${rotation.netProfitPaise < 0 ? "text-error-ink" : ""}`}>
                       {money(rotation.netProfitPaise)}
                     </p>
                     <p className="mt-0.5 text-[11px] text-muted">
                       Gross {money(rotation.grossProfitPaise)} − expenses {money(rotation.expensesPaise)}
                     </p>
                   </div>
-                  <div className="card p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Stock value</p>
-                    <p className="mt-1 text-2xl font-semibold tracking-tight">{money(rotation.stockValuePaise)}</p>
+                  <div className="card card-hover p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Stock value</p>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-primary"><IconItems size={16} /></span>
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight">{money(rotation.stockValuePaise)}</p>
                     <p className="mt-0.5 text-[11px] text-muted">At batch cost</p>
                   </div>
-                  <div className="card p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Cash in bank</p>
-                    <p className="mt-1 text-2xl font-semibold tracking-tight">{money(rotation.cashInBankPaise)}</p>
+                  <div className="card card-hover p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Cash in bank</p>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink"><IconBanknote size={16} /></span>
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight">{money(rotation.cashInBankPaise)}</p>
                     <p className="mt-0.5 text-[11px] text-muted">From the cash ledger</p>
                   </div>
                 </div>
