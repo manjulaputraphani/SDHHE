@@ -1733,9 +1733,11 @@ export default function App() {
                   <div className="card p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Amount in rotation</p>
                     <p className="mt-1 text-2xl font-semibold tracking-tight">{money(rotation.amountInRotationPaise)}</p>
-                    <p className="mt-0.5 text-[11px] text-muted">
-                      Stock {money(rotation.stockValuePaise)} · Cash {money(rotation.cashInBankPaise)} · Credit {money(rotation.creditOutstandingPaise)}
-                    </p>
+                    <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] text-muted">
+                      <span>Stock<br /><span className="font-medium text-ink">{money(rotation.stockValuePaise)}</span></span>
+                      <span>Cash<br /><span className="font-medium text-ink">{money(rotation.cashInBankPaise)}</span></span>
+                      <span>Credit<br /><span className="font-medium text-ink">{money(rotation.creditOutstandingPaise)}</span></span>
+                    </div>
                   </div>
                   <div className="card p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Rotation this month</p>
