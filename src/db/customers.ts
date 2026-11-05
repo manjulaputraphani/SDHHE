@@ -98,8 +98,52 @@ export async function findCustomer(
 }
 
 /**
- * Save the customer into the master: update the matching record (filling in
- * what is new, keeping what is already known) or create a new one.
+ * Create a brand-new customer. Never updates an existing row: if the phone or
+ * GSTIN already belongs to someone, throw and let the UI use Edit instead.
+ */
+export async function createCustomerOnly(db: Db, input: unknown): Promise<CustomerRow> {
+  const data = parseCustomerInput(input);
+  const phone = normalisePhone(data.phone);
+  const gstin = normaliseGstin(data.gstin);
+
+  const conditions = [];
+  if (phone) conditions.push(eq(customers.phone, phone));
+  if (gstin) conditions.push(eq(sql`upper(${customers.gstin})`, gstin));
+  if (conditions.length) {
+    const [existing] = await db
+      .select({ id: customers.id, name: customers.name })
+      .from(customers)
+      .where(or(...conditions)!)
+      .limit(1);
+    if (existing) {
+      throw new Error(
+        `A customer with this ${phone ? "phone" : "GSTIN"} already exists: ${existing.name}. Use Edit instead.`,
+      );
+    }
+  }
+
+  const [created] = await db
+    .insert(customers)
+    .values({
+      name: data.name,
+      phone,
+      address: data.address?.trim() || null,
+      gstin,
+      email: data.email?.trim() || null,
+    })
+    .returning();
+  await logActivity(db, {
+    event: "customer.create",
+    summary: `Customer added: ${created.name}`,
+    entity: "customer",
+    entityId: created.id,
+  });
+  return { ...created, billCount: 0, billedPaise: 0, creditPaise: 0, lastBillDate: null };
+}
+
+/**
+ * Save the customer into the master for billing: update the matching record
+ * (filling in what is new, keeping what is already known) or create a new one.
  */
 export async function saveCustomer(db: Db, input: unknown): Promise<CustomerRow> {
   const data = parseCustomerInput(input);

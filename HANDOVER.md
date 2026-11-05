@@ -37,6 +37,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Invoice GSTIN** (2026-11-05): missing seller/buyer GSTIN now prints **NA** (was `—`). When either GSTIN is missing (B2C/unregistered), the bill screen defaults to intra-state CGST+SGST, matching the printed invoice. Deployed `sdhhe-api` version `47d0ee77`.
 - **Customer without GST** (2026-11-05): GSTIN is explicitly optional in Add/Edit customer and billing; blank fields are omitted (stored as null). Inline name validation, saving state and in-form error message added. DB already accepted a null GSTIN (verified with a temp customer). Deployed `sdhhe-api` version `16cbdb22`.
 - **GSTIN "NA" collision fix** (2026-11-05): `normaliseGstin` treats `NA`, `N/A`, `-` and blank as null, so adding another no-GST customer no longer matches/updates the first one. Existing `NA` GSTIN/email values cleaned to null. Deployed `sdhhe-api` version `601102c5`.
+- **Customer create/update split** (2026-11-05): `POST /api/customers` is now create-only (never updates; duplicate phone/GSTIN gives “use Edit”); `PUT /api/customers/:id` updates; `POST /api/customers/save` remains the billing find-or-create. UI has separate **Create customer** / **Update customer** buttons and functions. Verified create + duplicate block against the live DB. Deployed `sdhhe-api` version `4e6555be`.
 
 ## Next tasks
 1. Add the **Roasting** screen to the desktop app (shared `createRoasting`/`listRoastings` already work; only web UI exists).

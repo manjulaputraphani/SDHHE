@@ -18,6 +18,7 @@ import { getShopDetails, saveShopDetails } from "../../src/db/settings";
 import { buildBillHtml } from "../../src/lib/printBill";
 import { logActivity } from "../../src/db/activity";
 import { createItem, deleteItem, updateItem } from "../../src/db/items";
+import { createCustomerOnly } from "../../src/db/customers";
 import { cancelSaleBill, createCustomer, createSaleBill, deleteSaleBill, recordBillPayment } from "../../src/db/billing";
 import { deleteCustomer, listCustomers, updateCustomer } from "../../src/db/customers";
 import { addPurchase, deletePurchase, updatePurchase } from "../../src/db/purchases";
@@ -104,6 +105,7 @@ function routePermission(
   if (pathname === "/api/stock") return { module: "stock", action: read ? "view" : "create" };
   if (pathname === "/api/roastings") return { module: "stock", action: read ? "view" : "create" };
 
+  if (pathname === "/api/customers/save") return { module: "customers", action: "create" };
   if (pathname === "/api/customers") return { module: "customers", action: read ? "view" : "create" };
   if (/^\/api\/customers\/\d+$/.test(pathname)) return { module: "customers", action: method === "DELETE" ? "delete" : "edit" };
 
@@ -803,8 +805,12 @@ export default {
         return json({ customers: await listCustomers(db, search) });
       }
 
-      if (url.pathname === "/api/customers" && request.method === "POST") {
+      if (url.pathname === "/api/customers/save" && request.method === "POST") {
         return json({ customer: await asActor(actor, () => createCustomer(db, body)) });
+      }
+
+      if (url.pathname === "/api/customers" && request.method === "POST") {
+        return json({ customer: await asActor(actor, () => createCustomerOnly(db, body)) });
       }
 
       if (url.pathname.match(/^\/api\/customers\/\d+$/) && request.method === "PUT") {

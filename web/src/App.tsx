@@ -625,7 +625,7 @@ export default function App() {
     try {
       let customerId: number | undefined;
       if (billCustomer.name.trim()) {
-        customerId = (await api.createCustomer(billCustomer)).customer.id;
+        customerId = (await api.saveCustomer(billCustomer)).customer.id;
       }
       const res = await api.createBill({
         customerId,
@@ -820,31 +820,51 @@ export default function App() {
     setInvestTotal(r.totalPaise);
   }
 
-  /** Save a customer into the master (new or edited). */
-  async function saveCustomerNow() {
-    if (!customerForm || customerSaving) return;
-    setCustomerMsg(null);
+  function customerPayload() {
+    if (!customerForm) return null;
     const name = customerForm.name.trim();
     if (!name) {
       setCustomerMsg("Customer name is required");
-      return;
+      return null;
     }
-    const body = {
+    return {
       name,
       ...(customerForm.phone.trim() ? { phone: customerForm.phone.trim() } : {}),
       ...(customerForm.email.trim() ? { email: customerForm.email.trim() } : {}),
       ...(customerForm.gstin.trim() ? { gstin: customerForm.gstin.trim() } : {}),
       ...(customerForm.address.trim() ? { address: customerForm.address.trim() } : {}),
     };
+  }
+
+  /** Create only — never updates an existing row. */
+  async function createCustomerNow() {
+    if (!customerForm || customerSaving) return;
+    setCustomerMsg(null);
+    const body = customerPayload();
+    if (!body) return;
     setCustomerSaving(true);
     try {
-      if (customerForm.id === null) {
-        await api.saveCustomer(body);
-        setCustomerMsg(`${body.name} saved to the customer master`);
-      } else {
-        await api.updateCustomer(customerForm.id, body);
-        setCustomerMsg(`${body.name} updated`);
-      }
+      await api.createCustomer(body);
+      setCustomerMsg(`${body.name} created`);
+      setCustomerForm(null);
+      setCustomers((await api.customers(customerSearch)).customers);
+    } catch (err) {
+      setCustomerMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCustomerSaving(false);
+    }
+  }
+
+  /** Update the customer currently being edited. */
+  async function updateCustomerNow() {
+    if (!customerForm || customerForm.id === null || customerSaving) return;
+    setCustomerMsg(null);
+    const body = customerPayload();
+    if (!body) return;
+    setCustomerSaving(true);
+    try {
+      await api.updateCustomer(customerForm.id, body);
+      setCustomerMsg(`${body.name} updated`);
       setCustomerForm(null);
       setCustomers((await api.customers(customerSearch)).customers);
     } catch (err) {
@@ -1906,7 +1926,13 @@ export default function App() {
                 </div>
                 {customerMsg && <p role="status" className="rounded bg-surface-2 px-3 py-2 text-sm text-muted">{customerMsg}</p>}
                 <div className="flex flex-wrap items-center gap-2">
-                  <button className="btn btn-primary" disabled={customerSaving} onClick={() => void saveCustomerNow()}>{customerSaving ? "Saving…" : "Save"}</button>
+                  <button
+                    className="btn btn-primary"
+                    disabled={customerSaving}
+                    onClick={() => void (customerForm.id === null ? createCustomerNow() : updateCustomerNow())}
+                  >
+                    {customerSaving ? "Saving…" : customerForm.id === null ? "Create customer" : "Update customer"}
+                  </button>
                   <button className="btn-mini" disabled={customerSaving} onClick={() => setCustomerForm(null)}>Cancel</button>
                   <span className="text-xs text-muted">
                     GSTIN is optional. Saved clients are matched by phone or GSTIN — saving again updates the same record.

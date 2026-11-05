@@ -285,8 +285,6 @@ export const api = {
   deleteItem: (id: number) => request<{ ok: boolean }>(`/api/items/${id}`, { method: "DELETE" }),
   updateItem: (id: number, body: { name: string; unit: string; category?: string; minStockBase: number; imageUrl?: string }) =>
     request<{ item: Item }>(`/api/items/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  createCustomer: (body: { name: string; phone?: string; email?: string; gstin?: string; address?: string }) =>
-    request<{ customer: { id: number } }>("/api/customers", { method: "POST", body: JSON.stringify(body) }),
   statsDaily: (days = 14) =>
     request<{ daily: Array<{ date: string; sales: string; expenses: string }> }>(`/api/stats/daily?days=${days}`),
   expenseCategories: () =>
@@ -389,8 +387,13 @@ export const api = {
    deleteBill: (id: number) => request<{ ok: boolean }>(`/api/bills/${id}`, { method: "DELETE" }),
   customers: (search?: string) =>
     request<{ customers: Customer[] }>(`/api/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
-  saveCustomer: (body: { name: string; phone?: string; address?: string; gstin?: string; email?: string }) =>
+  createCustomer: (body: { name: string; phone?: string; address?: string; gstin?: string; email?: string }) =>
     request<{ customer: { id: number; name: string; phone: string | null } }>("/api/customers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  saveCustomer: (body: { name: string; phone?: string; address?: string; gstin?: string; email?: string }) =>
+    request<{ customer: { id: number; name: string; phone: string | null } }>("/api/customers/save", {
       method: "POST",
       body: JSON.stringify(body),
     }),
