@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useDb } from "../lib/db-context";
 import { dealProfits, finYearOptions, finYearReport, type DealProfit, type FinYearReport } from "../db/reports";
-import { formatQuantity, formatRupees } from "../logic/units";
+import { formatQuantity, formatRupees, type Unit } from "../logic/units";
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -162,7 +162,7 @@ export default function Reports() {
                   .map((row) => (
                     <tr key={row.itemId}>
                       <td className="px-3 py-2 font-medium">{row.name}</td>
-                      <td className="px-3 py-2 text-right">{formatQuantity(row.qtyBase, row.unit as "kg")}</td>
+                      <td className="px-3 py-2 text-right">{formatQuantity(row.qtyBase, row.unit as Unit)}</td>
                       <td className="px-3 py-2 text-right">{formatRupees(row.avgCostPaise)}</td>
                       <td className="px-3 py-2 text-right">{formatRupees(row.valuePaise)}</td>
                     </tr>

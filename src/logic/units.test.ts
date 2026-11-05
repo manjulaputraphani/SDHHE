@@ -21,6 +21,10 @@ describe("units — docs/TESTING.md §A1", () => {
   it("pcs: costPaise(3 pcs, 500, 'pcs') === 1500", () => {
     expect(costPaise(3, 500, "pcs")).toBe(1500);
   });
+
+  it("bag: costPaise(2 bags, ₹3000/bag) === ₹6000", () => {
+    expect(costPaise(120000, 300000, "60 kg bag")).toBe(600000);
+  });
 });
 
 describe("units — edge cases", () => {
@@ -30,6 +34,7 @@ describe("units — edge cases", () => {
     expect(baseFactor("pcs")).toBe(1);
     expect(baseFactor("kg")).toBe(1000);
     expect(baseFactor("l")).toBe(1000);
+    expect(baseFactor("60 kg bag")).toBe(60000);
   });
 
   it("toBase handles every unit and always returns integers", () => {
@@ -37,6 +42,8 @@ describe("units — edge cases", () => {
     expect(toBase(2, "l")).toBe(2000);
     expect(toBase(0.25, "kg")).toBe(250);
     expect(toBase(3, "pcs")).toBe(3);
+    expect(toBase(1, "60 kg bag")).toBe(60000);
+    expect(toBase(2, "60 kg bag")).toBe(120000);
     expect(Number.isInteger(toBase(1.1, "kg"))).toBe(true);
     expect(toBase(1.1, "kg")).toBe(1100);
   });
@@ -85,6 +92,7 @@ describe("units — edge cases", () => {
     expect(formatQuantity(0, "kg")).toBe("0.00 kg");
     expect(formatQuantity(500, "l")).toBe("0.50 l");
     expect(formatQuantity(3, "pcs")).toBe("3 pcs");
+    expect(formatQuantity(120000, "60 kg bag")).toBe("2.00 60 kg bag");
   });
 
   it("rejects negative quantity or price (money must never go negative by accident)", () => {

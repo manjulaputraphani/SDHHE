@@ -348,7 +348,9 @@ export const api = {
 export const money = (paise: number): string =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(paise / 100);
 
+const QTY_FACTORS: Record<string, number> = { kg: 1000, l: 1000, "60 kg bag": 60_000 };
+
 export const qty = (base: number, unit: string): string => {
-  const factor = unit === "kg" || unit === "l" ? 1000 : 1;
-  return factor === 1 ? `${base} ${unit}` : `${(base / factor).toFixed(2)} ${unit}`;
+  const factor = QTY_FACTORS[unit] ?? 1;
+  return factor === 1 ? `${Math.round(base)} ${unit}` : `${(base / factor).toFixed(2)} ${unit}`;
 };

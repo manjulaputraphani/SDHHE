@@ -170,7 +170,7 @@ export async function runTool(
       return rowsOf(
         await db.execute(sql`
           select coalesce(round(sum(b.qty_remaining * b.unit_price_paise::numeric /
-                 case when i.unit in ('kg','l') then 1000 else 1 end)), 0)::int as value_paise
+                 case when i.unit = '60 kg bag' then 60000 when i.unit in ('kg','l') then 1000 else 1 end)), 0)::int as value_paise
           from batches b join items i on i.id = b.item_id
         `),
       );

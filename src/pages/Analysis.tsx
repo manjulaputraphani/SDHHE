@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useDb } from "../lib/db-context";
 import { listBatches, listBatchTakes } from "../db/analytics";
-import { baseFactor } from "../logic/units";
+import { baseFactor, type Unit } from "../logic/units";
 import { buildBatchRows, rupees, type BatchRow } from "../logic/analytics";
 import { Trend } from "../components/Trend";
 
@@ -42,7 +42,7 @@ export default function Analysis() {
                 qtyRemainingBase: b.qtyRemainingBase,
               })),
               entry.takes,
-              baseFactor(entry.unit as "g" | "kg" | "ml" | "l" | "pcs"),
+              baseFactor(entry.unit as Unit),
             ),
           })),
         );

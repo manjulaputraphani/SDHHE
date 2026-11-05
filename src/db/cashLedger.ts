@@ -212,7 +212,7 @@ export async function workingCapital(db: Db, asOfDate?: string): Promise<Working
     .select({
       total: sql<number>`coalesce(round(sum(
         ${batches.qtyRemaining} * ${batches.unitPricePaise}::numeric /
-        case when ${items.unit} in ('kg', 'l') then 1000 else 1 end
+        case when ${items.unit} = '60 kg bag' then 60000 when ${items.unit} in ('kg', 'l') then 1000 else 1 end
       )), 0)`.mapWith(Number),
     })
     .from(batches)

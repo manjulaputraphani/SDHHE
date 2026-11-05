@@ -4,11 +4,11 @@ import type { Db, TxDb } from "./client";
 import { batches, items, purchases, saleItems } from "./schema";
 import { logActivity } from "./activity";
 
-export const ITEM_UNITS = ["kg", "l", "pcs"] as const;
+export const ITEM_UNITS = ["kg", "60 kg bag"] as const;
 
 export const itemInputSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80, "Name is too long"),
-  unit: z.enum(ITEM_UNITS, { message: "Unit must be kg, l or pcs" }),
+  unit: z.enum(ITEM_UNITS, { message: "Unit must be kg or 60 kg bag" }),
   category: z.string().trim().max(60, "Category is too long").optional(),
   /** GST HSN code (optional; digits, 4–8 characters in practice). */
   hsnCode: z.string().trim().max(20, "HSN is too long").optional(),

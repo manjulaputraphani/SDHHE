@@ -5,15 +5,19 @@
  * Quantity = integer base units (g, ml, pcs).
  */
 
-export type Unit = "g" | "kg" | "ml" | "l" | "pcs";
+export type Unit = "g" | "kg" | "ml" | "l" | "pcs" | "60 kg bag";
 
-/** Base units per one display unit: 1 kg = 1000 g, 1 l = 1000 ml, 1 pc = 1 pc. */
+/**
+ * Base units per one display unit:
+ * 1 kg = 1000 g, 1 l = 1000 ml, 1 pc = 1 pc, 1 bag = 60 kg = 60,000 g.
+ */
 const FACTOR: Record<Unit, number> = {
   g: 1,
   kg: 1000,
   ml: 1,
   l: 1000,
   pcs: 1,
+  "60 kg bag": 60_000,
 };
 
 /** How many base units make one display unit (used by FIFO costing too). */

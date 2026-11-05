@@ -14,10 +14,10 @@ describe("parseItemInput (zod)", () => {
     expect(() => parseItemInput({ ...base, name: "   " })).toThrow(/Name is required/i);
   });
 
-  it("accepts only kg | l | pcs", () => {
-    expect(() => parseItemInput({ ...base, unit: "g" })).toThrow(/kg, l or pcs/i);
-    expect(parseItemInput({ ...base, unit: "l" }).unit).toBe("l");
-    expect(parseItemInput({ ...base, unit: "pcs" }).unit).toBe("pcs");
+  it("accepts only kg | 60 kg bag", () => {
+    expect(() => parseItemInput({ ...base, unit: "g" })).toThrow(/kg or 60 kg bag/i);
+    expect(parseItemInput({ ...base, unit: "60 kg bag" }).unit).toBe("60 kg bag");
+    expect(() => parseItemInput({ ...base, unit: "pcs" })).toThrow(/kg or 60 kg bag/i);
   });
 
   it("rejects negative min stock", () => {

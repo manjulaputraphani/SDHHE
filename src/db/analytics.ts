@@ -189,7 +189,7 @@ export function stockValueByItem(db: Db) {
       unit: items.unit,
       minStockBase: items.minStockBase,
       qtyRemainingBase: sql<string>`coalesce(sum(${batches.qtyRemaining}), 0)`,
-      valuePaise: sql<string>`coalesce(sum(${batches.qtyRemaining} * ${batches.unitPricePaise} / case when ${items.unit} in ('g','kg','ml','l') then 1000 else 1 end), 0)`,
+      valuePaise: sql<string>`coalesce(sum(${batches.qtyRemaining} * ${batches.unitPricePaise} / case when ${items.unit} = '60 kg bag' then 60000 when ${items.unit} in ('g','kg','ml','l') then 1000 else 1 end), 0)`,
     })
     .from(items)
     .leftJoin(batches, eq(batches.itemId, items.id))

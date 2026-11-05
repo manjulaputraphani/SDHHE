@@ -179,6 +179,10 @@ const STOCK_TYPE_LABEL: Record<string, string> = {
   WASTAGE: "Wastage",
 };
 
+/** Base units per display unit, mirroring src/logic/units.ts. */
+const UNIT_FACTORS: Record<string, number> = { kg: 1000, l: 1000, "60 kg bag": 60_000 };
+const unitFactor = (unit: string): number => UNIT_FACTORS[unit] ?? 1;
+
 function RolePill({ role }: { role: Role }) {
   if (role === "owner") {
     return <span className="badge badge-warn inline-flex items-center gap-1"><IconCrown size={12} /> Owner</span>;
@@ -533,7 +537,7 @@ export default function App() {
     const qty = Number(draft.qty);
     const rate = Math.round(Number(draft.rate) * 100);
     if (!(qty > 0) || !(rate >= 0)) return;
-    const factor = item.unit === "kg" || item.unit === "l" ? 1000 : 1;
+    const factor = unitFactor(item.unit);
     const qtyBase = Math.round(qty * factor);
     setBillLines([...billLines, { itemId: item.id, name: item.name, unit: item.unit, qtyBase, ratePaise: rate, hsn: draft.hsn.trim() || item.hsnCode || "", totalPaise: Math.round((qtyBase * rate) / factor) }]);
     setDraft({ itemId: "", qty: "", rate: "", hsn: "" });
@@ -599,7 +603,7 @@ export default function App() {
     if (!itemForm) return;
     setItemsMsg(null);
     try {
-      const factor = itemForm.unit === "kg" || itemForm.unit === "l" ? 1000 : 1;
+      const factor = unitFactor(itemForm.unit);
       const body = {
         name: itemForm.name,
         unit: itemForm.unit,
@@ -618,7 +622,7 @@ export default function App() {
     }
   }
 
-  const factorOf = (unit: string) => (unit === "kg" || unit === "l" ? 1000 : 1);
+  const factorOf = unitFactor;
   const todayIso = () => new Date().toISOString().slice(0, 10);
 
   async function addPurchaseNow() {
@@ -2615,7 +2619,7 @@ export default function App() {
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                   <input className="input" placeholder="Item name" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.currentTarget.value })} />
                   <select className="input" value={itemForm.unit} onChange={(e) => setItemForm({ ...itemForm, unit: e.currentTarget.value })}>
-                    <option value="kg">kg</option><option value="l">l</option><option value="pcs">pcs</option>
+                    <option value="kg">kg</option><option value="60 kg bag">60 kg bag</option>
                   </select>
                   <input className="input" placeholder="Category" value={itemForm.category} onChange={(e) => setItemForm({ ...itemForm, category: e.currentTarget.value })} />
                   <input className="input" placeholder="HSN code" value={itemForm.hsnCode} onChange={(e) => setItemForm({ ...itemForm, hsnCode: e.currentTarget.value })} />
@@ -2670,7 +2674,7 @@ export default function App() {
                   cell: (item) => (
                     <span className="flex flex-wrap justify-end gap-2">
                       {can("items", "edit") && (
-                        <button className="btn-mini" onClick={() => setItemForm({ id: item.id, name: item.name, unit: item.unit, category: item.category ?? "", hsnCode: item.hsnCode ?? "", minStock: String(item.minStockBase / (item.unit === "kg" || item.unit === "l" ? 1000 : 1)), imageUrl: item.imageUrl ?? "" })}><IconEdit /> Edit</button>
+                        <button className="btn-mini" onClick={() => setItemForm({ id: item.id, name: item.name, unit: item.unit, category: item.category ?? "", hsnCode: item.hsnCode ?? "", minStock: String(item.minStockBase / unitFactor(item.unit)), imageUrl: item.imageUrl ?? "" })}><IconEdit /> Edit</button>
                       )}
                       <button className="btn-mini" onClick={() => void openLots(item)}>Lots</button>
                       {can("items", "delete") && (

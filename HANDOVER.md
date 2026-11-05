@@ -24,6 +24,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Build unblock + redeploy** (2026-11-05): fixed missing arrow-function closing brace in the bills actions column in `web/src/App.tsx`; moved `const actor` above the read routes in `web-worker/src/index.ts` (TDZ error). `tsc` clean (web + worker), 290 tests pass, web build OK, deployed `sdhhe-api` version `e41948e1`.
 - **Worker cleanup** (2026-11-05): briefly created `sdhhe` (same DB, version `e9d4c281`), then deleted it at owner request; config `web-worker/wrangler.sdhhe.toml` removed. Only `sdhhe-api` remains (verified 200; `sdhhe` now 404).
 - **Item HSN code** (2026-11-05): `items.hsn_code` (migration `drizzle/0003_item_hsn_code.sql`, applied to Neon). HSN field on the item form + list in web and desktop; bill lines fall back to the item HSN when the line HSN is blank. Web item edit now preserves min stock. 293 tests pass, tsc clean, deployed `sdhhe-api` version `b33ef219`.
+- **Item units** (2026-11-05): item form now offers only `kg` and `60 kg bag` (1 bag = 60 kg = 60,000 g); `l` and `pcs` removed from the form. Bag factor wired through costing, stock valuation SQL, analytics, dashboard, cash ledger and web display. 294 tests pass, deployed `sdhhe-api` version `15de4fe4`.
 
 ## Next tasks
 1. Owner approves/rejects analytics work → commit T-11.

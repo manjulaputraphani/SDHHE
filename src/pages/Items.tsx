@@ -9,7 +9,7 @@ import {
 } from "../db/items";
 import { useDb } from "../lib/db-context";
 import { can } from "../db/permissions";
-import { formatQuantity, toBase, type Unit } from "../logic/units";
+import { baseFactor, formatQuantity, toBase, type Unit } from "../logic/units";
 
 type FormState = {
   id: number | null;
@@ -60,7 +60,7 @@ export default function Items() {
       unit: (row.unit as Unit) ?? "kg",
       category: row.category ?? "",
       hsnCode: row.hsnCode ?? "",
-      minStock: String(row.minStockBase / 1000),
+      minStock: String(row.minStockBase / baseFactor(row.unit as Unit)),
     });
   }
 
@@ -229,8 +229,7 @@ export default function Items() {
                 onChange={(e) => setForm({ ...form, unit: e.currentTarget.value as Unit })}
               >
                 <option value="kg">kg</option>
-                <option value="l">l</option>
-                <option value="pcs">pcs</option>
+                <option value="60 kg bag">60 kg bag</option>
               </select>
             </div>
 
