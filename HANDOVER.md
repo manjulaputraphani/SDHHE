@@ -41,6 +41,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Roasting nav fix** (2026-11-05): sidebar filtering now maps the Roasting link to the **stock** permission (`module: "stock"`), so it appears for stock-view roles. Deployed `sdhhe-api` version `037413bc` (bundle contains `Roasting`).
 - **Roasting redirect fix** (2026-11-05): the "can I view this tab" redirect also maps `roasting` → `stock`; previously it bounced Roasting back to Dashboard. Deployed `sdhhe-api` version `b9e62880`.
 - **New Bill pricing helper** (2026-11-05): selecting an item auto-fills **HSN** from the item master. Web + desktop New Bill show **avg cost/unit**, an editable **margin %** and **suggested rate**, with a **Use suggested** button. Deployed `sdhhe-api` version `d691ed77`.
+- **Margin default** (2026-11-05): New Bill helper and Roasting margin now default to **6%** (was 20%). Deployed `sdhhe-api` version `fc8361a8`.
 
 ## Next tasks
 1. Add the **Roasting** screen to the desktop app (shared `createRoasting`/`listRoastings` already work; only web UI exists).

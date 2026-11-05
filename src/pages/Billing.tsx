@@ -53,7 +53,7 @@ export default function Billing() {
   const [draftQty, setDraftQty] = useState("");
   const [draftPrice, setDraftPrice] = useState("");
   const [draftHsn, setDraftHsn] = useState("");
-  const [draftMargin, setDraftMargin] = useState("20");
+  const [draftMargin, setDraftMargin] = useState("6");
   const [lines, setLines] = useState<Line[]>([]);
   const [discount, setDiscount] = useState("");
   const [saleExpenses, setSaleExpenses] = useState("");

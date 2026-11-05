@@ -282,7 +282,7 @@ export default function App() {
   const [billDiscount, setBillDiscount] = useState("");
   const [billSaleExpenses, setBillSaleExpenses] = useState("");
   const [draft, setDraft] = useState({ itemId: "" as number | "", qty: "", rate: "", hsn: "" });
-  const [billMargin, setBillMargin] = useState("20");
+  const [billMargin, setBillMargin] = useState("6");
   const [billLines, setBillLines] = useState<{ itemId: number; name: string; unit: string; qtyBase: number; ratePaise: number; hsn: string; totalPaise: number }[]>([]);
   const [billMsg, setBillMsg] = useState<string | null>(null);
   const [aiMessages, setAiMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
@@ -304,7 +304,7 @@ export default function App() {
     yield: "1.200",
     charge: "",
     date: new Date().toISOString().slice(0, 10),
-    margin: "20",
+    margin: "6",
     note: "",
   });
   const [roastMsg, setRoastMsg] = useState<string | null>(null);
