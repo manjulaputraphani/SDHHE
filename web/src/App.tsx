@@ -1429,7 +1429,10 @@ export default function App() {
     );
   }
 
-  const allNavGroups: { heading: string | null; links: { key: View; label: string; icon: ReactNode }[] }[] = [
+  const allNavGroups: {
+    heading: string | null;
+    links: { key: View; label: string; icon: ReactNode; module?: ModuleKey }[];
+  }[] = [
     {
       heading: null,
       links: [{ key: "dashboard", label: "Dashboard", icon: <IconDashboard size={16} /> }],
@@ -1446,7 +1449,7 @@ export default function App() {
       links: [
         { key: "items", label: "Items", icon: <IconItems size={16} /> },
         { key: "purchases", label: "Purchases", icon: <IconPurchases size={16} /> },
-        { key: "roasting", label: "Roasting", icon: <IconStock size={16} /> },
+        { key: "roasting", label: "Roasting", icon: <IconStock size={16} />, module: "stock" },
         { key: "stock", label: "Stock Check", icon: <IconStock size={16} /> },
       ],
     },
@@ -1477,7 +1480,7 @@ export default function App() {
   const navGroups = allNavGroups
     .map((group) => ({
       ...group,
-      links: group.links.filter((link) => can(link.key as ModuleKey, "view")),
+      links: group.links.filter((link) => can(link.module ?? (link.key as ModuleKey), "view")),
     }))
     .filter((group) => group.links.length > 0);
 
