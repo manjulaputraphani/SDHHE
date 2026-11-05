@@ -198,6 +198,14 @@ const STOCK_TYPE_LABEL: Record<string, string> = {
 const UNIT_FACTORS: Record<string, number> = { kg: 1000, l: 1000, "60 kg bag": 60_000 };
 const unitFactor = (unit: string): number => UNIT_FACTORS[unit] ?? 1;
 
+/** API dates can arrive as full ISO timestamps; date inputs need YYYY-MM-DD. */
+const dateInputValue = (value: string): string => {
+  const text = String(value ?? "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+};
+
 function RolePill({ role }: { role: Role }) {
   if (role === "owner") {
     return <span className="badge badge-warn inline-flex items-center gap-1"><IconCrown size={12} /> Owner</span>;
@@ -680,7 +688,7 @@ export default function App() {
       qty: String(row.qty_base / unitFactor(row.unit)),
       rate: String(row.unit_price_paise / 100),
       expenses: String(row.expenses_paise / 100),
-      date: row.purchase_date,
+      date: dateInputValue(row.purchase_date),
       supplier: row.supplier_name ?? "",
       paymentMode: row.payment_mode ?? "Cash",
       note: row.note ?? "",

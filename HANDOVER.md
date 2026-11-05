@@ -31,6 +31,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Supplier correction + save guard** (2026-11-05): set purchase #1's supplier to `U C W` (id 4); verified item, qty, rate, total, transport, date, paid, mode and note unchanged. Removed the unused `U C F` supplier. Web edit modal now disables Save while saving (no multiple clicks) and shows errors inline. Deployed `sdhhe-api` version `c3c81b2b`.
 - **Expense / cash-ledger fix** (2026-11-05): manual migrations created `created_at NOT NULL` with no default on `cash_ledger`, `opening_balance`, `supplier_payments`; added `DEFAULT now()` (migration `drizzle/0004_created_at_defaults.sql`, applied live). Deduplicated three identical failed transport expenses to one and posted its ₹100 ledger entry. Web expense buttons now disable while saving. Deployed `sdhhe-api` version `da707348`.
 - **Owner expense delete** (2026-11-05): Recent expenses has an owner-only **Delete** action with confirm. `DELETE /api/expenses/:id` is owner-only and now also removes the linked `cash_ledger` expense entry (previously it was left behind). 296 tests pass, deployed `sdhhe-api` version `f4ec8d2c`.
+- **Purchase edit prefill** (2026-11-05): the API returns `purchase_date` as a full ISO timestamp, which `<input type="date">` rejects. Edit now normalises it to `YYYY-MM-DD`, so date/qty/rate/transport/supplier/mode/note all open prefilled; only the field you change is effectively edited. Deployed `sdhhe-api` version `b3586dfd`.
 
 ## Next tasks
 1. Owner approves/rejects analytics work → commit T-11.
