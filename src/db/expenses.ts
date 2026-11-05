@@ -283,6 +283,15 @@ export async function updateExpense(db: Db, id: number, input: unknown): Promise
     relatedSaleId: data.relatedSaleId ?? null,
     relatedPurchaseId: data.relatedPurchaseId ?? null,
   });
+  // Keep the cash ledger entry in step with the edited expense.
+  await db
+    .update(cashLedger)
+    .set({
+      amountPaise: -data.amountPaise,
+      entryDate: data.date,
+      note: `${data.category}: ${data.note?.trim() ?? ""}`.trim() || data.category,
+    })
+    .where(and(eq(cashLedger.refType, "expense"), eq(cashLedger.refId, id)));
   await replaceBill(db, id, data.bill);
   await logActivity(db, {
     event: "expense.update",

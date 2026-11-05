@@ -47,6 +47,21 @@ export type BillDetail = BillRow & {
   lines: BillLine[];
 };
 
+export type ExpenseRow = {
+  id: number;
+  category: string;
+  expenseType: string;
+  amountPaise: number;
+  date: string;
+  paymentMode: string | null;
+  paidTo: string | null;
+  note: string | null;
+  relatedSaleId: number | null;
+  relatedPurchaseId: number | null;
+  billId: number | null;
+  billFilename: string | null;
+};
+
 export type Supplier = { id: number; name: string; phone: string | null };
 
 export type SupplierWithDues = Supplier & {
@@ -277,8 +292,10 @@ export const api = {
   batchLedger: (itemId: number) => request<{ ledger: BatchLedger }>(`/api/items/${itemId}/batches/ledger`),
   saveStock: (body: Record<string, unknown>) => request<{ stock: unknown }>("/api/stock", { method: "POST", body: JSON.stringify(body) }),
   stockEntries: () => request<{ entries: StockEntryRow[] }>("/api/stock"),
-  expenses: () => request<{ expenses: Array<{ id: number; category: string; amountPaise: number; date: string; paymentMode: string | null; paidTo: string | null; note: string | null }> }>("/api/expenses"),
+  expenses: () => request<{ expenses: ExpenseRow[] }>("/api/expenses"),
   addExpense: (body: Record<string, unknown>) => request<{ expense: unknown }>("/api/expenses", { method: "POST", body: JSON.stringify(body) }),
+  updateExpense: (id: number, body: Record<string, unknown>) =>
+    request<{ expense: unknown }>(`/api/expenses/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteExpense: (id: number) => request<{ ok: boolean }>(`/api/expenses/${id}`, { method: "DELETE" }),
   createBill: (body: Record<string, unknown>) => request<{ bill: { saleId: number; billNo: string; totalPaise: number } }>("/api/bills", { method: "POST", body: JSON.stringify(body) }),
   bills: () => request<{ bills: BillRow[] }>("/api/bills?limit=100"),

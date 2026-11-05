@@ -818,6 +818,7 @@ export default {
       }
 
       if (url.pathname.startsWith("/api/expenses/") && request.method === "PUT") {
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
         const id = Number(url.pathname.split("/").pop());
         if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid expense id" }, { status: 400 });
         return json({ expense: await asActor(actor, () => updateExpense(db, id, body)) });

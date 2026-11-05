@@ -32,6 +32,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Expense / cash-ledger fix** (2026-11-05): manual migrations created `created_at NOT NULL` with no default on `cash_ledger`, `opening_balance`, `supplier_payments`; added `DEFAULT now()` (migration `drizzle/0004_created_at_defaults.sql`, applied live). Deduplicated three identical failed transport expenses to one and posted its ₹100 ledger entry. Web expense buttons now disable while saving. Deployed `sdhhe-api` version `da707348`.
 - **Owner expense delete** (2026-11-05): Recent expenses has an owner-only **Delete** action with confirm. `DELETE /api/expenses/:id` is owner-only and now also removes the linked `cash_ledger` expense entry (previously it was left behind). 296 tests pass, deployed `sdhhe-api` version `f4ec8d2c`.
 - **Purchase edit prefill** (2026-11-05): the API returns `purchase_date` as a full ISO timestamp, which `<input type="date">` rejects. Edit now normalises it to `YYYY-MM-DD`, so date/qty/rate/transport/supplier/mode/note all open prefilled; only the field you change is effectively edited. Deployed `sdhhe-api` version `b3586dfd`.
+- **Owner expense edit** (2026-11-05): Recent expenses has an owner-only **Edit** modal prefilled with date/type/category/amount/paid-to/mode/note. `PUT /api/expenses/:id` is owner-only and now syncs the linked `cash_ledger` entry (amount/date/note). 296 tests pass, deployed `sdhhe-api` version `5b5a7f1f`.
 
 ## Next tasks
 1. Owner approves/rejects analytics work → commit T-11.

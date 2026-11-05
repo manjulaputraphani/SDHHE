@@ -9,6 +9,7 @@ import {
   type BillRow,
   type Customer,
   type DealProfit,
+  type ExpenseRow,
   type FinYearReport,
   type Item,
   type Member,
@@ -283,7 +284,11 @@ export default function App() {
   const [lastBillId, setLastBillId] = useState<number | null>(null);
   const [stats, setStats] = useState<{ today_sales: number; month_sales: number; month_profit: number; month_expenses: number; credit_paise: number; credit_bills: number; low_stock: number } | null>(null);
   const [purchasesList, setPurchasesList] = useState<PurchaseRow[]>([]);
-  const [expensesList, setExpensesList] = useState<Array<{ id: number; category: string; amountPaise: number; date: string; paymentMode: string | null; paidTo: string | null; note: string | null }>>([]);
+  const [expensesList, setExpensesList] = useState<ExpenseRow[]>([]);
+  const [editingExpense, setEditingExpense] = useState<ExpenseRow | null>(null);
+  const [expenseEdit, setExpenseEdit] = useState({ date: "", type: "general", category: "", amount: "", paidTo: "", paymentMode: "Cash", note: "" });
+  const [expenseEditSaving, setExpenseEditSaving] = useState(false);
+  const [expenseEditError, setExpenseEditError] = useState<string | null>(null);
   const [stockEntries, setStockEntries] = useState<StockEntryRow[]>([]);
   const [purchase, setPurchase] = useState({ itemId: "" as number | "", qty: "", rate: "", supplier: "", expenses: "", date: new Date().toISOString().slice(0, 10) });
   const [editingPurchase, setEditingPurchase] = useState<PurchaseRow | null>(null);
@@ -844,6 +849,49 @@ export default function App() {
       setExpenseMsg(err instanceof Error ? err.message : String(err));
     } finally {
       setExpenseSaving(false);
+    }
+  }
+
+  function openExpenseEdit(x: ExpenseRow) {
+    setExpenseMsg(null);
+    setExpenseEditError(null);
+    setEditingExpense(x);
+    setExpenseEdit({
+      date: dateInputValue(x.date),
+      type: x.expenseType,
+      category: x.category,
+      amount: String(x.amountPaise / 100),
+      paidTo: x.paidTo ?? "",
+      paymentMode: x.paymentMode ?? "Cash",
+      note: x.note ?? "",
+    });
+  }
+
+  async function saveExpenseEdit() {
+    if (!editingExpense || expenseEditSaving) return;
+    setExpenseEditSaving(true);
+    setExpenseEditError(null);
+    try {
+      await api.updateExpense(editingExpense.id, {
+        category: expenseEdit.category,
+        expenseType: expenseEdit.type,
+        amountPaise: Math.round(Number(expenseEdit.amount) * 100),
+        date: expenseEdit.date || todayIso(),
+        paymentMode: expenseEdit.paymentMode,
+        paidTo: expenseEdit.paidTo,
+        note: expenseEdit.note,
+        relatedSaleId: editingExpense.relatedSaleId,
+        relatedPurchaseId: editingExpense.relatedPurchaseId,
+      });
+      setEditingExpense(null);
+      setExpensesList((await api.expenses()).expenses);
+      void api.stats().then((r) => setStats(r.stats)).catch(() => {});
+      setCategories((await api.expenseCategories()).categories);
+      setExpenseMsg("Expense updated");
+    } catch (err) {
+      setExpenseEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExpenseEditSaving(false);
     }
   }
 
@@ -2229,7 +2277,7 @@ export default function App() {
               rowKey={(x) => x.id}
               minWidthClass="min-w-[760px]"
               widths={user?.role === "owner"
-                ? ["w-[13%]", "w-[18%]", "w-[16%]", "w-[28%]", "w-[13%]", "w-[12%]"]
+                ? ["w-[13%]", "w-[17%]", "w-[15%]", "w-[26%]", "w-[13%]", "w-[16%]"]
                 : ["w-[15%]", "w-[20%]", "w-[18%]", "w-[32%]", "w-[15%]"]}
               columns={[
                 { key: "date", header: "Date", cell: (x) => formatDate(x.date), className: "whitespace-nowrap" },
@@ -2245,10 +2293,11 @@ export default function App() {
                         align: "right" as const,
                         mobileLabel: "Actions",
                         hideOnMobile: true,
-                        cell: (x: (typeof expensesList)[number]) => (
-                          <button className="btn-mini btn-mini-danger" onClick={() => void deleteExpenseRow(x)}>
-                            Delete
-                          </button>
+                        cell: (x: ExpenseRow) => (
+                          <span className="flex flex-wrap justify-end gap-2">
+                            <button className="btn-mini" onClick={() => openExpenseEdit(x)}>Edit</button>
+                            <button className="btn-mini btn-mini-danger" onClick={() => void deleteExpenseRow(x)}>Delete</button>
+                          </span>
                         ),
                       },
                     ]
@@ -2262,6 +2311,65 @@ export default function App() {
                 />
               }
             />
+
+              {editingExpense && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1C1612]/50 p-4">
+                  <div className="card max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-lg font-semibold tracking-tight">Edit expense — {editingExpense.category}</h2>
+                      <button className="btn-mini" disabled={expenseEditSaving} onClick={() => setEditingExpense(null)}>Close</button>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="label">Date</label>
+                        <input className="input" type="date" value={expenseEdit.date} onChange={(e) => setExpenseEdit({ ...expenseEdit, date: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Type</label>
+                        <select className="input" value={expenseEdit.type} onChange={(e) => setExpenseEdit({ ...expenseEdit, type: e.currentTarget.value })}>
+                          <option value="general">General</option>
+                          <option value="purchase">Purchase</option>
+                          <option value="sale">Sale</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Category</label>
+                        <input className="input" list="expense-categories" value={expenseEdit.category} onChange={(e) => setExpenseEdit({ ...expenseEdit, category: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Amount ₹</label>
+                        <input className="input" type="number" value={expenseEdit.amount} onChange={(e) => setExpenseEdit({ ...expenseEdit, amount: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Paid to</label>
+                        <input className="input" value={expenseEdit.paidTo} onChange={(e) => setExpenseEdit({ ...expenseEdit, paidTo: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Payment mode</label>
+                        <select className="input" value={expenseEdit.paymentMode} onChange={(e) => setExpenseEdit({ ...expenseEdit, paymentMode: e.currentTarget.value })}>
+                          <option value="Cash">Cash</option>
+                          <option value="UPI">UPI</option>
+                          <option value="Card">Card</option>
+                          <option value="Credit">Credit</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1 sm:col-span-2">
+                        <label className="label">Note</label>
+                        <input className="input" value={expenseEdit.note} onChange={(e) => setExpenseEdit({ ...expenseEdit, note: e.currentTarget.value })} />
+                      </div>
+                    </div>
+                    {expenseEditError && (
+                      <p role="alert" className="rounded bg-error-soft px-3 py-2 text-sm text-error-ink">{expenseEditError}</p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <button className="btn-mini" disabled={expenseEditSaving} onClick={() => setEditingExpense(null)}>Cancel</button>
+                      <button className="btn btn-primary" disabled={expenseEditSaving} onClick={() => void saveExpenseEdit()}>
+                        {expenseEditSaving ? "Saving…" : "Save changes"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
           </section>
         )}
 
