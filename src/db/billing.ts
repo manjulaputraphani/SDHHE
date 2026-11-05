@@ -388,6 +388,18 @@ export async function cancelSaleBill(url: string, saleId: number): Promise<{ res
   });
 }
 
+/** Permanently delete a sale bill and its line items (admin only). */
+export async function deleteSaleBill(db: Db, saleId: number): Promise<void> {
+  await db.delete(saleItems).where(eq(saleItems.saleId, saleId));
+  await db.delete(saleBills).where(eq(saleBills.id, saleId));
+  await logActivity(db, {
+    event: "sale.delete",
+    summary: `Sale #${saleId} deleted`,
+    entity: "sale",
+    entityId: saleId,
+  });
+}
+
 export const customerSchema = customerMasterSchema;
 export type CustomerInput = CustomerMasterInput;
 

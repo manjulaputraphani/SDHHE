@@ -18,7 +18,7 @@ import { getShopDetails, saveShopDetails } from "../../src/db/settings";
 import { buildBillHtml } from "../../src/lib/printBill";
 import { logActivity } from "../../src/db/activity";
 import { createItem, deleteItem, updateItem } from "../../src/db/items";
-import { cancelSaleBill, createCustomer, createSaleBill, recordBillPayment } from "../../src/db/billing";
+import { cancelSaleBill, createCustomer, createSaleBill, deleteSaleBill, recordBillPayment } from "../../src/db/billing";
 import { deleteCustomer, listCustomers, updateCustomer } from "../../src/db/customers";
 import { addPurchase, deletePurchase } from "../../src/db/purchases";
 import { saveStockEntry } from "../../src/db/stock";
@@ -80,7 +80,10 @@ function routePermission(
   if (pathname === "/api/bills") {
     return read ? { module: "bills", action: "view" } : { module: "billing", action: "create" };
   }
-  if (/^\/api\/bills\/\d+$/.test(pathname)) return { module: "bills", action: "view" };
+   if (/^\/api\/bills\/\d+$/.test(pathname)) {
+     if (method === "DELETE") return { module: "bills", action: "delete" };
+     return { module: "bills", action: "view" };
+   }
   if (/^\/api\/bills\/\d+\/cancel$/.test(pathname)) return { module: "bills", action: "edit" };
   if (/^\/api\/bills\/\d+\/payment$/.test(pathname)) return { module: "bills", action: "edit" };
   if (/^\/api\/bills\/\d+\/email$/.test(pathname)) return { module: "bills", action: "export" };
@@ -536,6 +539,7 @@ export default {
     const refreshedSession: Session = { ...session, lastActivity: Date.now() };
     const refreshToken = await createToken(refreshedSession, env.SESSION_SECRET as string);
     pendingSetCookie = sessionCookie(refreshToken, url);
+    const actor: AuditActor = { userId: session.uid, name: session.name, role: session.role };
 
     try {
       if (url.pathname === "/api/_txn-test" && request.method === "GET") {
@@ -560,6 +564,14 @@ export default {
         if (!bill) return json({ error: "Bill not found" }, { status: 404 });
         return json({ bill });
       }
+
+       if (url.pathname.startsWith("/api/bills/") && request.method === "DELETE") {
+         if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+         const id = Number(url.pathname.split("/").pop());
+         if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid bill id" }, { status: 400 });
+         await asActor(actor, () => deleteSaleBill(db, id));
+         return json({ ok: true });
+       }
 
       if (url.pathname === "/api/expenses" && request.method === "GET") {
         const month = url.searchParams.get("month") ?? undefined;
@@ -725,7 +737,6 @@ export default {
       }
 
       // ---- W3b writes (session actor threaded per request) ----
-      const actor: AuditActor = { userId: session.uid, name: session.name, role: session.role };
       const body = ["POST", "PUT"].includes(request.method)
         ? await request.json().catch(() => ({}))
         : {};

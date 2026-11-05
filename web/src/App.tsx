@@ -2294,11 +2294,56 @@ export default function App() {
                   align: "right",
                   mobileLabel: "Actions",
                   cell: (row) => {
-                    if (row.cancelled) return <span className="btn-mini">Cancelled</span>;
+                    const canDelete = can("bills", "delete");
                     const view = <button className="btn-mini" onClick={() => void openBill(row.id)}><IconEye /> View</button>;
-                    if (row.paidPaise >= row.totalPaise || !can("bills", "edit")) return view;
+                    const deleteButton = canDelete ? (
+                      <button
+                        className="btn-mini btn-destructive"
+                        onClick={async () => {
+                          if (window.confirm(`Delete bill ${row.billNo}? This cannot be undone.`)) {
+                            try {
+                              await api.deleteBill(row.id);
+                              setBills((await api.bills()).bills);
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : String(err));
+                            }
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    ) : null;
+
+                    if (row.cancelled) {
+                      // If cancelled, show delete button if allowed, else show cancelled label
+                      return canDelete ? (
+                        <span className="flex flex-wrap justify-end gap-2">
+                          {deleteButton}
+                          {view}
+                        </span>
+                      ) : (
+                        <span className="btn-mini">Cancelled</span>
+                      );
+                    }
+
+                    // For non-cancelled bills
+                    const canEdit = can("bills", "edit");
+                    const isPaid = row.paidPaise >= row.totalPaise;
+
+                    if (isPaid || !canEdit) {
+                      // If paid or cannot edit, show view and delete (if allowed)
+                      return (
+                        <span className="flex flex-wrap justify-end gap-2">
+                          {deleteButton}
+                          {view}
+                        </span>
+                      );
+                    }
+
+                    // Can edit and not paid: show record payment, view, and delete
                     return (
                       <span className="flex flex-wrap justify-end gap-2">
+                        {deleteButton}
                         <button
                           className="btn-mini"
                           onClick={async () => {

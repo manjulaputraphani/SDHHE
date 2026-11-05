@@ -323,11 +323,12 @@ export const api = {
   finYearReport: (finYear: string) => request<{ report: FinYearReport }>(`/api/reports/fin-year?fy=${finYear}`),
   dealProfits: (finYear: string) => request<{ deals: DealProfit[] }>(`/api/reports/deals?fy=${finYear}`),
   usage: () => request<{ usage: UsageRow[] }>("/api/usage"),
-  recordPayment: (id: number, amountPaise: number) =>
-    request<{ payment: { paidPaise: number; totalPaise: number; creditPaise: number } }>(
-      `/api/bills/${id}/payment`,
-      { method: "POST", body: JSON.stringify({ amountPaise }) },
-    ),
+   recordPayment: (id: number, amountPaise: number) =>
+     request<{ payment: { paidPaise: number; totalPaise: number; creditPaise: number } }>(
+       `/api/bills/${id}/payment`,
+       { method: "POST", body: JSON.stringify({ amountPaise }) },
+     ),
+   deleteBill: (id: number) => request<{ ok: boolean }>(`/api/bills/${id}`, { method: "DELETE" }),
   customers: (search?: string) =>
     request<{ customers: Customer[] }>(`/api/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   saveCustomer: (body: { name: string; phone?: string; address?: string; gstin?: string; email?: string }) =>
