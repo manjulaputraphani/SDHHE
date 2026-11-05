@@ -63,13 +63,30 @@ describe("Items page", () => {
       name: "Basmati Rice",
       unit: "kg",
       category: "",
+      hsnCode: undefined,
       minStockBase: 2500,
     });
   });
 
+  it("saves the HSN code entered on the item form", async () => {
+    renderItems();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /add item/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Name"), "Basmati Rice");
+    await user.type(within(dialog).getByLabelText(/hsn code/i), "090111");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    expect(createItem).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ name: "Basmati Rice", hsnCode: "090111" }),
+    );
+  });
+
   it("renders stock using kg formatting", async () => {
     vi.mocked(listItems).mockResolvedValue([
-      { id: 1, name: "Rice", unit: "kg", category: "Grains", minStockBase: 1000, imageUrl: null, stockLeftBase: 1500 },
+      { id: 1, name: "Rice", unit: "kg", category: "Grains", hsnCode: null, minStockBase: 1000, imageUrl: null, stockLeftBase: 1500 },
     ]);
     renderItems();
 

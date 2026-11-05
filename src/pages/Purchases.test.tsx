@@ -42,7 +42,7 @@ function renderPage() {
 describe("Purchases list", () => {
   beforeEach(() => {
     vi.mocked(listItems).mockReset().mockResolvedValue([
-      { id: 1, name: "Rice", unit: "kg", category: null, minStockBase: 0, imageUrl: null, stockLeftBase: 1500 },
+      { id: 1, name: "Rice", unit: "kg", category: null, hsnCode: null, minStockBase: 0, imageUrl: null, stockLeftBase: 1500 },
     ]);
     vi.mocked(listPurchases).mockReset().mockResolvedValue([ROW]);
     vi.mocked(updatePurchase).mockReset().mockResolvedValue(undefined);

@@ -10,6 +10,8 @@ export const itemInputSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80, "Name is too long"),
   unit: z.enum(ITEM_UNITS, { message: "Unit must be kg, l or pcs" }),
   category: z.string().trim().max(60, "Category is too long").optional(),
+  /** GST HSN code (optional; digits, 4–8 characters in practice). */
+  hsnCode: z.string().trim().max(20, "HSN is too long").optional(),
   minStockBase: z
     .number({ message: "Min stock must be a number" })
     .int("Min stock must be a whole number")
@@ -30,6 +32,7 @@ export type ItemRow = {
   name: string;
   unit: string;
   category: string | null;
+  hsnCode: string | null;
   minStockBase: number;
   imageUrl: string | null;
   stockLeftBase: number;
@@ -62,6 +65,7 @@ export async function listItems(db: Db): Promise<ItemRow[]> {
       name: items.name,
       unit: items.unit,
       category: items.category,
+      hsnCode: items.hsnCode,
       minStockBase: items.minStockBase,
       imageUrl: items.imageUrl,
       stockLeftBase: sql<number>`coalesce(sum(${batches.qtyRemaining}), 0)`.mapWith(Number),
@@ -80,6 +84,7 @@ export async function getItem(db: Db, id: number): Promise<ItemRow | null> {
       name: items.name,
       unit: items.unit,
       category: items.category,
+      hsnCode: items.hsnCode,
       minStockBase: items.minStockBase,
       imageUrl: items.imageUrl,
       stockLeftBase: sql<number>`coalesce(sum(${batches.qtyRemaining}), 0)`.mapWith(Number),
@@ -100,6 +105,7 @@ export async function createItem(db: Db | TxDb, input: unknown): Promise<ItemRow
       name: data.name,
       unit: data.unit,
       category: data.category || null,
+      hsnCode: data.hsnCode?.trim() || null,
       minStockBase: data.minStockBase,
       imageUrl: data.imageUrl?.trim() || null,
     })
@@ -122,6 +128,7 @@ export async function updateItem(db: Db, id: number, input: unknown): Promise<It
       name: data.name,
       unit: data.unit,
       category: data.category || null,
+      hsnCode: data.hsnCode?.trim() || null,
       minStockBase: data.minStockBase,
       imageUrl: data.imageUrl?.trim() || null,
     })

@@ -39,7 +39,7 @@ vi.mock("../db/settings", async (importOriginal) => {
   };
 });
 
-const RICE = { id: 1, name: "Rice", unit: "kg", category: null, minStockBase: 0, imageUrl: null, stockLeftBase: 4000 };
+const RICE = { id: 1, name: "Rice", unit: "kg", category: null, hsnCode: null, minStockBase: 0, imageUrl: null, stockLeftBase: 4000 };
 const URL = "postgresql://user:pass@localhost:5432/test";
 
 function renderPage() {

@@ -31,4 +31,13 @@ describe("parseItemInput (zod)", () => {
   it("treats category as optional", () => {
     expect(parseItemInput({ name: "Salt", unit: "kg", minStockBase: 0 }).category).toBeUndefined();
   });
+
+  it("trims and accepts an optional HSN code", () => {
+    expect(parseItemInput({ ...base, hsnCode: "  090111  " }).hsnCode).toBe("090111");
+    expect(parseItemInput(base).hsnCode).toBeUndefined();
+  });
+
+  it("rejects an HSN longer than 20 characters", () => {
+    expect(() => parseItemInput({ ...base, hsnCode: "1".repeat(21) })).toThrow(/HSN is too long/i);
+  });
 });

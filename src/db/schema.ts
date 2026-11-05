@@ -18,6 +18,8 @@ export const items = pgTable("items", {
   name: text("name").notNull().unique(),
   unit: text("unit").notNull(),
   category: text("category"),
+  /** GST HSN code shown on invoices (optional). */
+  hsnCode: text("hsn_code"),
   minStockBase: integer("min_stock_base").notNull().default(0),
   /** Optional picture for the item (R2 public URL or any image URL). */
   imageUrl: text("image_url"),

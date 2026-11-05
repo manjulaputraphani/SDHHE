@@ -239,7 +239,7 @@ export default function App() {
   const [emailConfigured, setEmailConfigured] = useState(false);
   const [notifyStatus, setNotifyStatus] = useState<string | null>(null);
   const [resendKey, setResendKey] = useState("");
-  const [itemForm, setItemForm] = useState<{ id: number | null; name: string; unit: string; category: string; minStock: string; imageUrl: string } | null>(null);
+  const [itemForm, setItemForm] = useState<{ id: number | null; name: string; unit: string; category: string; hsnCode: string; minStock: string; imageUrl: string } | null>(null);
   const [itemsMsg, setItemsMsg] = useState<string | null>(null);
   const [billCustomer, setBillCustomer] = useState({ name: "", phone: "", email: "", gstin: "" });
   const [billDate, setBillDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -535,7 +535,7 @@ export default function App() {
     if (!(qty > 0) || !(rate >= 0)) return;
     const factor = item.unit === "kg" || item.unit === "l" ? 1000 : 1;
     const qtyBase = Math.round(qty * factor);
-    setBillLines([...billLines, { itemId: item.id, name: item.name, unit: item.unit, qtyBase, ratePaise: rate, hsn: draft.hsn.trim(), totalPaise: Math.round((qtyBase * rate) / factor) }]);
+    setBillLines([...billLines, { itemId: item.id, name: item.name, unit: item.unit, qtyBase, ratePaise: rate, hsn: draft.hsn.trim() || item.hsnCode || "", totalPaise: Math.round((qtyBase * rate) / factor) }]);
     setDraft({ itemId: "", qty: "", rate: "", hsn: "" });
   }
 
@@ -599,11 +599,13 @@ export default function App() {
     if (!itemForm) return;
     setItemsMsg(null);
     try {
+      const factor = itemForm.unit === "kg" || itemForm.unit === "l" ? 1000 : 1;
       const body = {
         name: itemForm.name,
         unit: itemForm.unit,
         category: itemForm.category,
-        minStockBase: 0,
+        hsnCode: itemForm.hsnCode.trim() || undefined,
+        minStockBase: Math.round((Number(itemForm.minStock) || 0) * factor),
         imageUrl: itemForm.imageUrl.trim(),
       };
       if (itemForm.id === null) await api.createItem(body);
@@ -2603,19 +2605,20 @@ export default function App() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Items</h1>
               {can("items", "create") && (
-                <button className="btn btn-primary" onClick={() => setItemForm({ id: null, name: "", unit: "kg", category: "", minStock: "", imageUrl: "" })}>
+                <button className="btn btn-primary" onClick={() => setItemForm({ id: null, name: "", unit: "kg", category: "", hsnCode: "", minStock: "", imageUrl: "" })}>
                   <span className="flex items-center gap-1.5"><IconPlus size={15} /> Add item</span>
                 </button>
               )}
             </div>
             {itemForm && (
               <div className="card max-w-3xl space-y-2 p-4">
-                <div className="grid gap-2 sm:grid-cols-4">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                   <input className="input" placeholder="Item name" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.currentTarget.value })} />
                   <select className="input" value={itemForm.unit} onChange={(e) => setItemForm({ ...itemForm, unit: e.currentTarget.value })}>
                     <option value="kg">kg</option><option value="l">l</option><option value="pcs">pcs</option>
                   </select>
                   <input className="input" placeholder="Category" value={itemForm.category} onChange={(e) => setItemForm({ ...itemForm, category: e.currentTarget.value })} />
+                  <input className="input" placeholder="HSN code" value={itemForm.hsnCode} onChange={(e) => setItemForm({ ...itemForm, hsnCode: e.currentTarget.value })} />
                   <div className="flex gap-2">
                     <button className="btn btn-primary" onClick={() => void saveItem()}>Save</button>
                     <button className="btn-mini" onClick={() => setItemForm(null)}>Cancel</button>
@@ -2642,8 +2645,8 @@ export default function App() {
             <ResponsiveTable
               rows={items}
               rowKey={(item) => item.id}
-              minWidthClass="min-w-[640px]"
-              widths={["w-[32%]", "w-[10%]", "w-[18%]", "w-[16%]", "w-[24%]"]}
+              minWidthClass="min-w-[680px]"
+              widths={["w-[26%]", "w-[12%]", "w-[8%]", "w-[16%]", "w-[14%]", "w-[24%]"]}
               columns={[
                 {
                   key: "item",
@@ -2655,6 +2658,7 @@ export default function App() {
                     </span>
                   ),
                 },
+                { key: "hsn", header: "HSN", cell: (item) => item.hsnCode ?? "—" },
                 { key: "unit", header: "Unit", cell: (item) => item.unit },
                 { key: "category", header: "Category", cell: (item) => item.category ?? "—" },
                 { key: "stock", header: "Stock left", align: "right", cell: (item) => qty(item.stockLeftBase, item.unit) },
@@ -2666,7 +2670,7 @@ export default function App() {
                   cell: (item) => (
                     <span className="flex flex-wrap justify-end gap-2">
                       {can("items", "edit") && (
-                        <button className="btn-mini" onClick={() => setItemForm({ id: item.id, name: item.name, unit: item.unit, category: item.category ?? "", minStock: "", imageUrl: item.imageUrl ?? "" })}><IconEdit /> Edit</button>
+                        <button className="btn-mini" onClick={() => setItemForm({ id: item.id, name: item.name, unit: item.unit, category: item.category ?? "", hsnCode: item.hsnCode ?? "", minStock: String(item.minStockBase / (item.unit === "kg" || item.unit === "l" ? 1000 : 1)), imageUrl: item.imageUrl ?? "" })}><IconEdit /> Edit</button>
                       )}
                       <button className="btn-mini" onClick={() => void openLots(item)}>Lots</button>
                       {can("items", "delete") && (
@@ -2696,7 +2700,7 @@ export default function App() {
                   title="No items yet"
                   message="Add the products you buy and sell — stock, cost and profit follow automatically."
                   actionLabel={can("items", "create") ? "Add item" : undefined}
-                  onAction={can("items", "create") ? () => setItemForm({ id: null, name: "", unit: "kg", category: "", minStock: "", imageUrl: "" }) : undefined}
+                  onAction={can("items", "create") ? () => setItemForm({ id: null, name: "", unit: "kg", category: "", hsnCode: "", minStock: "", imageUrl: "" }) : undefined}
                 />
               }
             />

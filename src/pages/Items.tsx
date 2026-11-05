@@ -16,10 +16,11 @@ type FormState = {
   name: string;
   unit: Unit;
   category: string;
+  hsnCode: string;
   minStock: string;
 };
 
-const EMPTY_FORM: FormState = { id: null, name: "", unit: "kg", category: "", minStock: "0" };
+const EMPTY_FORM: FormState = { id: null, name: "", unit: "kg", category: "", hsnCode: "", minStock: "0" };
 
 export default function Items() {
   const db = useDb();
@@ -58,6 +59,7 @@ export default function Items() {
       name: row.name,
       unit: (row.unit as Unit) ?? "kg",
       category: row.category ?? "",
+      hsnCode: row.hsnCode ?? "",
       minStock: String(row.minStockBase / 1000),
     });
   }
@@ -72,6 +74,7 @@ export default function Items() {
         name: form.name,
         unit: form.unit,
         category: form.category,
+        hsnCode: form.hsnCode.trim() || undefined,
         minStockBase: toBase(Number(form.minStock) || 0, form.unit),
       });
       if (form.id === null) {
@@ -129,6 +132,7 @@ export default function Items() {
               <th className="px-3 py-2">Name</th>
               <th className="px-3 py-2">Unit</th>
               <th className="px-3 py-2">Category</th>
+              <th className="px-3 py-2">HSN</th>
               <th className="px-3 py-2 text-right">Stock left</th>
               <th className="px-3 py-2 text-right">Min stock</th>
               <th className="px-3 py-2" />
@@ -137,14 +141,14 @@ export default function Items() {
           <tbody>
             {loading && (
               <tr>
-                <td className="px-3 py-4 text-muted" colSpan={6}>
+                <td className="px-3 py-4 text-muted" colSpan={7}>
                   Loading…
                 </td>
               </tr>
             )}
             {!loading && rows.length === 0 && (
               <tr>
-                <td className="px-3 py-4 text-muted" colSpan={6}>
+                <td className="px-3 py-4 text-muted" colSpan={7}>
                   No items yet. Add your first item.
                 </td>
               </tr>
@@ -154,6 +158,7 @@ export default function Items() {
                 <td className="px-3 py-2 font-medium">{row.name}</td>
                 <td className="px-3 py-2">{row.unit}</td>
                 <td className="px-3 py-2 text-ink">{row.category ?? "—"}</td>
+                <td className="px-3 py-2">{row.hsnCode ?? "—"}</td>
                 <td className="px-3 py-2 text-right">
                   {formatQuantity(row.stockLeftBase, row.unit as Unit)}
                 </td>
@@ -238,6 +243,18 @@ export default function Items() {
                 className="input w-full"
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.currentTarget.value })}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="label" htmlFor="item-hsn">
+                HSN code
+              </label>
+              <input
+                id="item-hsn"
+                className="input w-full"
+                value={form.hsnCode}
+                onChange={(e) => setForm({ ...form, hsnCode: e.currentTarget.value })}
               />
             </div>
 

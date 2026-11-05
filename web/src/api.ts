@@ -7,6 +7,7 @@ export type Item = {
   name: string;
   unit: string;
   category: string | null;
+  hsnCode: string | null;
   minStockBase: number;
   imageUrl: string | null;
   stockLeftBase: number;

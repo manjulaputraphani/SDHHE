@@ -23,6 +23,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Production DB reset** (2026-11-05): `TRUNCATE` on the 22 explicit app tables only (never CamelCase/unrelated tables or `sdhhe_fy2025`), `RESTART IDENTITY CASCADE`; verified 0 rows. Unrelated tables in the Neon project untouched.
 - **Build unblock + redeploy** (2026-11-05): fixed missing arrow-function closing brace in the bills actions column in `web/src/App.tsx`; moved `const actor` above the read routes in `web-worker/src/index.ts` (TDZ error). `tsc` clean (web + worker), 290 tests pass, web build OK, deployed `sdhhe-api` version `e41948e1`.
 - **Worker cleanup** (2026-11-05): briefly created `sdhhe` (same DB, version `e9d4c281`), then deleted it at owner request; config `web-worker/wrangler.sdhhe.toml` removed. Only `sdhhe-api` remains (verified 200; `sdhhe` now 404).
+- **Item HSN code** (2026-11-05): `items.hsn_code` (migration `drizzle/0003_item_hsn_code.sql`, applied to Neon). HSN field on the item form + list in web and desktop; bill lines fall back to the item HSN when the line HSN is blank. Web item edit now preserves min stock. 293 tests pass, tsc clean, deployed `sdhhe-api` version `b33ef219`.
 
 ## Next tasks
 1. Owner approves/rejects analytics work → commit T-11.

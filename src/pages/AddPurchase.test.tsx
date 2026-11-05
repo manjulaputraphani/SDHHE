@@ -26,6 +26,7 @@ const RICE = {
   name: "Rice",
   unit: "kg",
   category: null,
+  hsnCode: null,
   minStockBase: 0,
   imageUrl: null,
   stockLeftBase: 0,

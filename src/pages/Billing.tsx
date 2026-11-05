@@ -154,7 +154,7 @@ export default function Billing() {
         unit: draftUnit,
         qtyBase,
         unitPricePaise,
-        hsnCode: draftHsn.trim() || null,
+        hsnCode: draftHsn.trim() || draftItem.hsnCode || null,
         lineTotalPaise,
       },
     ]);
