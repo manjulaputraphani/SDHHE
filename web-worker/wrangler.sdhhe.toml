@@ -1,0 +1,14 @@
+# SREE DURGA HARIHARA ENTERPRISES — public worker (sdhhe).
+# Deploy: ./node_modules/.bin/wrangler deploy --config wrangler.sdhhe.toml
+# Secrets are per-worker: set them with
+#   ./node_modules/.bin/wrangler secret put <NAME> --config wrangler.sdhhe.toml
+
+name = "sdhhe"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[assets]
+binding = "ASSETS"
+directory = "../web/dist"
+not_found_handling = "single-page-application"
+run_worker_first = true
