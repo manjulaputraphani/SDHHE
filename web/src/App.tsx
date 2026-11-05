@@ -360,6 +360,7 @@ export default function App() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerMsg, setCustomerMsg] = useState<string | null>(null);
+  const [customerSaving, setCustomerSaving] = useState(false);
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
   const [customerForm, setCustomerForm] = useState<{
     id: number | null;
@@ -821,15 +822,21 @@ export default function App() {
 
   /** Save a customer into the master (new or edited). */
   async function saveCustomerNow() {
-    if (!customerForm) return;
+    if (!customerForm || customerSaving) return;
     setCustomerMsg(null);
+    const name = customerForm.name.trim();
+    if (!name) {
+      setCustomerMsg("Customer name is required");
+      return;
+    }
     const body = {
-      name: customerForm.name.trim(),
-      phone: customerForm.phone.trim(),
-      email: customerForm.email.trim(),
-      gstin: customerForm.gstin.trim(),
-      address: customerForm.address.trim(),
+      name,
+      ...(customerForm.phone.trim() ? { phone: customerForm.phone.trim() } : {}),
+      ...(customerForm.email.trim() ? { email: customerForm.email.trim() } : {}),
+      ...(customerForm.gstin.trim() ? { gstin: customerForm.gstin.trim() } : {}),
+      ...(customerForm.address.trim() ? { address: customerForm.address.trim() } : {}),
     };
+    setCustomerSaving(true);
     try {
       if (customerForm.id === null) {
         await api.saveCustomer(body);
@@ -842,6 +849,8 @@ export default function App() {
       setCustomers((await api.customers(customerSearch)).customers);
     } catch (err) {
       setCustomerMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCustomerSaving(false);
     }
   }
 
@@ -1892,14 +1901,15 @@ export default function App() {
                   <input className="input" placeholder="Customer name *" value={customerForm.name} onChange={(e) => setCustomerForm({ ...customerForm, name: e.currentTarget.value })} />
                   <input className="input" placeholder="Phone" value={customerForm.phone} onChange={(e) => setCustomerForm({ ...customerForm, phone: e.currentTarget.value })} />
                   <input className="input" placeholder="Email" value={customerForm.email} onChange={(e) => setCustomerForm({ ...customerForm, email: e.currentTarget.value })} />
-                  <input className="input" placeholder="GSTIN" value={customerForm.gstin} onChange={(e) => setCustomerForm({ ...customerForm, gstin: e.currentTarget.value.toUpperCase() })} />
+                  <input className="input" placeholder="GSTIN (optional — leave blank if no GST)" value={customerForm.gstin} onChange={(e) => setCustomerForm({ ...customerForm, gstin: e.currentTarget.value.toUpperCase() })} />
                   <input className="input sm:col-span-2" placeholder="Address" value={customerForm.address} onChange={(e) => setCustomerForm({ ...customerForm, address: e.currentTarget.value })} />
                 </div>
+                {customerMsg && <p role="status" className="rounded bg-surface-2 px-3 py-2 text-sm text-muted">{customerMsg}</p>}
                 <div className="flex flex-wrap items-center gap-2">
-                  <button className="btn btn-primary" onClick={() => void saveCustomerNow()}>Save</button>
-                  <button className="btn-mini" onClick={() => setCustomerForm(null)}>Cancel</button>
+                  <button className="btn btn-primary" disabled={customerSaving} onClick={() => void saveCustomerNow()}>{customerSaving ? "Saving…" : "Save"}</button>
+                  <button className="btn-mini" disabled={customerSaving} onClick={() => setCustomerForm(null)}>Cancel</button>
                   <span className="text-xs text-muted">
-                    Saved clients are matched by phone or GSTIN — saving again updates the same record.
+                    GSTIN is optional. Saved clients are matched by phone or GSTIN — saving again updates the same record.
                   </span>
                 </div>
               </div>
@@ -2995,8 +3005,8 @@ export default function App() {
                       <input className="input h-10" placeholder="Email" value={billCustomer.email} onChange={(e) => setBillCustomer({ ...billCustomer, email: e.currentTarget.value })} />
                     </div>
                     <div className="space-y-1 sm:col-span-2">
-                      <label className="label">GSTIN</label>
-                      <input className="input h-10 max-w-sm" placeholder="e.g. 29ABCDE1234F1Z5" value={billCustomer.gstin} onChange={(e) => setBillCustomer({ ...billCustomer, gstin: e.currentTarget.value.toUpperCase() })} />
+                      <label className="label">GSTIN (optional)</label>
+                      <input className="input h-10 max-w-sm" placeholder="Leave blank if no GST" value={billCustomer.gstin} onChange={(e) => setBillCustomer({ ...billCustomer, gstin: e.currentTarget.value.toUpperCase() })} />
                     </div>
                   </div>
                   <p className="mt-2 text-xs text-muted">
