@@ -628,10 +628,6 @@ export default function App() {
   async function addPurchaseNow() {
     const item = items.find((i) => i.id === purchase.itemId);
     if (!item || purchaseSaving) return;
-    if (!purchase.date) {
-      setPurchaseMsg("Choose a purchase date");
-      return;
-    }
     setPurchaseSaving(true);
     setPurchaseMsg(null);
     try {
@@ -640,7 +636,7 @@ export default function App() {
         qty: Number(purchase.qty),
         unitPricePaise: Math.round(Number(purchase.rate) * 100),
         expensesPaise: Math.round(Number(purchase.expenses || "0") * 100),
-        date: purchase.date,
+        date: purchase.date || todayIso(),
         supplierName: purchase.supplier,
         paymentMode: "Cash",
       });

@@ -114,7 +114,7 @@ export default function AddPurchase() {
         qty: Number(qty),
         unitPricePaise: pricePaise,
         expensesPaise: expenses.trim() ? rupeesToPaise(expenses) : 0,
-        date,
+        date: date || todayLocal(),
         paymentMode: paymentMode as (typeof PAYMENT_MODES)[number],
         note,
       });
