@@ -262,7 +262,7 @@ export default function App() {
   const [purchasesList, setPurchasesList] = useState<Array<{ id: number; name: string; unit: string; qty_base: number; unit_price_paise: number; total_paise: number; paid_paise: number; purchase_date: string; expenses_paise: number; supplier_name: string | null }>>([]);
   const [expensesList, setExpensesList] = useState<Array<{ id: number; category: string; amountPaise: number; date: string; paymentMode: string | null; paidTo: string | null; note: string | null }>>([]);
   const [stockEntries, setStockEntries] = useState<StockEntryRow[]>([]);
-  const [purchase, setPurchase] = useState({ itemId: "" as number | "", qty: "", rate: "", supplier: "", expenses: "" });
+  const [purchase, setPurchase] = useState({ itemId: "" as number | "", qty: "", rate: "", supplier: "", expenses: "", date: new Date().toISOString().slice(0, 10) });
   const [purchaseMsg, setPurchaseMsg] = useState<string | null>(null);
   const [purchaseSaving, setPurchaseSaving] = useState(false);
   const [stock, setStock] = useState({ itemId: "" as number | "", type: "USAGE", qty: "", note: "" });
@@ -628,6 +628,10 @@ export default function App() {
   async function addPurchaseNow() {
     const item = items.find((i) => i.id === purchase.itemId);
     if (!item || purchaseSaving) return;
+    if (!purchase.date) {
+      setPurchaseMsg("Choose a purchase date");
+      return;
+    }
     setPurchaseSaving(true);
     setPurchaseMsg(null);
     try {
@@ -636,12 +640,12 @@ export default function App() {
         qty: Number(purchase.qty),
         unitPricePaise: Math.round(Number(purchase.rate) * 100),
         expensesPaise: Math.round(Number(purchase.expenses || "0") * 100),
-        date: todayIso(),
+        date: purchase.date,
         supplierName: purchase.supplier,
         paymentMode: "Cash",
       });
       setPurchaseMsg("Purchase saved");
-      setPurchase({ itemId: "", qty: "", rate: "", supplier: "", expenses: "" });
+      setPurchase({ itemId: "", qty: "", rate: "", supplier: "", expenses: "", date: todayIso() });
       setItems((await api.items()).items);
       setPurchasesList((await api.purchases()).purchases);
       void api.stats().then((r) => setStats(r.stats)).catch(() => {});
@@ -1791,7 +1795,16 @@ export default function App() {
               </div>
 
               <div className="card p-4">
-                <FormRow desktop="min-[1200px]:grid-cols-[2fr_1fr_1fr_1fr_1.2fr_auto]">
+                <FormRow desktop="min-[1200px]:grid-cols-[1fr_2fr_1fr_1fr_1fr_1.2fr_auto]">
+                  <div className="space-y-1">
+                    <label className="label">Date</label>
+                    <input
+                      className="input"
+                      type="date"
+                      value={purchase.date}
+                      onChange={(e) => setPurchase({ ...purchase, date: e.currentTarget.value })}
+                    />
+                  </div>
                   <div className="space-y-1">
                     <label className="label">Item</label>
                     <div className="relative">
