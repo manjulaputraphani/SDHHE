@@ -52,6 +52,16 @@ export function normalisePhone(phone: string | null | undefined): string | null 
 }
 
 /**
+ * GSTIN, uppercased. "NA", "N/A" and "-" mean the customer has no GSTIN and
+ * are stored as NULL — otherwise every such customer would match on "NA".
+ */
+export function normaliseGstin(gstin: string | null | undefined): string | null {
+  const value = (gstin ?? "").trim().toUpperCase();
+  if (!value || value === "NA" || value === "N/A" || value === "-") return null;
+  return value;
+}
+
+/**
  * Find the master record for these details: phone → GSTIN → name.
  * Returns null when the client is new.
  */
@@ -60,7 +70,7 @@ export async function findCustomer(
   input: { name?: string; phone?: string | null; gstin?: string | null },
 ): Promise<CustomerRow | null> {
   const phone = normalisePhone(input.phone);
-  const gstin = input.gstin?.trim().toUpperCase() || null;
+  const gstin = normaliseGstin(input.gstin);
   const name = input.name?.trim() || null;
 
   const conditions = [];
@@ -96,7 +106,7 @@ export async function saveCustomer(db: Db, input: unknown): Promise<CustomerRow>
   // The phone is stored as digits only, so "98765 43210" and "9876543210"
   // are the same client.
   const phone = normalisePhone(data.phone);
-  const gstin = data.gstin?.trim().toUpperCase() || null;
+  const gstin = normaliseGstin(data.gstin);
   const address = data.address?.trim() || null;
   const email = data.email?.trim() || null;
 
@@ -182,7 +192,7 @@ export async function getCustomer(db: Db, id: number): Promise<CustomerRow | nul
 export async function updateCustomer(db: Db, id: number, input: unknown): Promise<CustomerRow> {
   const data = parseCustomerInput(input);
   const phone = normalisePhone(data.phone);
-  const gstin = data.gstin?.trim().toUpperCase() || null;
+  const gstin = normaliseGstin(data.gstin);
   const [updated] = await db
     .update(customers)
     .set({
@@ -227,7 +237,7 @@ export async function deleteCustomer(db: Db, id: number): Promise<void> {
 
 /** Find a customer by GSTIN (used by the billing screen's GSTIN auto-fill). */
 export async function findCustomerByGstin(db: Db, gstin: string): Promise<CustomerRow | null> {
-  const value = gstin.trim().toUpperCase();
+  const value = normaliseGstin(gstin);
   if (!value) return null;
   const rows = await db
     .select({
