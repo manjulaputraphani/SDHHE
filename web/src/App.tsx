@@ -839,6 +839,19 @@ export default function App() {
     }
   }
 
+  async function deleteExpenseRow(x: { id: number; category: string; amountPaise: number }) {
+    if (!window.confirm(`Delete ${x.category} expense of ${money(x.amountPaise)}?`)) return;
+    try {
+      await api.deleteExpense(x.id);
+      setExpensesList((await api.expenses()).expenses);
+      void api.stats().then((r) => setStats(r.stats)).catch(() => {});
+      setCategories((await api.expenseCategories()).categories);
+      setExpenseMsg("Expense deleted");
+    } catch (err) {
+      setExpenseMsg(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   async function addSupplierNow() {
     setAddSupplierBusy(true);
     setAddSupplierMsg(null);
@@ -2206,14 +2219,32 @@ export default function App() {
               }
               rows={expensesList}
               rowKey={(x) => x.id}
-              minWidthClass="min-w-[640px]"
-              widths={["w-[15%]", "w-[20%]", "w-[18%]", "w-[32%]", "w-[15%]"]}
+              minWidthClass="min-w-[760px]"
+              widths={user?.role === "owner"
+                ? ["w-[13%]", "w-[18%]", "w-[16%]", "w-[28%]", "w-[13%]", "w-[12%]"]
+                : ["w-[15%]", "w-[20%]", "w-[18%]", "w-[32%]", "w-[15%]"]}
               columns={[
                 { key: "date", header: "Date", cell: (x) => formatDate(x.date), className: "whitespace-nowrap" },
                 { key: "category", header: "Category", cell: (x) => <span className="font-medium">{x.category}</span> },
                 { key: "paidTo", header: "Paid to", cell: (x) => x.paidTo ?? "—" },
                 { key: "note", header: "Note", cell: (x) => x.note ?? "—", className: "break-words" },
                 { key: "amount", header: "Amount", align: "right", cell: (x) => money(x.amountPaise) },
+                ...(user?.role === "owner"
+                  ? [
+                      {
+                        key: "actions",
+                        header: "",
+                        align: "right" as const,
+                        mobileLabel: "Actions",
+                        hideOnMobile: true,
+                        cell: (x: (typeof expensesList)[number]) => (
+                          <button className="btn-mini btn-mini-danger" onClick={() => void deleteExpenseRow(x)}>
+                            Delete
+                          </button>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
               empty={
                 <EmptyState

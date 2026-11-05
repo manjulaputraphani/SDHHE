@@ -824,6 +824,7 @@ export default {
       }
 
       if (url.pathname.startsWith("/api/expenses/") && request.method === "DELETE") {
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
         const id = Number(url.pathname.split("/").pop());
         if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid expense id" }, { status: 400 });
         await asActor(actor, () => deleteExpense(db, id));

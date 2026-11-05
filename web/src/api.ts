@@ -279,6 +279,7 @@ export const api = {
   stockEntries: () => request<{ entries: StockEntryRow[] }>("/api/stock"),
   expenses: () => request<{ expenses: Array<{ id: number; category: string; amountPaise: number; date: string; paymentMode: string | null; paidTo: string | null; note: string | null }> }>("/api/expenses"),
   addExpense: (body: Record<string, unknown>) => request<{ expense: unknown }>("/api/expenses", { method: "POST", body: JSON.stringify(body) }),
+  deleteExpense: (id: number) => request<{ ok: boolean }>(`/api/expenses/${id}`, { method: "DELETE" }),
   createBill: (body: Record<string, unknown>) => request<{ bill: { saleId: number; billNo: string; totalPaise: number } }>("/api/bills", { method: "POST", body: JSON.stringify(body) }),
   bills: () => request<{ bills: BillRow[] }>("/api/bills?limit=100"),
   bill: (id: number) => request<{ bill: BillDetail }>(`/api/bills/${id}`),

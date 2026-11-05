@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "./client";
 import { logActivity } from "./activity";
-import { expenseBills, expenses, items, purchases, saleBills } from "./schema";
+import { cashLedger, expenseBills, expenses, items, purchases, saleBills } from "./schema";
 import { getCostPool, saveCostPool } from "./costing";
 import { PAYMENT_MODES } from "./purchases";
 import { formatRupees, type Unit } from "../logic/units";
@@ -325,6 +325,9 @@ export async function deleteExpense(db: Db, id: number): Promise<void> {
       relatedPurchaseId: before.relatedPurchaseId,
     });
   }
+  await db
+    .delete(cashLedger)
+    .where(and(eq(cashLedger.refType, "expense"), eq(cashLedger.refId, id)));
   await db.delete(expenseBills).where(eq(expenseBills.expenseId, id));
   await db.delete(expenses).where(eq(expenses.id, id));
   await logActivity(db, {
