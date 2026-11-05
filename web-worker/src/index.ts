@@ -23,6 +23,7 @@ import { cancelSaleBill, createCustomer, createSaleBill, deleteSaleBill, recordB
 import { deleteCustomer, listCustomers, updateCustomer } from "../../src/db/customers";
 import { addPurchase, deletePurchase, updatePurchase } from "../../src/db/purchases";
 import { createRoasting, listRoastings } from "../../src/db/roasting";
+import { rotationSummary } from "../../src/db/rotation";
 import { saveStockEntry } from "../../src/db/stock";
 import { createExpense, deleteExpense, updateExpense } from "../../src/db/expenses";
 import { setAuditActor, type AuditActor } from "../../src/db/activity";
@@ -104,6 +105,7 @@ function routePermission(
 
   if (pathname === "/api/stock") return { module: "stock", action: read ? "view" : "create" };
   if (pathname === "/api/roastings") return { module: "stock", action: read ? "view" : "create" };
+  if (pathname === "/api/rotation") return { module: "dashboard", action: "view" };
 
   if (pathname === "/api/customers/save") return { module: "customers", action: "create" };
   if (pathname === "/api/customers") return { module: "customers", action: read ? "view" : "create" };
@@ -673,6 +675,10 @@ export default {
           const [tot] = await sqlQuery(env, `select coalesce(sum(amount_paise),0)::bigint as total from investments`);
           return json({ investments: rows, totalPaise: Number(tot.total) });
         }
+      }
+
+      if (url.pathname === "/api/rotation" && request.method === "GET") {
+        return json({ rotation: await rotationSummary(db) });
       }
 
       if (url.pathname === "/api/stats" && request.method === "GET") {

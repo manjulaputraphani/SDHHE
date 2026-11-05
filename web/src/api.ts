@@ -63,6 +63,24 @@ export type ExpenseRow = {
   billFilename: string | null;
 };
 
+export type RotationSummary = {
+  asOfDate: string;
+  investmentPaise: number;
+  stockValuePaise: number;
+  cashInBankPaise: number;
+  creditOutstandingPaise: number;
+  amountInRotationPaise: number;
+  netSalesPaise: number;
+  cogsPaise: number;
+  expensesPaise: number;
+  grossProfitPaise: number;
+  netProfitPaise: number;
+  rotationTimes: number;
+  daysToRotate: number | null;
+  inventoryTurnover: number;
+  trend: Array<{ date: string; netSalesPaise: number }>;
+};
+
 export type RoastingRow = {
   id: number;
   roastDate: string;
@@ -285,6 +303,7 @@ export const api = {
   deleteItem: (id: number) => request<{ ok: boolean }>(`/api/items/${id}`, { method: "DELETE" }),
   updateItem: (id: number, body: { name: string; unit: string; category?: string; minStockBase: number; imageUrl?: string }) =>
     request<{ item: Item }>(`/api/items/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  rotation: () => request<{ rotation: RotationSummary }>("/api/rotation"),
   statsDaily: (days = 14) =>
     request<{ daily: Array<{ date: string; sales: string; expenses: string }> }>(`/api/stats/daily?days=${days}`),
   expenseCategories: () =>

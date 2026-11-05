@@ -254,7 +254,7 @@ export async function rotationTrend(
 
     const [row] = await db
       .select({
-        total: sql<number>`coalesce(sum(${saleBills.totalPaise} - ${saleBills.paidPaise}), 0)`.mapWith(Number),
+        total: sql<number>`coalesce(sum(${saleBills.subtotalPaise}), 0)`.mapWith(Number),
       })
       .from(saleBills)
       .where(

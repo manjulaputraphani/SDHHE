@@ -13,6 +13,7 @@ import {
   type FinYearReport,
   type Item,
   type RoastingRow,
+  type RotationSummary,
   type Member,
   type StockEntryRow,
   type UsageRow,
@@ -43,6 +44,7 @@ import CustomerPicker from "./components/CustomerPicker";
 import ItemThumb from "./components/ItemThumb";
 import ResponsiveTable from "./components/ResponsiveTable";
 import SalesChart from "./components/SalesChart";
+import RotationChart from "./components/RotationChart";
 import {
   IconActivity,
   IconBarChart,
@@ -322,6 +324,7 @@ export default function App() {
   const [stockMsg, setStockMsg] = useState<string | null>(null);
   const [daily, setDaily] = useState<Array<{ date: string; sales: string; expenses: string }>>([]);
   const [categories, setCategories] = useState<Array<{ category: string; total: string }>>([]);
+  const [rotation, setRotation] = useState<RotationSummary | null>(null);
   const [showLowStock, setShowLowStock] = useState(false);
   const [investments, setInvestments] = useState<Array<{ id: number; investor_name: string; amount_paise: number; invested_on: string; note: string | null }>>([]);
   const [investTotal, setInvestTotal] = useState(0);
@@ -1093,6 +1096,7 @@ export default function App() {
     if (canView("dashboard")) {
       jobs.push(api.statsDaily().then((r) => setDaily(r.daily)));
       jobs.push(api.stats().then((r) => setStats(r.stats)));
+      jobs.push(api.rotation().then((r) => setRotation(r.rotation)));
     }
     if (canView("expenses")) {
       jobs.push(api.expenseCategories().then((r) => setCategories(r.categories)));
@@ -1716,6 +1720,63 @@ export default function App() {
                 <p className="mt-0.5 text-[11px] text-muted">{lowStockCount > 0 ? "View items" : "All good"}</p>
               </button>
             </div>
+
+            {rotation && (
+              <section className="space-y-3">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-tight">Working capital & rotation</h2>
+                  <p className="text-xs text-muted">
+                    This month to date · as of {formatDate(rotation.asOfDate)}
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="card p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Amount in rotation</p>
+                    <p className="mt-1 text-2xl font-semibold tracking-tight">{money(rotation.amountInRotationPaise)}</p>
+                    <p className="mt-0.5 text-[11px] text-muted">
+                      Stock {money(rotation.stockValuePaise)} · Cash {money(rotation.cashInBankPaise)} · Credit {money(rotation.creditOutstandingPaise)}
+                    </p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Rotation this month</p>
+                    <p className="mt-1 text-2xl font-semibold tracking-tight">{rotation.rotationTimes.toFixed(2)}×</p>
+                    <p className="mt-0.5 text-[11px] text-muted">
+                      {rotation.daysToRotate === null ? "No sales yet" : `${rotation.daysToRotate.toFixed(1)} days to rotate`}
+                    </p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Inventory turnover</p>
+                    <p className="mt-1 text-2xl font-semibold tracking-tight">{rotation.inventoryTurnover.toFixed(2)}×</p>
+                    <p className="mt-0.5 text-[11px] text-muted">COGS ÷ stock value</p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Net profit (after expenses)</p>
+                    <p className={`mt-1 text-2xl font-semibold tracking-tight ${rotation.netProfitPaise < 0 ? "text-error-ink" : ""}`}>
+                      {money(rotation.netProfitPaise)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-muted">
+                      Gross {money(rotation.grossProfitPaise)} − expenses {money(rotation.expensesPaise)}
+                    </p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Stock value</p>
+                    <p className="mt-1 text-2xl font-semibold tracking-tight">{money(rotation.stockValuePaise)}</p>
+                    <p className="mt-0.5 text-[11px] text-muted">At batch cost</p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Cash in bank</p>
+                    <p className="mt-1 text-2xl font-semibold tracking-tight">{money(rotation.cashInBankPaise)}</p>
+                    <p className="mt-0.5 text-[11px] text-muted">From the cash ledger</p>
+                  </div>
+                </div>
+                <div className="card p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-medium">Rotation trend (net sales, last 30 days)</h2>
+                  </div>
+                  <RotationChart data={rotation.trend} />
+                </div>
+              </section>
+            )}
 
             {showLowStock && (
               <ResponsiveTable

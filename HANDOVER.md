@@ -42,6 +42,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Roasting redirect fix** (2026-11-05): the "can I view this tab" redirect also maps `roasting` → `stock`; previously it bounced Roasting back to Dashboard. Deployed `sdhhe-api` version `b9e62880`.
 - **New Bill pricing helper** (2026-11-05): selecting an item auto-fills **HSN** from the item master. Web + desktop New Bill show **avg cost/unit**, an editable **margin %** and **suggested rate**, with a **Use suggested** button. Deployed `sdhhe-api` version `d691ed77`.
 - **Margin default** (2026-11-05): New Bill helper and Roasting margin now default to **6%** (was 20%). Deployed `sdhhe-api` version `fc8361a8`.
+- **Web working capital & rotation** (2026-11-05): Dashboard now shows amount in rotation (stock + cash + credit), **rotation times this month**, days to rotate, inventory turnover, net profit, stock value, cash, plus a **30-day net-sales rotation trend chart** (custom SVG). New `/api/rotation` + `rotationSummary`; `rotationTrend` fixed to use actual net sales (`subtotal_paise`) instead of unpaid credit. Deployed `sdhhe-api` version `c204e60b`.
 
 ## Next tasks
 1. Add the **Roasting** screen to the desktop app (shared `createRoasting`/`listRoastings` already work; only web UI exists).
