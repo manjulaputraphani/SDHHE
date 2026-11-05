@@ -4,8 +4,8 @@ Last updated: 2026-11-05 by OpenCode
 Tool: OpenCode
 
 ## Current state
-Web LIVE: https://sdhhe.blvphani.workers.dev (worker `sdhhe`) · legacy: https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/`.
-`sdhhe` uses the same Neon DB as the local `.env`; secrets set: `DATABASE_URL`, `SESSION_SECRET`. Owner account id=1 (7569208757) active.
+Web LIVE: https://sdhhe-api.blvphani.workers.dev (worker `sdhhe-api`, all four secrets set) · Desktop = Tauri app in `src/`.
+Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
 Analytics + Web AI approved & committed by the owner on 2026-11-04.
 Migrations applied to Neon: `0001_add_cash_ledger.sql` + `0002_supplier_dues.sql` (both OK).
 DB WIPED 2026-11-05: all 22 app tables empty, sequences reset (verified 0 rows).
@@ -22,23 +22,19 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Session security — web edition** (2026-11-05): 1-hour inactivity auto-logout with sliding window (lastActivity refreshed on every API response, clearCookie on idle expiry now properly matches Secure flag for HTTPS sites); 24-hour login-without-logout check (`getSessionsWithoutLogoutLast24Hours`, GET /api/sessions/open, owner only); frontend dispatches `sdhhe:unauthorized` on 401 and clears user state. tsc clean (root/web/web-worker), 290 tests pass, web built + deployed.
 - **Production DB reset** (2026-11-05): `TRUNCATE` on the 22 explicit app tables only (never CamelCase/unrelated tables or `sdhhe_fy2025`), `RESTART IDENTITY CASCADE`; verified 0 rows. Unrelated tables in the Neon project untouched.
 - **Build unblock + redeploy** (2026-11-05): fixed missing arrow-function closing brace in the bills actions column in `web/src/App.tsx`; moved `const actor` above the read routes in `web-worker/src/index.ts` (TDZ error). `tsc` clean (web + worker), 290 tests pass, web build OK, deployed `sdhhe-api` version `e41948e1`.
-- **Worker `sdhhe`** (2026-11-05): new config `web-worker/wrangler.sdhhe.toml`, same Neon DB, own `DATABASE_URL` + fresh `SESSION_SECRET`. Live at https://sdhhe.blvphani.workers.dev (version `e9d4c281`). `RESEND_API_KEY` and `OLLAMA_API_KEY` still to be added for email/AI.
+- **Worker cleanup** (2026-11-05): briefly created `sdhhe` (same DB, version `e9d4c281`), then deleted it at owner request; config `web-worker/wrangler.sdhhe.toml` removed. Only `sdhhe-api` remains (verified 200; `sdhhe` now 404).
 
 ## Next tasks
-1. Add `RESEND_API_KEY` and `OLLAMA_API_KEY` to `sdhhe` for email/AI:
-   `cd web-worker && ./node_modules/.bin/wrangler secret put RESEND_API_KEY --config wrangler.sdhhe.toml` (same for OLLAMA).
-2. Owner approves/rejects analytics work → commit T-11.
-3. Web edition screens, page-level UI tests, capital withdrawals, true average stock value.
-4. Email finish: verify Resend domain → MAIL_FROM → Send test via UI.
+1. Owner approves/rejects analytics work → commit T-11.
+2. Web edition screens, page-level UI tests, capital withdrawals, true average stock value.
+3. Email finish: verify Resend domain → MAIL_FROM → Send test via UI.
 
 ## Commands
 - Tests: `npx vitest run --reporter=dot` (290) · `npx tsc --noEmit`
 - Desktop: `npm run tauri dev`
 - Web build: `cd web && npm run build`
-- Deploy `sdhhe`: `cd web-worker && ./node_modules/.bin/wrangler deploy --config wrangler.sdhhe.toml`
-- Deploy legacy `sdhhe-api`: `cd web-worker && ./node_modules/.bin/wrangler deploy`
+- Deploy: `cd web-worker && ./node_modules/.bin/wrangler deploy`
 
 ## Blockers
-- On `sdhhe`, email + AI endpoints return 503 until `RESEND_API_KEY` / `OLLAMA_API_KEY` are set (billing/stock/users unaffected).
-- Legacy `sdhhe-api` still has its own secrets; its `DATABASE_URL` was not verifiable. Use `sdhhe` going forward.
+- `sdhhe-api.DATABASE_URL` was not readable/verifiable, but login probes confirm it sees the same owner row as the local `.env` DB.
 - Owner login: account id=1, phone `7569208757`, active.
