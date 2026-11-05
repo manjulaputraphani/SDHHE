@@ -248,10 +248,6 @@ function sessionCookie(token: string, url: URL): string {
   return `${COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_HOURS * 3600}${secure}`;
 }
 
-function clearCookie(): string {
-  return `${COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`;
-}
-
 function retryAfterMs(phone: string): number {
   const entry = attempts.get(phone);
   if (!entry) return 0;
@@ -470,7 +466,8 @@ export default {
         // Close the open session and store how long the person was active.
         await endSession(getDb(env.DATABASE_URL as string), session.uid, "web");
       }
-      return json({ ok: true }, { headers: { "Set-Cookie": clearCookie() } });
+      const secure = url.protocol === "https:" ? "; Secure" : "";
+      return json({ ok: true }, { headers: { "Set-Cookie": `${COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}` } });
     }
 
     if (url.pathname === "/api/auth/me" && request.method === "GET") {
@@ -516,7 +513,8 @@ export default {
     // 1-hour inactivity auto-logout (sliding window, refreshed on every API call).
     const IDLE_MS = 60 * 60 * 1000;
     if (Date.now() - session.lastActivity > IDLE_MS) {
-      return json({ error: "Session expired due to inactivity — please sign in again" }, { status: 401, headers: { "Set-Cookie": clearCookie() } });
+      const secure = url.protocol === "https:" ? "; Secure" : "";
+      return json({ error: "Session expired due to inactivity — please sign in again" }, { status: 401, headers: { "Set-Cookie": `${COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}` } });
     }
 
     const todayIso = new Date().toISOString().slice(0, 10);
