@@ -28,6 +28,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Purchases date** (2026-11-05): Date field on the web Purchases form (defaults to today, past dates allowed). If left blank it silently falls back to today; same fallback added to desktop AddPurchase. 294 tests pass, deployed `sdhhe-api` version `0476dd7f`.
 - **Owner purchase edit** (2026-11-05): Recent purchases now has an owner-only **Edit** action opening a full modal (date, qty, rate, transport, supplier, payment mode, note). `PUT /api/purchases/:id` (owner only) reuses `updatePurchase`, updating purchase + batch + PURCHASE movement (incl. expenses), replaying FIFO and rebuilding WAC. 296 tests pass, deployed `sdhhe-api` version `e8680d02`.
 - **Supplier edit check** (2026-11-05): verified `updatePurchase` changes a purchase's supplier server-side (temporary 1 g purchase created, updated to `U C F`, deleted; no leftovers). Web edit modal now puts Supplier at the top, offers existing suppliers via datalist, and scrolls on small screens. Deployed `sdhhe-api` version `91676053`.
+- **Supplier correction + save guard** (2026-11-05): set purchase #1's supplier to `U C W` (id 4); verified item, qty, rate, total, transport, date, paid, mode and note unchanged. Removed the unused `U C F` supplier. Web edit modal now disables Save while saving (no multiple clicks) and shows errors inline. Deployed `sdhhe-api` version `c3c81b2b`.
 
 ## Next tasks
 1. Owner approves/rejects analytics work → commit T-11.

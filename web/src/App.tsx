@@ -280,6 +280,8 @@ export default function App() {
   const [purchase, setPurchase] = useState({ itemId: "" as number | "", qty: "", rate: "", supplier: "", expenses: "", date: new Date().toISOString().slice(0, 10) });
   const [editingPurchase, setEditingPurchase] = useState<PurchaseRow | null>(null);
   const [purchaseEdit, setPurchaseEdit] = useState({ qty: "", rate: "", expenses: "", date: "", supplier: "", paymentMode: "Cash", note: "" });
+  const [purchaseEditSaving, setPurchaseEditSaving] = useState(false);
+  const [purchaseEditError, setPurchaseEditError] = useState<string | null>(null);
   const [purchaseMsg, setPurchaseMsg] = useState<string | null>(null);
   const [purchaseSaving, setPurchaseSaving] = useState(false);
   const [stock, setStock] = useState({ itemId: "" as number | "", type: "USAGE", qty: "", note: "" });
@@ -671,6 +673,7 @@ export default function App() {
 
   function openPurchaseEdit(row: PurchaseRow) {
     setPurchaseMsg(null);
+    setPurchaseEditError(null);
     setEditingPurchase(row);
     setPurchaseEdit({
       qty: String(row.qty_base / unitFactor(row.unit)),
@@ -684,7 +687,9 @@ export default function App() {
   }
 
   async function savePurchaseEdit() {
-    if (!editingPurchase) return;
+    if (!editingPurchase || purchaseEditSaving) return;
+    setPurchaseEditError(null);
+    setPurchaseEditSaving(true);
     try {
       await api.updatePurchase(editingPurchase.id, {
         qty: Number(purchaseEdit.qty),
@@ -701,7 +706,9 @@ export default function App() {
       void api.stats().then((r) => setStats(r.stats)).catch(() => {});
       setPurchaseMsg("Purchase updated");
     } catch (err) {
-      setPurchaseMsg(err instanceof Error ? err.message : String(err));
+      setPurchaseEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPurchaseEditSaving(false);
     }
   }
 
@@ -1953,7 +1960,7 @@ export default function App() {
                   <div className="card max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-lg font-semibold tracking-tight">Edit purchase — {editingPurchase.name}</h2>
-                      <button className="btn-mini" onClick={() => setEditingPurchase(null)}>Close</button>
+                      <button className="btn-mini" disabled={purchaseEditSaving} onClick={() => setEditingPurchase(null)}>Close</button>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
@@ -1993,9 +2000,14 @@ export default function App() {
                         <input className="input" placeholder="Note" value={purchaseEdit.note} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, note: e.currentTarget.value })} />
                       </div>
                     </div>
+                    {purchaseEditError && (
+                      <p role="alert" className="rounded bg-error-soft px-3 py-2 text-sm text-error-ink">{purchaseEditError}</p>
+                    )}
                     <div className="flex justify-end gap-2">
-                      <button className="btn-mini" onClick={() => setEditingPurchase(null)}>Cancel</button>
-                      <button className="btn btn-primary" onClick={() => void savePurchaseEdit()}>Save changes</button>
+                      <button className="btn-mini" disabled={purchaseEditSaving} onClick={() => setEditingPurchase(null)}>Cancel</button>
+                      <button className="btn btn-primary" disabled={purchaseEditSaving} onClick={() => void savePurchaseEdit()}>
+                        {purchaseEditSaving ? "Saving…" : "Save changes"}
+                      </button>
                     </div>
                   </div>
                 </div>
