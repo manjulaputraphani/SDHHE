@@ -209,6 +209,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: { "content-type": "application/json", ...(init.headers ?? {}) },
   });
+  if (res.status === 401) {
+    // Session expired (inactivity or token expiry) — notify the app to sign out.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("sdhhe:unauthorized"));
+    }
+    throw new Error("Session expired — please sign in again");
+  }
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data;

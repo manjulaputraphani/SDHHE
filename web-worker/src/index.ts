@@ -61,7 +61,7 @@ function currentFinYear(): string {
   return `${year}-${String(year + 1).slice(-2)}`;
 }
 
-type Session = { uid: number; name: string; role: Role; exp: number; until?: string | null };
+type Session = { uid: number; name: string; role: Role; exp: number; until?: string | null; lastActivity: number };
 
 function normalizeRole(value: unknown): Role {
   return value === "owner" ? "owner" : value === "ca" ? "ca" : "staff";
@@ -136,8 +136,15 @@ function asActor<T>(actor: AuditActor, fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+let pendingSetCookie: string | null = null;
+
 function json(data: unknown, init: ResponseInit = {}): Response {
-  return Response.json(data, init);
+  const res = Response.json(data, init);
+  if (pendingSetCookie) {
+    res.headers.set("Set-Cookie", pendingSetCookie);
+    pendingSetCookie = null;
+  }
+  return res;
 }
 
 function b64url(bytes: Uint8Array): string {
@@ -317,6 +324,7 @@ async function login(request: Request, env: Env, url: URL): Promise<Response> {
     role: user.role === "owner" ? "owner" : user.role === "ca" ? "ca" : "staff",
     exp: Date.now() + SESSION_HOURS * 3600_000,
     until: user.access_until ?? null,
+    lastActivity: Date.now(),
   };
   const token = await createToken(session, env.SESSION_SECRET as string);
   // Track the session so the activity log knows who was in and for how long.
@@ -503,6 +511,12 @@ export default {
     const session = await readSession(request, env.SESSION_SECRET);
     if (!session) return json({ error: "Not signed in" }, { status: 401 });
 
+    // 1-hour inactivity auto-logout (sliding window, refreshed on every API call).
+    const IDLE_MS = 60 * 60 * 1000;
+    if (Date.now() - session.lastActivity > IDLE_MS) {
+      return json({ error: "Session expired due to inactivity — please sign in again" }, { status: 401, headers: { "Set-Cookie": clearCookie() } });
+    }
+
     const todayIso = new Date().toISOString().slice(0, 10);
     if (session.until && session.until < todayIso) {
       return json({ error: "Access expired — ask the owner" }, { status: 401 });
@@ -517,6 +531,12 @@ export default {
         { status: 403 },
       );
     }
+
+    // Refresh the session cookie on every authenticated response (sliding 1-hour window).
+    const refreshedSession: Session = { ...session, lastActivity: Date.now() };
+    const refreshToken = await createToken(refreshedSession, env.SESSION_SECRET as string);
+    pendingSetCookie = sessionCookie(refreshToken, url);
+
     try {
       if (url.pathname === "/api/_txn-test" && request.method === "GET") {
         const rows = await withTransaction(env.DATABASE_URL as string, (tx) =>

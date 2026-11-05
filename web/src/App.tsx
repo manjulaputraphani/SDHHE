@@ -336,6 +336,13 @@ export default function App() {
 
   useEffect(() => watchSystemTheme(), []);
 
+  /** Sign out when the backend reports session expiry (inactivity / token expiry). */
+  useEffect(() => {
+    const onUnauthorized = () => setUser(null);
+    window.addEventListener("sdhhe:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("sdhhe:unauthorized", onUnauthorized);
+  }, []);
+
   /** Close the mobile drawer when the window grows into the desktop layout. */
   useEffect(() => {
     const wide = window.matchMedia("(min-width: 768px)");
