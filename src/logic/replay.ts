@@ -11,7 +11,7 @@ export type ReplayBatch = {
 
 export type ReplayMovement = {
   id: number;
-  type: "PURCHASE" | "STOCK_CHECK" | "USAGE" | "WASTAGE" | "ADJUSTMENT";
+  type: "PURCHASE" | "STOCK_CHECK" | "USAGE" | "WASTAGE" | "ADJUSTMENT" | "ROASTING";
   movementDate: string;
   qtyChange: number;
   enteredQtyLeft: number | null;
@@ -29,7 +29,7 @@ export type ReplayResult = {
   }[];
 };
 
-const REPLAYED = new Set<ReplayMovement["type"]>(["STOCK_CHECK", "USAGE", "WASTAGE"]);
+const REPLAYED = new Set<ReplayMovement["type"]>(["STOCK_CHECK", "USAGE", "WASTAGE", "ROASTING"]);
 
 /**
  * Recompute every consumption movement for one item after a purchase changed

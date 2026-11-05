@@ -35,6 +35,8 @@ export type ItemRow = {
   hsnCode: string | null;
   minStockBase: number;
   imageUrl: string | null;
+  /** Average cost per display unit (paise) from the WAC pool. */
+  avgCostPaise: number;
   stockLeftBase: number;
 };
 
@@ -68,6 +70,7 @@ export async function listItems(db: Db): Promise<ItemRow[]> {
       hsnCode: items.hsnCode,
       minStockBase: items.minStockBase,
       imageUrl: items.imageUrl,
+      avgCostPaise: items.avgCostPaise,
       stockLeftBase: sql<number>`coalesce(sum(${batches.qtyRemaining}), 0)`.mapWith(Number),
     })
     .from(items)
@@ -87,6 +90,7 @@ export async function getItem(db: Db, id: number): Promise<ItemRow | null> {
       hsnCode: items.hsnCode,
       minStockBase: items.minStockBase,
       imageUrl: items.imageUrl,
+      avgCostPaise: items.avgCostPaise,
       stockLeftBase: sql<number>`coalesce(sum(${batches.qtyRemaining}), 0)`.mapWith(Number),
     })
     .from(items)

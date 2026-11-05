@@ -66,7 +66,7 @@ export async function getDashboard(db: Db, month: string): Promise<DashboardData
   const [purchasesRow] = await db
     .select({ total: sql<number>`coalesce(sum(${purchases.totalPaise}), 0)`.mapWith(Number) })
     .from(purchases)
-    .where(and(gte(purchases.purchaseDate, start), lt(purchases.purchaseDate, end)));
+    .where(and(gte(purchases.purchaseDate, start), lt(purchases.purchaseDate, end), eq(purchases.source, "purchase")));
 
   const [expensesRow] = await db
     .select({ total: sql<number>`coalesce(sum(${expenses.amountPaise}), 0)`.mapWith(Number) })
@@ -170,6 +170,7 @@ export async function getDashboard(db: Db, month: string): Promise<DashboardData
                  partition by item_id order by purchase_date desc, id desc
                ) as rn
         from purchases
+        where source = 'purchase'
       )
       select r.item_id, i.name as item_name, i.unit,
              r.unit_price_paise as latest_paise,

@@ -120,7 +120,7 @@ export async function runTool(
           from purchases p
           join items i on i.id = p.item_id
           left join suppliers s on s.id = p.supplier_id
-          where lower(i.name) = lower(${itemName})
+          where lower(i.name) = lower(${itemName}) and p.source = 'purchase'
           order by p.purchase_date desc, p.id desc
           limit 20
         `),
@@ -160,7 +160,7 @@ export async function runTool(
           from purchases p
           join items i on i.id = p.item_id
           left join suppliers s on s.id = p.supplier_id
-          where lower(i.name) = lower(${itemName})
+          where lower(i.name) = lower(${itemName}) and p.source = 'purchase'
           group by s.name
           order by avg_price_paise
         `),

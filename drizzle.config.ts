@@ -37,6 +37,7 @@ export default defineConfig({
     "public.cash_ledger",
     "public.opening_balance",
     "public.supplier_payments",
+    "public.roastings",
   ],
   dbCredentials: { url },
 });

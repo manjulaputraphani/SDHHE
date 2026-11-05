@@ -21,6 +21,7 @@ import { createItem, deleteItem, updateItem } from "../../src/db/items";
 import { cancelSaleBill, createCustomer, createSaleBill, deleteSaleBill, recordBillPayment } from "../../src/db/billing";
 import { deleteCustomer, listCustomers, updateCustomer } from "../../src/db/customers";
 import { addPurchase, deletePurchase, updatePurchase } from "../../src/db/purchases";
+import { createRoasting, listRoastings } from "../../src/db/roasting";
 import { saveStockEntry } from "../../src/db/stock";
 import { createExpense, deleteExpense, updateExpense } from "../../src/db/expenses";
 import { setAuditActor, type AuditActor } from "../../src/db/activity";
@@ -101,6 +102,7 @@ function routePermission(
   if (pathname === "/api/supplier-payments") return { module: "suppliers", action: read ? "view" : "create" };
 
   if (pathname === "/api/stock") return { module: "stock", action: read ? "view" : "create" };
+  if (pathname === "/api/roastings") return { module: "stock", action: read ? "view" : "create" };
 
   if (pathname === "/api/customers") return { module: "customers", action: read ? "view" : "create" };
   if (/^\/api\/customers\/\d+$/.test(pathname)) return { module: "customers", action: method === "DELETE" ? "delete" : "edit" };
@@ -683,12 +685,17 @@ export default {
         return json({ stats: row });
       }
 
+      if (url.pathname === "/api/roastings" && request.method === "GET") {
+        return json({ roastings: await listRoastings(db) });
+      }
+
       if (url.pathname === "/api/purchases" && request.method === "GET") {
         const rows = await sqlQuery(env, `select p.id, p.qty_base, p.unit_price_paise, p.total_paise, p.paid_paise, p.purchase_date,
             p.expenses_paise, p.payment_mode, p.note, i.name, i.unit, s.name as supplier_name
           from purchases p
           join items i on i.id = p.item_id
           left join suppliers s on s.id = p.supplier_id
+          where p.source = 'purchase'
           order by p.id desc limit 30`);
         return json({ purchases: rows });
       }
@@ -1138,6 +1145,12 @@ export default {
 
       if (url.pathname === "/api/stock" && request.method === "POST") {
         return json({ stock: await asActor(actor, () => saveStockEntry(env.DATABASE_URL as string, body)) });
+      }
+
+      if (url.pathname === "/api/roastings" && request.method === "POST") {
+        return json({
+          roasting: await asActor(actor, () => createRoasting(env.DATABASE_URL as string, body)),
+        });
       }
 
       // Recent stock entries (date, item, type, qty, note, user). The user is

@@ -33,14 +33,18 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **Owner expense delete** (2026-11-05): Recent expenses has an owner-only **Delete** action with confirm. `DELETE /api/expenses/:id` is owner-only and now also removes the linked `cash_ledger` expense entry (previously it was left behind). 296 tests pass, deployed `sdhhe-api` version `f4ec8d2c`.
 - **Purchase edit prefill** (2026-11-05): the API returns `purchase_date` as a full ISO timestamp, which `<input type="date">` rejects. Edit now normalises it to `YYYY-MM-DD`, so date/qty/rate/transport/supplier/mode/note all open prefilled; only the field you change is effectively edited. Deployed `sdhhe-api` version `b3586dfd`.
 - **Owner expense edit** (2026-11-05): Recent expenses has an owner-only **Edit** modal prefilled with date/type/category/amount/paid-to/mode/note. `PUT /api/expenses/:id` is owner-only and now syncs the linked `cash_ledger` entry (amount/date/note). 296 tests pass, deployed `sdhhe-api` version `5b5a7f1f`.
+- **Roasted seeds** (2026-11-05): new `roastings` table, `purchases.source`, `ROASTING` movement type. Web **Roasting** tab (Inventory): raw item → roasted item, editable yield (default 1.200), ₹/kg roasted charge, date, margin %, live cost/kg + suggested price. Server consumes raw FIFO/WAC, creates an internal roasted purchase/batch (excluded from Purchases, spend stats and supplier dues), transfers the exact cost. Migration `0005_roasting.sql` applied live. E2E verified: 120 kg raw @ ₹100 → 100 kg roasted, ₹2,000 charge, ₹14,000 total, ₹140/kg, ₹168/kg at 20%. 303 tests pass, deployed `sdhhe-api` version `7288972a`.
+- **Invoice GSTIN** (2026-11-05): missing seller/buyer GSTIN now prints **NA** (was `—`). When either GSTIN is missing (B2C/unregistered), the bill screen defaults to intra-state CGST+SGST, matching the printed invoice. Deployed `sdhhe-api` version `47d0ee77`.
 
 ## Next tasks
-1. Owner approves/rejects analytics work → commit T-11.
-2. Web edition screens, page-level UI tests, capital withdrawals, true average stock value.
-3. Email finish: verify Resend domain → MAIL_FROM → Send test via UI.
+1. Add the **Roasting** screen to the desktop app (shared `createRoasting`/`listRoastings` already work; only web UI exists).
+2. Roasted-batch cost is a snapshot: editing an old raw purchase does not recost past roasts (future enhancement).
+3. Owner approves/rejects analytics work → commit T-11.
+4. Web edition screens, page-level UI tests, capital withdrawals, true average stock value.
+5. Email finish: verify Resend domain → MAIL_FROM → Send test via UI.
 
 ## Commands
-- Tests: `npx vitest run --reporter=dot` (290) · `npx tsc --noEmit`
+- Tests: `npx vitest run --reporter=dot` (303) · `npx tsc --noEmit`
 - Desktop: `npm run tauri dev`
 - Web build: `cd web && npm run build`
 - Deploy: `cd web-worker && ./node_modules/.bin/wrangler deploy`

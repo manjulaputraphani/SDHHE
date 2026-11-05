@@ -201,6 +201,7 @@ export async function listPurchases(
   filter: { itemId?: number; from?: string; to?: string } = {},
 ): Promise<PurchaseListRow[]> {
   const conditions = [
+    eq(purchases.source, "purchase"),
     filter.itemId ? eq(purchases.itemId, filter.itemId) : undefined,
     filter.from ? gte(purchases.purchaseDate, filter.from) : undefined,
     filter.to ? lte(purchases.purchaseDate, filter.to) : undefined,

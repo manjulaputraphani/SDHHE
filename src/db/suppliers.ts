@@ -188,6 +188,7 @@ export async function getTotalSupplierDues(db: Queryable): Promise<number> {
         coalesce(sum(${purchases.totalPaise} - ${purchases.paidPaise}), 0)
       `.mapWith(Number),
     })
-    .from(purchases);
+    .from(purchases)
+    .where(eq(purchases.source, "purchase"));
   return row?.total ?? 0;
 }

@@ -51,6 +51,8 @@ export const purchases = pgTable(
     expensesPaise: integer("expenses_paise").notNull().default(0),
     purchaseDate: date("purchase_date").notNull(),
     paymentMode: text("payment_mode"),
+    /** 'purchase' for supplier buys; 'roasting' for internal roasted-seed production. */
+    source: text("source").notNull().default("purchase"),
     /** Amount already paid to the supplier for this purchase (paise). */
     paidPaise: integer("paid_paise").notNull().default(0),
     note: text("note"),
@@ -101,7 +103,7 @@ export const stockMovements = pgTable(
   (t) => [
     check(
       "stock_movements_type_valid",
-      sql`${t.type} in ('PURCHASE','STOCK_CHECK','USAGE','WASTAGE','ADJUSTMENT','SALE')`,
+      sql`${t.type} in ('PURCHASE','STOCK_CHECK','USAGE','WASTAGE','ADJUSTMENT','SALE','ROASTING')`,
     ),
   ],
 );
@@ -323,6 +325,36 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   priority: integer("priority").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   dismissed: boolean("dismissed").notNull().default(false),
+});
+
+/**
+ * Roasting batch: raw seeds are consumed (with a yield loss) and roasted seeds
+ * are added to stock, carrying the raw cost + roasting charge.
+ */
+export const roastings = pgTable("roastings", {
+  id: serial("id").primaryKey(),
+  rawItemId: integer("raw_item_id")
+    .notNull()
+    .references(() => items.id),
+  roastedItemId: integer("roasted_item_id")
+    .notNull()
+    .references(() => items.id),
+  /** Internal purchase row that created the roasted batch. */
+  roastedPurchaseId: integer("roasted_purchase_id").references(() => purchases.id),
+  roastDate: date("roast_date").notNull(),
+  rawQtyBase: integer("raw_qty_base").notNull(),
+  roastedQtyBase: integer("roasted_qty_base").notNull(),
+  /** 12000 = 1.200 kg raw per 1 kg roasted. */
+  yieldBp: integer("yield_bp").notNull(),
+  chargePerKgPaise: integer("charge_per_kg_paise").notNull().default(0),
+  chargePaise: integer("charge_paise").notNull().default(0),
+  rawCostPaise: integer("raw_cost_paise").notNull().default(0),
+  totalCostPaise: integer("total_cost_paise").notNull().default(0),
+  marginBp: integer("margin_bp").notNull().default(0),
+  suggestedPricePaise: integer("suggested_price_paise").notNull().default(0),
+  note: text("note"),
+  actor: text("actor"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /** Cash / bank ledger — every money movement in or out of the business. */

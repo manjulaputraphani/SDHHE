@@ -133,7 +133,7 @@ export function buildBillHtml(bill: SaleBillDetail, shop: ShopDetails): string {
         <div class="logo">${escapeHtml(mark)}</div>
         <div>
           <h1>${escapeHtml(shop.name || "My Shop")}</h1>
-          <p class="muted">GSTIN: <b>${escapeHtml(shop.gstin || "—")}</b></p>
+          <p class="muted">GSTIN: <b>${escapeHtml(shop.gstin || "NA")}</b></p>
           <p class="muted">${escapeHtml(shop.address || "")}</p>
           <p class="muted">${
             shop.phone ? `Phone: ${escapeHtml(shop.phone)}` : ""
@@ -153,7 +153,7 @@ export function buildBillHtml(bill: SaleBillDetail, shop: ShopDetails): string {
       <div class="party">
         <h3>Billed To</h3>
         <b>${escapeHtml(bill.customerName || "Walk-in customer")}</b>
-        <p class="muted">GSTIN/UIN: ${escapeHtml(bill.customerGstin || "—")}</p>
+        <p class="muted">GSTIN/UIN: ${escapeHtml(bill.customerGstin || "NA")}</p>
         <p class="muted">${escapeHtml(bill.customerAddress || "")}</p>
         <p class="muted">${bill.customerPhone ? `Mobile: ${escapeHtml(bill.customerPhone)}` : ""}</p>
       </div>

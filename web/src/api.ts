@@ -10,6 +10,7 @@ export type Item = {
   hsnCode: string | null;
   minStockBase: number;
   imageUrl: string | null;
+  avgCostPaise: number;
   stockLeftBase: number;
 };
 
@@ -60,6 +61,39 @@ export type ExpenseRow = {
   relatedPurchaseId: number | null;
   billId: number | null;
   billFilename: string | null;
+};
+
+export type RoastingRow = {
+  id: number;
+  roastDate: string;
+  rawItemId: number;
+  rawItemName: string;
+  rawUnit: string;
+  roastedItemId: number;
+  roastedItemName: string;
+  roastedUnit: string;
+  rawQtyBase: number;
+  roastedQtyBase: number;
+  yieldBp: number;
+  chargePerKgPaise: number;
+  chargePaise: number;
+  rawCostPaise: number;
+  totalCostPaise: number;
+  costPerKgPaise: number;
+  marginBp: number;
+  suggestedPricePaise: number;
+  note: string | null;
+};
+
+export type RoastingResult = {
+  id: number;
+  roastedPurchaseId: number | null;
+  rawCostPaise: number;
+  chargePaise: number;
+  totalCostPaise: number;
+  roastedQtyBase: number;
+  costPerKgPaise: number;
+  suggestedPricePaise: number;
 };
 
 export type Supplier = { id: number; name: string; phone: string | null };
@@ -281,6 +315,9 @@ export const api = {
     request<{ purchase: { purchaseId: number } }>("/api/purchases", { method: "POST", body: JSON.stringify(body) }),
   updatePurchase: (id: number, body: { qty: number; unitPricePaise: number; expensesPaise?: number; date: string; supplierName?: string; paymentMode?: string; note?: string }) =>
     request<{ ok: boolean }>(`/api/purchases/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  roastings: () => request<{ roastings: RoastingRow[] }>("/api/roastings"),
+  createRoasting: (body: Record<string, unknown>) =>
+    request<{ roasting: RoastingResult }>("/api/roastings", { method: "POST", body: JSON.stringify(body) }),
   suppliers: () => request<{ suppliers: Supplier[] }>("/api/suppliers"),
   createSupplier: (body: { name: string; phone?: string }) =>
     request<{ supplier: Supplier }>("/api/suppliers", { method: "POST", body: JSON.stringify(body) }),

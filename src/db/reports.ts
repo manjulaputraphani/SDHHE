@@ -103,7 +103,13 @@ export async function finYearReport(db: Db, label: string): Promise<FinYearRepor
       purchaseExpensesPaise: sql<number>`coalesce(sum(${purchases.expensesPaise}), 0)`.mapWith(Number),
     })
     .from(purchases)
-    .where(and(gte(purchases.purchaseDate, startDate), lte(purchases.purchaseDate, endDate)));
+    .where(
+      and(
+        gte(purchases.purchaseDate, startDate),
+        lte(purchases.purchaseDate, endDate),
+        eq(purchases.source, "purchase"),
+      ),
+    );
 
   // Sale expenses that are not attached to a deal are counted on their own.
   const [standaloneSale] = await db

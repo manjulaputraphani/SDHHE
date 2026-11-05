@@ -46,13 +46,14 @@ export async function loadRuleStats(db: Db, month: string): Promise<RuleStats> {
       ), bought as (
         select item_id, sum(qty_base)::int as bought
         from purchases
-        where purchase_date >= current_date - 30
+        where purchase_date >= current_date - 30 and source = 'purchase'
         group by item_id
       ), prices as (
         select item_id,
                (array_agg(unit_price_paise order by purchase_date desc, id desc))[1] as latest,
                (array_agg(unit_price_paise order by purchase_date desc, id desc))[2] as previous
         from purchases
+        where source = 'purchase'
         group by item_id
       )
       select i.id, i.name, i.unit, i.min_stock_base,
@@ -89,7 +90,7 @@ export async function loadRuleStats(db: Db, month: string): Promise<RuleStats> {
         coalesce(sum(case when d >= ${start}::date and d < ${end}::date then amt else 0 end), 0)::int as current,
         coalesce(sum(case when d >= ${prev.start}::date and d < ${prev.end}::date then amt else 0 end), 0)::int as previous
       from (
-        select purchase_date as d, total_paise as amt from purchases
+        select purchase_date as d, total_paise as amt from purchases where source = 'purchase'
         union all
         select expense_date as d, amount_paise as amt from expenses
       ) t

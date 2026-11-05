@@ -12,12 +12,14 @@ import {
   type ExpenseRow,
   type FinYearReport,
   type Item,
+  type RoastingRow,
   type Member,
   type StockEntryRow,
   type UsageRow,
   type User,
 } from "./api";
 import { buildBillHtml } from "../../src/lib/printBill";
+import { planRoast } from "../../src/logic/roasting";
 import { billWhatsAppText, buildWhatsAppLink } from "../../src/lib/whatsapp";
 import type { ShopDetails } from "../../src/db/settings";
 import {
@@ -81,7 +83,7 @@ import {
   IconUserX,
 } from "./components/icons";
 
-type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "stock" | "expenses" | "suppliers" | "activity" | "team" | "settings";
+type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "roasting" | "stock" | "expenses" | "suppliers" | "activity" | "team" | "settings";
 
 type PurchaseRow = {
   id: number;
@@ -289,6 +291,19 @@ export default function App() {
   const [expenseEdit, setExpenseEdit] = useState({ date: "", type: "general", category: "", amount: "", paidTo: "", paymentMode: "Cash", note: "" });
   const [expenseEditSaving, setExpenseEditSaving] = useState(false);
   const [expenseEditError, setExpenseEditError] = useState<string | null>(null);
+  const [roastingsList, setRoastingsList] = useState<RoastingRow[]>([]);
+  const [roastForm, setRoastForm] = useState({
+    rawItemId: "" as number | "",
+    roastedItemId: "" as number | "",
+    rawQty: "",
+    yield: "1.200",
+    charge: "",
+    date: new Date().toISOString().slice(0, 10),
+    margin: "20",
+    note: "",
+  });
+  const [roastMsg, setRoastMsg] = useState<string | null>(null);
+  const [roastSaving, setRoastSaving] = useState(false);
   const [stockEntries, setStockEntries] = useState<StockEntryRow[]>([]);
   const [purchase, setPurchase] = useState({ itemId: "" as number | "", qty: "", rate: "", supplier: "", expenses: "", date: new Date().toISOString().slice(0, 10) });
   const [editingPurchase, setEditingPurchase] = useState<PurchaseRow | null>(null);
@@ -583,11 +598,15 @@ export default function App() {
   const billTotal = billTaxable + billGstPaise;
 
   // GST split: the first two digits of a GSTIN are the state code. Same state
-  // as the shop → CGST + SGST; otherwise → IGST.
+  // as the shop → CGST + SGST; otherwise → IGST. When either GSTIN is missing
+  // (unregistered buyer / B2C), default to intra-state — the printed invoice
+  // always splits CGST + SGST, so the screen must match it.
   const shopStateCode = (shop?.gstin ?? "").trim().slice(0, 2).toUpperCase();
   const customerStateCode = (billCustomer.gstin ?? "").trim().slice(0, 2).toUpperCase();
   const gstIntraState =
-    shopStateCode.length === 2 && customerStateCode.length === 2 && shopStateCode === customerStateCode;
+    customerStateCode.length !== 2 ||
+    shopStateCode.length !== 2 ||
+    shopStateCode === customerStateCode;
   const gstRatePercent = Number(billGst || 0) / 100;
   const cgstPaise = Math.round(billGstPaise / 2);
   const sgstPaise = billGstPaise - cgstPaise;
@@ -908,6 +927,66 @@ export default function App() {
     }
   }
 
+  function roastPreview() {
+    const raw = items.find((item) => item.id === roastForm.rawItemId);
+    const roasted = items.find((item) => item.id === roastForm.roastedItemId);
+    if (!raw || !roasted) return null;
+    const rawQty = Number(roastForm.rawQty);
+    const yieldValue = Number(roastForm.yield);
+    if (!(rawQty > 0) || !(yieldValue > 0)) return null;
+    const rawQtyBase = Math.round(rawQty * unitFactor(raw.unit));
+    const rawCost = Math.round((rawQtyBase * raw.avgCostPaise) / unitFactor(raw.unit));
+    try {
+      return planRoast({
+        rawQtyBase,
+        yieldBp: Math.round(yieldValue * 10000),
+        chargePerKgPaise: Math.round((Number(roastForm.charge) || 0) * 100),
+        rawCostPaise: rawCost,
+        marginBp: Math.round((Number(roastForm.margin) || 0) * 100),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveRoasting() {
+    if (roastSaving) return;
+    setRoastMsg(null);
+    if (roastForm.rawItemId === "" || roastForm.roastedItemId === "") {
+      setRoastMsg("Choose both the raw and roasted items");
+      return;
+    }
+    if (roastForm.rawItemId === roastForm.roastedItemId) {
+      setRoastMsg("Raw and roasted items must be different");
+      return;
+    }
+    setRoastSaving(true);
+    try {
+      const res = await api.createRoasting({
+        rawItemId: roastForm.rawItemId,
+        roastedItemId: roastForm.roastedItemId,
+        rawQty: Number(roastForm.rawQty),
+        yieldBp: Math.round((Number(roastForm.yield) || 0) * 10000),
+        chargePerKgPaise: Math.round((Number(roastForm.charge) || 0) * 100),
+        date: roastForm.date || todayIso(),
+        marginBp: Math.round((Number(roastForm.margin) || 0) * 100),
+        note: roastForm.note,
+      });
+      const roastedUnit = items.find((item) => item.id === roastForm.roastedItemId)?.unit ?? "kg";
+      setRoastMsg(
+        `Roasted ${qty(res.roasting.roastedQtyBase, roastedUnit)} — cost ${money(res.roasting.totalCostPaise)} (${money(res.roasting.costPerKgPaise)}/kg), suggested ${money(res.roasting.suggestedPricePaise)}/kg`,
+      );
+      setRoastForm({ ...roastForm, rawQty: "", charge: "", note: "" });
+      setItems((await api.items()).items);
+      setRoastingsList((await api.roastings()).roastings);
+      void api.stats().then((r) => setStats(r.stats)).catch(() => {});
+    } catch (err) {
+      setRoastMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRoastSaving(false);
+    }
+  }
+
   async function addSupplierNow() {
     setAddSupplierBusy(true);
     setAddSupplierMsg(null);
@@ -980,6 +1059,9 @@ export default function App() {
     if (canView("expenses")) {
       jobs.push(api.expenseCategories().then((r) => setCategories(r.categories)));
       jobs.push(api.expenses().then((r) => setExpensesList(r.expenses)));
+    }
+    if (canView("stock")) {
+      jobs.push(api.roastings().then((r) => setRoastingsList(r.roastings)));
     }
     if (canView("suppliers")) {
       jobs.push(api.suppliers().then((r) => setSuppliersList(r.suppliers)));
@@ -1335,6 +1417,7 @@ export default function App() {
       links: [
         { key: "items", label: "Items", icon: <IconItems size={16} /> },
         { key: "purchases", label: "Purchases", icon: <IconPurchases size={16} /> },
+        { key: "roasting", label: "Roasting", icon: <IconStock size={16} /> },
         { key: "stock", label: "Stock Check", icon: <IconStock size={16} /> },
       ],
     },
@@ -2086,6 +2169,153 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </section>
+          );
+        })()}
+
+        {view === "roasting" && can("stock", "view") && (() => {
+          const weightItems = items.filter((item) => item.unit === "kg" || item.unit === "60 kg bag");
+          const raw = items.find((item) => item.id === roastForm.rawItemId);
+          const roasted = items.find((item) => item.id === roastForm.roastedItemId);
+          const preview = roastPreview();
+          const rawQtyBase = raw ? Math.round((Number(roastForm.rawQty) || 0) * unitFactor(raw.unit)) : 0;
+          const rawCostEstimate = raw ? Math.round((rawQtyBase * raw.avgCostPaise) / unitFactor(raw.unit)) : 0;
+          const suggestedPerUnit = preview && roasted
+            ? Math.round((preview.suggestedPricePaise * unitFactor(roasted.unit)) / 1000)
+            : 0;
+          return (
+            <section className="space-y-4">
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Roasting</h1>
+                <p className="text-sm text-muted">
+                  Convert raw seeds to roasted seeds. Standard yield 1.200 kg raw → 1 kg roasted; the charge is ₹ per kg roasted.
+                </p>
+              </div>
+
+              <div className="card p-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-1">
+                    <label className="label">Raw item</label>
+                    <select className="input" value={roastForm.rawItemId} onChange={(e) => setRoastForm({ ...roastForm, rawItemId: e.currentTarget.value === "" ? "" : Number(e.currentTarget.value) })}>
+                      <option value="">Choose raw…</option>
+                      {weightItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label">Roasted item</label>
+                    <select className="input" value={roastForm.roastedItemId} onChange={(e) => setRoastForm({ ...roastForm, roastedItemId: e.currentTarget.value === "" ? "" : Number(e.currentTarget.value) })}>
+                      <option value="">Choose roasted…</option>
+                      {weightItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label">Raw qty ({raw?.unit ?? "unit"})</label>
+                    <input className="input" type="number" placeholder="0" value={roastForm.rawQty} onChange={(e) => setRoastForm({ ...roastForm, rawQty: e.currentTarget.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label">Yield (raw ÷ roasted)</label>
+                    <input className="input" type="number" step="0.001" value={roastForm.yield} onChange={(e) => setRoastForm({ ...roastForm, yield: e.currentTarget.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label">Roasting ₹ / kg roasted</label>
+                    <input className="input" type="number" placeholder="0" value={roastForm.charge} onChange={(e) => setRoastForm({ ...roastForm, charge: e.currentTarget.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label">Date</label>
+                    <input className="input" type="date" value={roastForm.date} onChange={(e) => setRoastForm({ ...roastForm, date: e.currentTarget.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label">Margin % (suggested price)</label>
+                    <input className="input" type="number" value={roastForm.margin} onChange={(e) => setRoastForm({ ...roastForm, margin: e.currentTarget.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="label">Note</label>
+                    <input className="input" placeholder="Optional" value={roastForm.note} onChange={(e) => setRoastForm({ ...roastForm, note: e.currentTarget.value })} />
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-muted">
+                    Create the roasted product in Items first (e.g. ROASTED {raw?.name ?? "…"}).
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="btn-mini"
+                      onClick={() => {
+                        setView("items");
+                        setItemForm({
+                          id: null,
+                          name: raw ? `ROASTED ${raw.name}` : "",
+                          unit: raw?.unit ?? "kg",
+                          category: raw?.category ?? "",
+                          hsnCode: raw?.hsnCode ?? "",
+                          minStock: "",
+                          imageUrl: "",
+                        });
+                      }}
+                    >
+                      Add roasted item
+                    </button>
+                    <button className="btn btn-primary" disabled={roastSaving} onClick={() => void saveRoasting()}>
+                      {roastSaving ? "Saving…" : "Save roasting"}
+                    </button>
+                  </div>
+                </div>
+                {roastMsg && <p role="status" className="mt-2 text-sm text-muted">{roastMsg}</p>}
+              </div>
+
+              {preview && (
+                <div className="card grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-6">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Roasted output</p>
+                    <p className="mt-1 font-semibold">{roasted ? qty(preview.roastedQtyBase, roasted.unit) : "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Raw cost (est.)</p>
+                    <p className="mt-1 font-semibold">{money(rawCostEstimate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Roasting charge</p>
+                    <p className="mt-1 font-semibold">{money(preview.chargePaise)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Total cost</p>
+                    <p className="mt-1 font-semibold">{money(preview.totalCostPaise)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Cost / kg</p>
+                    <p className="mt-1 font-semibold">{money(preview.costPerKgPaise)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Suggested / {roasted?.unit ?? "unit"}</p>
+                    <p className="mt-1 font-semibold text-accent-ink">{money(suggestedPerUnit)}</p>
+                  </div>
+                </div>
+              )}
+
+              <ResponsiveTable
+                title="Roasting history"
+                rows={roastingsList}
+                rowKey={(row) => row.id}
+                minWidthClass="min-w-[860px]"
+                widths={["w-[10%]", "w-[18%]", "w-[18%]", "w-[8%]", "w-[10%]", "w-[11%]", "w-[10%]", "w-[15%]"]}
+                columns={[
+                  { key: "date", header: "Date", cell: (row) => formatDate(row.roastDate), className: "whitespace-nowrap" },
+                  { key: "raw", header: "Raw", cell: (row) => `${row.rawItemName} · ${qty(row.rawQtyBase, row.rawUnit)}` },
+                  { key: "roasted", header: "Roasted", cell: (row) => `${row.roastedItemName} · ${qty(row.roastedQtyBase, row.roastedUnit)}` },
+                  { key: "yield", header: "Yield", align: "right", cell: (row) => (row.yieldBp / 10000).toFixed(3) },
+                  { key: "charge", header: "Charge", align: "right", cell: (row) => money(row.chargePaise) },
+                  { key: "cost", header: "Total cost", align: "right", cell: (row) => money(row.totalCostPaise) },
+                  { key: "perKg", header: "Cost/kg", align: "right", cell: (row) => money(row.costPerKgPaise) },
+                  { key: "suggested", header: "Suggested/kg", align: "right", cell: (row) => money(row.suggestedPricePaise) },
+                ]}
+                empty={
+                  <EmptyState
+                    illustration="items"
+                    title="No roasting batches yet"
+                    message="Pick a raw item and a roasted item above to record the first batch."
+                  />
+                }
+              />
             </section>
           );
         })()}

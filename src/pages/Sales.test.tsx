@@ -23,7 +23,7 @@ vi.mock("../db/sales", async (importOriginal) => {
   return { ...actual, listSales: vi.fn(), saveSale: vi.fn() };
 });
 
-const RICE = { id: 1, name: "Rice", unit: "kg", category: null, hsnCode: null, minStockBase: 0, imageUrl: null, stockLeftBase: 4000 };
+const RICE = { id: 1, name: "Rice", unit: "kg", category: null, hsnCode: null, avgCostPaise: 0, minStockBase: 0, imageUrl: null, stockLeftBase: 4000 };
 const URL = "postgresql://user:pass@localhost:5432/test";
 
 function renderPage() {
