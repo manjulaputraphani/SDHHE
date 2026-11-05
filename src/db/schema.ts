@@ -49,6 +49,8 @@ export const purchases = pgTable(
     expensesPaise: integer("expenses_paise").notNull().default(0),
     purchaseDate: date("purchase_date").notNull(),
     paymentMode: text("payment_mode"),
+    /** Amount already paid to the supplier for this purchase (paise). */
+    paidPaise: integer("paid_paise").notNull().default(0),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -342,5 +344,19 @@ export const openingBalance = pgTable("opening_balance", {
   amountPaise: integer("amount_paise").notNull(),
   asOfDate: date("as_of_date").notNull(),
   note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Payments made to suppliers — tracks money out against each purchase. */
+export const supplierPayments = pgTable("supplier_payments", {
+  id: serial("id").primaryKey(),
+  purchaseId: integer("purchase_id")
+    .notNull()
+    .references(() => purchases.id),
+  amountPaise: integer("amount_paise").notNull(),
+  paymentDate: date("payment_date").notNull(),
+  paymentMode: text("payment_mode"),
+  note: text("note"),
+  actor: text("actor"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
