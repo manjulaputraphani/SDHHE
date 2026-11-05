@@ -85,6 +85,10 @@ import {
 
 type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "roasting" | "stock" | "expenses" | "suppliers" | "activity" | "team" | "settings";
 
+/** Views that share another module's permission (Roasting uses Stock). */
+const viewModule = (view: View): ModuleKey =>
+  view === "roasting" ? "stock" : (view as ModuleKey);
+
 type PurchaseRow = {
   id: number;
   name: string;
@@ -575,7 +579,7 @@ export default function App() {
   // If the signed-in role cannot view the current tab, jump to the first allowed one.
   useEffect(() => {
     if (!user) return;
-    if (allowed(user.permissions, view as ModuleKey, "view")) return;
+    if (allowed(user.permissions, viewModule(view), "view")) return;
     const first = MODULES.find((moduleKey) => allowed(user.permissions, moduleKey, "view"));
     if (first) setView(first as View);
   }, [user, view]);
@@ -1480,7 +1484,7 @@ export default function App() {
   const navGroups = allNavGroups
     .map((group) => ({
       ...group,
-      links: group.links.filter((link) => can(link.module ?? (link.key as ModuleKey), "view")),
+      links: group.links.filter((link) => can(link.module ?? viewModule(link.key), "view")),
     }))
     .filter((group) => group.links.length > 0);
 

@@ -39,6 +39,7 @@ DB backup intentionally NOT taken (owner chose no backup).
 - **GSTIN "NA" collision fix** (2026-11-05): `normaliseGstin` treats `NA`, `N/A`, `-` and blank as null, so adding another no-GST customer no longer matches/updates the first one. Existing `NA` GSTIN/email values cleaned to null. Deployed `sdhhe-api` version `601102c5`.
 - **Customer create/update split** (2026-11-05): `POST /api/customers` is now create-only (never updates; duplicate phone/GSTIN gives “use Edit”); `PUT /api/customers/:id` updates; `POST /api/customers/save` remains the billing find-or-create. UI has separate **Create customer** / **Update customer** buttons and functions. Verified create + duplicate block against the live DB. Deployed `sdhhe-api` version `4e6555be`.
 - **Roasting nav fix** (2026-11-05): sidebar filtering now maps the Roasting link to the **stock** permission (`module: "stock"`), so it appears for stock-view roles. Deployed `sdhhe-api` version `037413bc` (bundle contains `Roasting`).
+- **Roasting redirect fix** (2026-11-05): the "can I view this tab" redirect also maps `roasting` → `stock`; previously it bounced Roasting back to Dashboard. Deployed `sdhhe-api` version `b9e62880`.
 
 ## Next tasks
 1. Add the **Roasting** screen to the desktop app (shared `createRoasting`/`listRoastings` already work; only web UI exists).
