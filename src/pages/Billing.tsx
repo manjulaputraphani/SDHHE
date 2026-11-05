@@ -53,6 +53,7 @@ export default function Billing() {
   const [draftQty, setDraftQty] = useState("");
   const [draftPrice, setDraftPrice] = useState("");
   const [draftHsn, setDraftHsn] = useState("");
+  const [draftMargin, setDraftMargin] = useState("20");
   const [lines, setLines] = useState<Line[]>([]);
   const [discount, setDiscount] = useState("");
   const [saleExpenses, setSaleExpenses] = useState("");
@@ -83,6 +84,9 @@ export default function Billing() {
 
   const draftItem = items.find((i) => i.id === draftItemId) ?? null;
   const draftUnit: Unit = (draftItem?.unit as Unit) ?? "kg";
+  const draftSuggestedPaise = Math.round(
+    (draftItem?.avgCostPaise ?? 0) * (100 + (Number(draftMargin) || 0)) / 100,
+  );
 
   const totals = useMemo(() => {
     const subtotalPaise = lines.reduce((sum, line) => sum + line.lineTotalPaise, 0);
@@ -366,7 +370,12 @@ export default function Billing() {
               id="bill-item"
               className="input w-full"
               value={draftItemId}
-              onChange={(e) => setDraftItemId(e.currentTarget.value === "" ? "" : Number(e.currentTarget.value))}
+              onChange={(e) => {
+                const id = e.currentTarget.value === "" ? "" : Number(e.currentTarget.value);
+                const picked = items.find((item) => item.id === id);
+                setDraftItemId(id);
+                setDraftHsn(picked?.hsnCode ?? "");
+              }}
             >
               <option value="">Choose an item…</option>
               {items.map((item) => (
@@ -436,6 +445,34 @@ export default function Billing() {
             </button>
           </div>
         </div>
+
+        {draftItem && draftItem.avgCostPaise > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
+            <span>
+              Avg cost: <b className="text-ink">{formatRupees(draftItem.avgCostPaise)}</b> / {draftUnit}
+            </span>
+            <label className="flex items-center gap-1">
+              Margin
+              <input
+                className="input h-7 w-16 px-2 text-xs"
+                type="number"
+                value={draftMargin}
+                onChange={(e) => setDraftMargin(e.currentTarget.value)}
+              />
+              %
+            </label>
+            <span>
+              Suggested: <b className="text-ink">{formatRupees(draftSuggestedPaise)}</b> / {draftUnit}
+            </span>
+            <button
+              type="button"
+              className="text-sm underline"
+              onClick={() => setDraftPrice(String(draftSuggestedPaise / 100))}
+            >
+              Use suggested
+            </button>
+          </div>
+        )}
 
         {lines.length > 0 && (
           <table className="w-full text-left text-sm">

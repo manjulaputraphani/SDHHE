@@ -282,6 +282,7 @@ export default function App() {
   const [billDiscount, setBillDiscount] = useState("");
   const [billSaleExpenses, setBillSaleExpenses] = useState("");
   const [draft, setDraft] = useState({ itemId: "" as number | "", qty: "", rate: "", hsn: "" });
+  const [billMargin, setBillMargin] = useState("20");
   const [billLines, setBillLines] = useState<{ itemId: number; name: string; unit: string; qtyBase: number; ratePaise: number; hsn: string; totalPaise: number }[]>([]);
   const [billMsg, setBillMsg] = useState<string | null>(null);
   const [aiMessages, setAiMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
@@ -564,6 +565,10 @@ export default function App() {
 
   // Low-stock items (same rule as the stats query: stock left <= minimum).
   const lowStockItems = items.filter((item) => item.stockLeftBase <= item.minStockBase);
+  const draftItem = items.find((item) => item.id === draft.itemId);
+  const draftSuggestedPaise = Math.round(
+    (draftItem?.avgCostPaise ?? 0) * (100 + (Number(billMargin) || 0)) / 100,
+  );
   const lowStockCount = stats?.low_stock ?? 0;
 
   // This month's expenses from the list itself (works for roles without dashboard stats).
@@ -3055,7 +3060,14 @@ export default function App() {
                   <div className="grid items-end gap-2 sm:grid-cols-[2fr_1fr_1fr_1fr_auto]">
                     <div className="space-y-1">
                       <label className="label h-5 whitespace-nowrap leading-5">Item</label>
-                      <ItemPicker items={items} value={draft.itemId} onChange={(id) => setDraft({ ...draft, itemId: id })} />
+                      <ItemPicker
+                        items={items}
+                        value={draft.itemId}
+                        onChange={(id) => {
+                          const picked = items.find((item) => item.id === id);
+                          setDraft({ ...draft, itemId: id, hsn: picked?.hsnCode ?? "" });
+                        }}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="label h-5 whitespace-nowrap leading-5">Qty ({items.find((i) => i.id === draft.itemId)?.unit ?? "unit"})</label>
@@ -3073,6 +3085,34 @@ export default function App() {
                       <button className="btn btn-primary h-10 whitespace-nowrap" onClick={addBillLine}>+ Add</button>
                     )}
                   </div>
+
+                  {draftItem && draftItem.avgCostPaise > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
+                      <span>
+                        Avg cost: <b className="text-ink">{money(draftItem.avgCostPaise)}</b> / {draftItem.unit}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        Margin
+                        <input
+                          className="input h-7 w-16 px-2 text-xs"
+                          type="number"
+                          value={billMargin}
+                          onChange={(e) => setBillMargin(e.currentTarget.value)}
+                        />
+                        %
+                      </span>
+                      <span>
+                        Suggested: <b className="text-ink">{money(draftSuggestedPaise)}</b> / {draftItem.unit}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-mini"
+                        onClick={() => setDraft({ ...draft, rate: (draftSuggestedPaise / 100).toFixed(2) })}
+                      >
+                        Use suggested
+                      </button>
+                    </div>
+                  )}
 
                   {billLines.length > 0 ? (
                     <ResponsiveTable
