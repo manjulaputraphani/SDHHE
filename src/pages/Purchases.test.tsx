@@ -24,6 +24,7 @@ const ROW = {
   qtyBase: 2000,
   unitPricePaise: 1200,
   totalPaise: 2400,
+  paidPaise: 0,
   supplier: "Sri Traders",
   paymentMode: "Cash",
   note: null,

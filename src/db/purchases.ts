@@ -179,7 +179,8 @@ export async function listSuppliers(db: Db): Promise<string[]> {
   return rows.map((r) => r.name);
 }
 
-export type PurchaseListRow = {  id: number;
+export type PurchaseListRow = {
+  id: number;
   date: string;
   itemId: number;
   itemName: string;
@@ -187,6 +188,7 @@ export type PurchaseListRow = {  id: number;
   qtyBase: number;
   unitPricePaise: number;
   totalPaise: number;
+  paidPaise: number;
   supplier: string | null;
   paymentMode: string | null;
   note: string | null;
@@ -214,6 +216,7 @@ export async function listPurchases(
       qtyBase: purchases.qtyBase,
       unitPricePaise: purchases.unitPricePaise,
       totalPaise: purchases.totalPaise,
+      paidPaise: purchases.paidPaise,
       supplier: suppliers.name,
       paymentMode: purchases.paymentMode,
       note: purchases.note,

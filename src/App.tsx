@@ -25,6 +25,7 @@ import Sales from "./pages/Sales";
 import Settings from "./pages/Settings";
 import Setup from "./pages/Setup";
 import StockCheck from "./pages/StockCheck";
+import Suppliers from "./pages/Suppliers";
 import Suggestions from "./pages/Suggestions";
 type Phase = "loading" | "setup" | "login" | "home";
 
@@ -100,6 +101,7 @@ export default function App() {
             <Route path="bills" element={<Guarded module="bills"><Bills /></Guarded>} />
             <Route path="sales" element={<Guarded module="bills"><Sales /></Guarded>} />
             <Route path="expenses" element={<Guarded module="expenses"><Expenses /></Guarded>} />
+            <Route path="suppliers" element={<Guarded module="expenses"><Suppliers /></Guarded>} />
             <Route path="reports" element={<Guarded module="reports"><Reports /></Guarded>} />
             <Route path="analytics" element={<Guarded module="dashboard"><Analytics /></Guarded>} />
             <Route path="analysis" element={<Guarded module="reports"><Analysis /></Guarded>} />
