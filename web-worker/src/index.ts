@@ -24,7 +24,7 @@ import { addPurchase, deletePurchase } from "../../src/db/purchases";
 import { saveStockEntry } from "../../src/db/stock";
 import { createExpense, deleteExpense, updateExpense } from "../../src/db/expenses";
 import { setAuditActor, type AuditActor } from "../../src/db/activity";
-import { endSession, SESSION_MAX_SECONDS, startSession, userUsageMetrics } from "../../src/db/sessions";
+import { endSession, SESSION_MAX_SECONDS, startSession, userUsageMetrics, getSessionsWithoutLogoutLast24Hours } from "../../src/db/sessions";
 import { getCostingMethod, setCostingMethod } from "../../src/db/costing";
 import { finYearOptions, finYearReport, dealProfits, batchLedger } from "../../src/db/reports";
 import { getRoleMatrix, loadPermissionsForRole, saveRolePermissions } from "../../src/db/permissions";
@@ -109,6 +109,8 @@ function routePermission(
   if (pathname === "/api/users") return { module: "team", action: read ? "view" : "create" };
   if (pathname.startsWith("/api/users/")) return { module: "team", action: "edit" };
   if (pathname === "/api/roles") return { module: "team", action: read ? "view" : "edit" };
+
+  if (pathname === "/api/sessions/open") return { module: "team", action: "view" };
 
   if (pathname === "/api/settings/costing") return { module: "settings", action: read ? "view" : "edit" };
   if (pathname.startsWith("/api/settings/notifications")) return { module: "settings", action: read ? "view" : "edit" };
@@ -625,6 +627,12 @@ export default {
       if (url.pathname === "/api/roles" && request.method === "GET") {
         if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
         return json({ roles: await getRoleMatrix(db) });
+      }
+
+      if (url.pathname === "/api/sessions/open" && request.method === "GET") {
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+        const rows = await getSessionsWithoutLogoutLast24Hours(db);
+        return json({ sessions: rows });
       }
 
       if (url.pathname === "/api/settings/costing" && request.method === "GET") {

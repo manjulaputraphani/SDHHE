@@ -5,7 +5,7 @@
  * stores how long the person was active. The same rows drive the activity
  * timeline ("Signed in", "Signed out") and the usage metrics.
  */
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { activityLog, appUsers, userSessions } from "./schema";
 
@@ -187,6 +187,33 @@ export async function listSessions(db: Db, userId?: number, limit = 50): Promise
     .where(userId ? eq(userSessions.userId, userId) : undefined)
     .orderBy(desc(userSessions.startedAt), desc(userSessions.id))
     .limit(limit);
+  return rows.map((row) => ({
+    ...row,
+    startedAt: iso(row.startedAt),
+    endedAt: row.endedAt ? iso(row.endedAt) : null,
+  }));
+}
+
+/** Sessions started in the last 24 hours that still have no logout (endedAt is null).
+ * Used to surface logins where the user never signed out. */
+export async function getSessionsWithoutLogoutLast24Hours(db: Db): Promise<SessionRow[]> {
+  const rows = await db
+    .select({
+      id: userSessions.id,
+      userId: userSessions.userId,
+      startedAt: userSessions.startedAt,
+      endedAt: userSessions.endedAt,
+      durationSeconds: userSessions.durationSeconds,
+      source: userSessions.source,
+    })
+    .from(userSessions)
+    .where(
+      and(
+        isNull(userSessions.endedAt),
+        gte(userSessions.startedAt, sql`now() - interval '24 hours'`),
+      )
+    )
+    .orderBy(desc(userSessions.startedAt));
   return rows.map((row) => ({
     ...row,
     startedAt: iso(row.startedAt),
