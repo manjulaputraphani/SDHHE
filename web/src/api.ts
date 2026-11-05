@@ -46,6 +46,25 @@ export type BillDetail = BillRow & {
   lines: BillLine[];
 };
 
+export type Supplier = { id: number; name: string; phone: string | null };
+
+export type SupplierWithDues = Supplier & {
+  total_purchased_paise: number;
+  total_paid_paise: number;
+  outstanding_paise: number;
+};
+
+export type SupplierPaymentRow = {
+  id: number;
+  purchase_id: number;
+  purchase_date: string;
+  item_name: string;
+  amount_paise: number;
+  payment_date: string;
+  payment_mode: string | null;
+  note: string | null;
+};
+
 export type Member = { id: number; name: string; phone: string; role: Role; active: boolean; pending: boolean; accessUntil: string | null };
 
 export type Customer = {
@@ -234,9 +253,16 @@ export const api = {
         low_stock: number;
       };
     }>("/api/stats"),
-  purchases: () => request<{ purchases: Array<{ id: number; name: string; unit: string; qty_base: number; unit_price_paise: number; total_paise: number; purchase_date: string; expenses_paise: number; supplier_name: string | null }> }>("/api/purchases"),
+  purchases: () => request<{ purchases: Array<{ id: number; name: string; unit: string; qty_base: number; unit_price_paise: number; total_paise: number; paid_paise: number; purchase_date: string; expenses_paise: number; supplier_name: string | null }> }>("/api/purchases"),
   addPurchase: (body: { itemId: number; qty: number; unitPricePaise: number; expensesPaise?: number; date: string; supplierName?: string; paymentMode?: string }) =>
     request<{ purchase: { purchaseId: number } }>("/api/purchases", { method: "POST", body: JSON.stringify(body) }),
+  suppliers: () => request<{ suppliers: Supplier[] }>("/api/suppliers"),
+  createSupplier: (body: { name: string; phone?: string }) =>
+    request<{ supplier: Supplier }>("/api/suppliers", { method: "POST", body: JSON.stringify(body) }),
+  supplierDues: () => request<{ dues: SupplierWithDues[] }>("/api/supplier-dues"),
+  recordSupplierPayment: (body: { purchaseId: number; amountPaise: number; paymentDate: string; paymentMode?: string; note?: string }) =>
+    request<{ ok: boolean }>("/api/supplier-payments", { method: "POST", body: JSON.stringify(body) }),
+  supplierPayments: () => request<{ payments: SupplierPaymentRow[] }>("/api/supplier-payments"),
   batches: (itemId: number) => request<{ batches: Array<{ id: number; qty_remaining: number; unit_price_paise: number; purchase_date: string }> }>(`/api/items/${itemId}/batches`),
   batchLedger: (itemId: number) => request<{ ledger: BatchLedger }>(`/api/items/${itemId}/batches/ledger`),
   saveStock: (body: Record<string, unknown>) => request<{ stock: unknown }>("/api/stock", { method: "POST", body: JSON.stringify(body) }),

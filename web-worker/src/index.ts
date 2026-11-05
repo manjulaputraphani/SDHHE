@@ -91,6 +91,10 @@ function routePermission(
   if (pathname === "/api/purchases") return { module: "purchases", action: read ? "view" : "create" };
   if (/^\/api\/purchases\/\d+$/.test(pathname)) return { module: "purchases", action: "delete" };
 
+  if (pathname === "/api/suppliers") return { module: "suppliers", action: read ? "view" : "create" };
+  if (pathname === "/api/supplier-dues") return { module: "suppliers", action: "view" };
+  if (pathname === "/api/supplier-payments") return { module: "suppliers", action: read ? "view" : "create" };
+
   if (pathname === "/api/stock") return { module: "stock", action: read ? "view" : "create" };
 
   if (pathname === "/api/customers") return { module: "customers", action: read ? "view" : "create" };
@@ -640,13 +644,43 @@ export default {
       }
 
       if (url.pathname === "/api/purchases" && request.method === "GET") {
-        const rows = await sqlQuery(env, `select p.id, p.qty_base, p.unit_price_paise, p.total_paise, p.purchase_date,
+        const rows = await sqlQuery(env, `select p.id, p.qty_base, p.unit_price_paise, p.total_paise, p.paid_paise, p.purchase_date,
             p.expenses_paise, i.name, i.unit, s.name as supplier_name
           from purchases p
           join items i on i.id = p.item_id
           left join suppliers s on s.id = p.supplier_id
           order by p.id desc limit 30`);
         return json({ purchases: rows });
+      }
+
+      // ---- Supplier dues (reads) ----
+      if (url.pathname === "/api/suppliers" && request.method === "GET") {
+        const rows = await sqlQuery(env, `select id, name, phone from suppliers order by name`);
+        return json({ suppliers: rows });
+      }
+
+      if (url.pathname === "/api/supplier-dues" && request.method === "GET") {
+        const rows = await sqlQuery(env, `select
+          s.id, s.name, s.phone,
+          coalesce(sum(p.total_paise), 0)::bigint as total_purchased_paise,
+          coalesce(sum(p.paid_paise), 0)::bigint as total_paid_paise,
+          (coalesce(sum(p.total_paise), 0) - coalesce(sum(p.paid_paise), 0))::bigint as outstanding_paise
+        from suppliers s
+        left join purchases p on p.supplier_id = s.id
+        group by s.id, s.name, s.phone
+        order by s.name`);
+        return json({ dues: rows });
+      }
+
+      if (url.pathname === "/api/supplier-payments" && request.method === "GET") {
+        const rows = await sqlQuery(env, `select
+          sp.id, sp.purchase_id, p.purchase_date, i.name as item_name,
+          sp.amount_paise, sp.payment_date, sp.payment_mode, sp.note
+        from supplier_payments sp
+        join purchases p on p.id = sp.purchase_id
+        join items i on i.id = p.item_id
+        order by sp.payment_date desc, sp.id desc`);
+        return json({ payments: rows });
       }
 
       const batchMatch = url.pathname.match(/^\/api\/items\/(\d+)\/batches$/);
@@ -754,6 +788,44 @@ export default {
         const id = Number(url.pathname.split("/").pop());
         if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid expense id" }, { status: 400 });
         await asActor(actor, () => deleteExpense(db, id));
+        return json({ ok: true });
+      }
+
+      // ---- Supplier dues (writes) ----
+      if (url.pathname === "/api/suppliers" && request.method === "POST") {
+        const name = String(body.name ?? "").trim();
+        const phone = String(body.phone ?? "").trim() || null;
+        if (!name) return json({ error: "Supplier name is required" }, { status: 400 });
+        const [row] = await sqlQuery(env, `insert into suppliers (name, phone) values ($1, $2) returning id, name, phone`, [name, phone]);
+        await asActor(actor, () => logActivity(db, { event: "supplier.create", summary: `Supplier ${name} added`, entity: "supplier", entityId: Number(row.id) }));
+        return json({ supplier: row });
+      }
+
+      if (url.pathname === "/api/supplier-payments" && request.method === "POST") {
+        const purchaseId = Number(body.purchaseId);
+        const amountPaise = Number(body.amountPaise);
+        const paymentDate = String(body.paymentDate ?? "");
+        const paymentMode = String(body.paymentMode ?? "").trim() || null;
+        const note = String(body.note ?? "").trim() || null;
+        if (!Number.isInteger(purchaseId) || purchaseId <= 0) return json({ error: "Invalid purchase" }, { status: 400 });
+        if (!Number.isInteger(amountPaise) || amountPaise <= 0) return json({ error: "Amount must be more than 0" }, { status: 400 });
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) return json({ error: "Choose a valid date" }, { status: 400 });
+
+        const [purchase] = await sqlQuery(env, `select id, total_paise, paid_paise from purchases where id = $1`, [purchaseId]);
+        if (!purchase) return json({ error: "Purchase not found" }, { status: 404 });
+        const totalPaise = Number(purchase.total_paise);
+        const paidPaise = Number(purchase.paid_paise);
+        if (paidPaise + amountPaise > totalPaise) {
+          return json({ error: `Payment exceeds purchase total (₹${(totalPaise / 100).toFixed(2)})` }, { status: 400 });
+        }
+
+        await asActor(actor, async () => {
+          await sqlQuery(env, `insert into supplier_payments (purchase_id, amount_paise, payment_date, payment_mode, note, actor) values ($1, $2, $3, $4, $5, $6)`, [purchaseId, amountPaise, paymentDate, paymentMode, note, actor.name]);
+          await sqlQuery(env, `update purchases set paid_paise = paid_paise + $1 where id = $2`, [amountPaise, purchaseId]);
+          await sqlQuery(env, `insert into cash_ledger (type, amount_paise, ref_type, ref_id, entry_date, note, actor) values ('purchase', $1, 'purchase', $2, $3, $4, $5)`, [-amountPaise, purchaseId, paymentDate, `Payment to supplier for purchase #${purchaseId}`, actor.name]);
+          await logActivity(db, { event: "supplier.payment", summary: `Paid ₹${(amountPaise / 100).toFixed(2)} against purchase #${purchaseId}`, entity: "purchase", entityId: purchaseId });
+        });
+
         return json({ ok: true });
       }
 

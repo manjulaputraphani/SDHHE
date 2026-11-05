@@ -80,7 +80,7 @@ import {
   IconUserX,
 } from "./components/icons";
 
-type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "stock" | "expenses" | "activity" | "team" | "settings";
+type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "stock" | "expenses" | "suppliers" | "activity" | "team" | "settings";
 
 function IconEye() {
   return (
@@ -255,7 +255,7 @@ export default function App() {
   const [aiBusy, setAiBusy] = useState(false);
   const [lastBillId, setLastBillId] = useState<number | null>(null);
   const [stats, setStats] = useState<{ today_sales: number; month_sales: number; month_profit: number; month_expenses: number; credit_paise: number; credit_bills: number; low_stock: number } | null>(null);
-  const [purchasesList, setPurchasesList] = useState<Array<{ id: number; name: string; unit: string; qty_base: number; unit_price_paise: number; total_paise: number; purchase_date: string; expenses_paise: number; supplier_name: string | null }>>([]);
+  const [purchasesList, setPurchasesList] = useState<Array<{ id: number; name: string; unit: string; qty_base: number; unit_price_paise: number; total_paise: number; paid_paise: number; purchase_date: string; expenses_paise: number; supplier_name: string | null }>>([]);
   const [expensesList, setExpensesList] = useState<Array<{ id: number; category: string; amountPaise: number; date: string; paymentMode: string | null; paidTo: string | null; note: string | null }>>([]);
   const [stockEntries, setStockEntries] = useState<StockEntryRow[]>([]);
   const [purchase, setPurchase] = useState({ itemId: "" as number | "", qty: "", rate: "", supplier: "", expenses: "" });
@@ -276,6 +276,15 @@ export default function App() {
   const [activityBusy, setActivityBusy] = useState(false);
   const [expense, setExpense] = useState({ category: "", amount: "", paidTo: "", note: "", type: "general", date: new Date().toISOString().slice(0, 10) });
   const [expenseMsg, setExpenseMsg] = useState<string | null>(null);
+  const [suppliersList, setSuppliersList] = useState<Array<{ id: number; name: string; phone: string | null }>>([]);
+  const [supplierDuesList, setSupplierDuesList] = useState<Array<{ id: number; name: string; phone: string | null; total_purchased_paise: number; total_paid_paise: number; outstanding_paise: number }>>([]);
+  const [supplierPaymentsList, setSupplierPaymentsList] = useState<Array<{ id: number; purchase_id: number; purchase_date: string; item_name: string; amount_paise: number; payment_date: string; payment_mode: string | null; note: string | null }>>([]);
+  const [addSupplier, setAddSupplier] = useState({ name: "", phone: "" });
+  const [addSupplierMsg, setAddSupplierMsg] = useState<string | null>(null);
+  const [addSupplierBusy, setAddSupplierBusy] = useState(false);
+  const [recordPayment, setRecordPayment] = useState({ purchaseId: "" as number | "", amount: "", paymentDate: new Date().toISOString().slice(0, 10), paymentMode: "Cash", note: "" });
+  const [recordPaymentMsg, setRecordPaymentMsg] = useState<string | null>(null);
+  const [recordPaymentBusy, setRecordPaymentBusy] = useState(false);
   const [shop, setShop] = useState<ShopDetails | null>(null);
   const [bill, setBill] = useState<BillDetail | null>(null);
   const [lotItem, setLotItem] = useState<Item | null>(null);
@@ -752,6 +761,46 @@ export default function App() {
     }
   }
 
+  async function addSupplierNow() {
+    setAddSupplierBusy(true);
+    setAddSupplierMsg(null);
+    try {
+      await api.createSupplier({ name: addSupplier.name, phone: addSupplier.phone || undefined });
+      setAddSupplier({ name: "", phone: "" });
+      setSuppliersList((await api.suppliers()).suppliers);
+      setSupplierDuesList((await api.supplierDues()).dues);
+    } catch (err) {
+      setAddSupplierMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAddSupplierBusy(false);
+    }
+  }
+
+  async function recordSupplierPaymentNow() {
+    setRecordPaymentBusy(true);
+    setRecordPaymentMsg(null);
+    try {
+      const purchaseId = Number(recordPayment.purchaseId);
+      const amountPaise = Math.round(Number(recordPayment.amount) * 100);
+      if (!Number.isInteger(purchaseId) || purchaseId <= 0) throw new Error("Select a purchase");
+      if (!Number.isInteger(amountPaise) || amountPaise <= 0) throw new Error("Enter a valid amount");
+      await api.recordSupplierPayment({
+        purchaseId,
+        amountPaise,
+        paymentDate: recordPayment.paymentDate,
+        paymentMode: recordPayment.paymentMode,
+        note: recordPayment.note || undefined,
+      });
+      setRecordPayment({ purchaseId: "" as number | "", amount: "", paymentDate: new Date().toISOString().slice(0, 10), paymentMode: "Cash", note: "" });
+      setSupplierDuesList((await api.supplierDues()).dues);
+      setSupplierPaymentsList((await api.supplierPayments()).payments);
+    } catch (err) {
+      setRecordPaymentMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRecordPaymentBusy(false);
+    }
+  }
+
   async function loadNotify() {
     const cfg = await api.notifySettings();
     setNotifyEmails(cfg.emails.join(", "));
@@ -784,6 +833,11 @@ export default function App() {
     if (canView("expenses")) {
       jobs.push(api.expenseCategories().then((r) => setCategories(r.categories)));
       jobs.push(api.expenses().then((r) => setExpensesList(r.expenses)));
+    }
+    if (canView("suppliers")) {
+      jobs.push(api.suppliers().then((r) => setSuppliersList(r.suppliers)));
+      jobs.push(api.supplierDues().then((r) => setSupplierDuesList(r.dues)));
+      jobs.push(api.supplierPayments().then((r) => setSupplierPaymentsList(r.payments)));
     }
     if (canView("investments")) {
       jobs.push(api.investments().then((r) => { setInvestments(r.investments); setInvestTotal(r.totalPaise); }));
@@ -1145,6 +1199,7 @@ export default function App() {
       heading: "Money",
       links: [
         { key: "expenses", label: "Expenses", icon: <IconExpenses size={16} /> },
+        { key: "suppliers", label: "Supplier Dues", icon: <IconPurchases size={16} /> },
         { key: "investments", label: "Investments", icon: <IconInvestments size={16} /> },
         { key: "reports", label: "Reports", icon: <IconReports size={16} /> },
       ],
@@ -2005,6 +2060,140 @@ export default function App() {
                 />
               }
             />
+          </section>
+        )}
+
+        {view === "suppliers" && can("suppliers", "view") && (
+          <section className="space-y-4">
+            <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Supplier Dues</h1>
+            <p className="text-sm text-muted">
+              What you owe suppliers · total outstanding{" "}
+              <span className={supplierDuesList.reduce((s, d) => s + d.outstanding_paise, 0) > 0 ? "font-medium text-error-ink" : "text-muted"}>
+                {money(supplierDuesList.reduce((s, d) => s + d.outstanding_paise, 0))}
+              </span>
+            </p>
+
+            {/* Add supplier */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between space-y-2 sm:space-y-0 sm:flex-row">
+                <div>
+                  <h2 className="text-sm font-medium">Add supplier</h2>
+                </div>
+              </div>
+              <FormRow desktop="min-[1200px]:grid-cols-[1fr_1fr_1.2fr_auto]">
+                <div className="space-y-1">
+                  <label className="label" htmlFor="supplier-name">Name</label>
+                  <input id="supplier-name" className="input" value={addSupplier.name} onChange={(e) => setAddSupplier({ ...addSupplier, name: e.currentTarget.value })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="label" htmlFor="supplier-phone">Phone</label>
+                  <input id="supplier-phone" className="input" type="tel" value={addSupplier.phone} onChange={(e) => setAddSupplier({ ...addSupplier, phone: e.currentTarget.value })} />
+                </div>
+                {can("suppliers", "create") && (
+                  <button className="btn btn-primary min-[1200px]:w-auto whitespace-nowrap" onClick={() => void addSupplierNow()} disabled={addSupplierBusy}>
+                    {addSupplierBusy ? "Adding…" : "Add supplier"}
+                  </button>
+                )}
+                {addSupplierMsg && <p className="mt-2 text-sm text-muted">{addSupplierMsg}</p>}
+              </FormRow>
+            </div>
+
+            {/* Supplier dues table */}
+            <div className="card p-4">
+              <ResponsiveTable
+                title="Supplier dues"
+                rows={supplierDuesList}
+                rowKey={(row) => row.id}
+                minWidthClass="min-w-[640px]"
+                widths={["w-[25%]", "w-[15%]", "w-[20%]", "w-[20%]", "w-[20%]"]}
+                columns={[
+                  { key: "name", header: "Supplier", cell: (row) => <span className="font-medium">{row.name}</span> },
+                  { key: "phone", header: "Phone", cell: (row) => row.phone ?? "—" },
+                  { key: "purchased", header: "Purchased", align: "right", cell: (row) => money(row.total_purchased_paise) },
+                  { key: "paid", header: "Paid", align: "right", cell: (row) => money(row.total_paid_paise) },
+                  {
+                    key: "outstanding",
+                    header: "Outstanding",
+                    align: "right",
+                    cell: (row) => (
+                      <span className={`font-medium ${row.outstanding_paise > 0 ? "text-error-ink" : "text-success-ink"}`}>
+                        {row.outstanding_paise > 0 ? money(row.outstanding_paise) : "Paid"}
+                      </span>
+                    ),
+                  },
+                ]}
+                empty={<p className="text-sm text-muted">No suppliers yet. Add your first one above.</p>}
+              />
+            </div>
+
+            {/* Record payment */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between space-y-2 sm:space-y-0 sm:flex-row">
+                <div>
+                  <h2 className="text-sm font-medium">Record payment to supplier</h2>
+                  <p className="text-sm text-muted">Select a purchase with an outstanding balance and enter the amount paid.</p>
+                </div>
+              </div>
+              <FormRow desktop="min-[1200px]:grid-cols-[1.4fr_1fr_1fr_1fr_1.4fr_auto]">
+                <div className="space-y-1">
+                  <label className="label" htmlFor="payment-purchase">Purchase</label>
+                  <select id="payment-purchase" className="input" value={String(recordPayment.purchaseId ?? "")} onChange={(e) => setRecordPayment({ ...recordPayment, purchaseId: Number(e.currentTarget.value) || "" as number | "" })}>
+                    <option value="">— select purchase —</option>
+                    {purchasesList.filter((p) => p.total_paise > p.paid_paise).map((p) => (
+                      <option key={p.id} value={String(p.id)}>
+                        {p.name} · {p.purchase_date} · outstanding {money(p.total_paise - p.paid_paise)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="label" htmlFor="payment-amount">Amount ₹</label>
+                  <input id="payment-amount" className="input" type="number" placeholder="0" value={recordPayment.amount} onChange={(e) => setRecordPayment({ ...recordPayment, amount: e.currentTarget.value })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="label" htmlFor="payment-date">Date</label>
+                  <input id="payment-date" className="input" type="date" value={recordPayment.paymentDate} onChange={(e) => setRecordPayment({ ...recordPayment, paymentDate: e.currentTarget.value })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="label" htmlFor="payment-mode">Mode</label>
+                  <select id="payment-mode" className="input" value={recordPayment.paymentMode} onChange={(e) => setRecordPayment({ ...recordPayment, paymentMode: e.currentTarget.value })}>
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Card">Card</option>
+                    <option value="Credit">Credit</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="label" htmlFor="payment-note">Note</label>
+                  <input id="payment-note" className="input" placeholder="Optional" value={recordPayment.note} onChange={(e) => setRecordPayment({ ...recordPayment, note: e.currentTarget.value })} />
+                </div>
+                {can("suppliers", "create") && (
+                  <button className="btn btn-primary min-[1200px]:w-auto whitespace-nowrap" onClick={() => void recordSupplierPaymentNow()} disabled={recordPaymentBusy || !recordPayment.purchaseId}>
+                    {recordPaymentBusy ? "Recording…" : "Record payment"}
+                  </button>
+                )}
+                {recordPaymentMsg && <p className="mt-2 text-sm text-muted">{recordPaymentMsg}</p>}
+              </FormRow>
+            </div>
+
+            {/* Recent payments */}
+            <div className="card p-4">
+              <ResponsiveTable
+                title="Recent payments"
+                rows={supplierPaymentsList}
+                rowKey={(row) => row.id}
+                minWidthClass="min-w-[640px]"
+                widths={["w-[15%]", "w-[25%]", "w-[20%]", "w-[15%]", "w-[25%]"]}
+                columns={[
+                  { key: "payment_date", header: "Date", cell: (row) => formatDate(row.payment_date), className: "whitespace-nowrap" },
+                  { key: "item_name", header: "Purchase", cell: (row) => <span className="font-medium">{row.item_name}</span> },
+                  { key: "amount", header: "Amount", align: "right", cell: (row) => money(row.amount_paise) },
+                  { key: "mode", header: "Mode", cell: (row) => row.payment_mode ?? "—" },
+                  { key: "note", header: "Note", cell: (row) => row.note ?? "—", className: "break-words" },
+                ]}
+                empty={<p className="text-sm text-muted">No payments yet.</p>}
+              />
+            </div>
           </section>
         )}
 
