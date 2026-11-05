@@ -1950,7 +1950,7 @@ export default function App() {
 
               {editingPurchase && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1C1612]/50 p-4">
-                  <div className="card w-full max-w-lg space-y-3 p-4">
+                  <div className="card max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-lg font-semibold tracking-tight">Edit purchase — {editingPurchase.name}</h2>
                       <button className="btn-mini" onClick={() => setEditingPurchase(null)}>Close</button>
@@ -1959,6 +1959,13 @@ export default function App() {
                       <div className="space-y-1">
                         <label className="label">Date</label>
                         <input className="input" type="date" value={purchaseEdit.date} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, date: e.currentTarget.value })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="label">Supplier</label>
+                        <input className="input" placeholder="Supplier name" list="purchase-supplier-options" value={purchaseEdit.supplier} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, supplier: e.currentTarget.value })} />
+                        <datalist id="purchase-supplier-options">
+                          {suppliersList.map((s) => <option key={s.id} value={s.name} />)}
+                        </datalist>
                       </div>
                       <div className="space-y-1">
                         <label className="label">Qty ({editingPurchase.unit})</label>
@@ -1971,10 +1978,6 @@ export default function App() {
                       <div className="space-y-1">
                         <label className="label">Transport ₹</label>
                         <input className="input" type="number" value={purchaseEdit.expenses} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, expenses: e.currentTarget.value })} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="label">Supplier</label>
-                        <input className="input" placeholder="Supplier" value={purchaseEdit.supplier} onChange={(e) => setPurchaseEdit({ ...purchaseEdit, supplier: e.currentTarget.value })} />
                       </div>
                       <div className="space-y-1">
                         <label className="label">Payment mode</label>
