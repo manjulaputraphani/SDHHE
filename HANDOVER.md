@@ -4,18 +4,20 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**T-14.1/14.2/14.3 — chat groups: DEPLOYED and LIVE** (version `51de2837-6bc1-4e38-9b9a-e4f9132914da`,
-2026-11-07). DB migration applied BEFORE the deploy: `chat_messages.edited_at` (0013, was already in)
-+ `chat_messages.edited_at` not null and default (0014, applied now). The deploy also re-added the R2 binding
-(`sdhhe-receipts`) that the 2026-11-06 deploy had to skip.
-Message editing feature is now live.
+**LIVE version `d4ca5a43-641c-4821-b191-3dd71e8e98c7` (2026-11-07, deployed from HEAD `d36f56c`)**
+— chat groups (T-14.1/14.2/14.3) AND message editing (owner's `a15e523`) are both in this build.
+DB verified in the migrated state BEFORE deploying: `chat_messages.edited_at` NOT NULL default now()
+(drizzle/0013 + owner's 0014_edit_at_not_null, 0 null rows) and
+`chat_conversations.archived_at` nullable (my drizzle/**0015**_chat_group_archive — renamed from
+0014 to fix the number collision with the owner's 0014). R2 binding (`sdhhe-receipts`) included.
+Message editing: `edited_at` defaults to now(), `toMessage` shows "edited" only when
+edited_at > created_at (owner's design — unedited messages have edited_at == created_at).
 Live app: https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl gets a 302 to
-sdhhe.cloudflareaccess.com; verify the group UI by signing in). Desktop = Tauri app in `src/`
-(untouched). Message editing feature deployed as part of this commit.
+sdhhe.cloudflareaccess.com; verify by signing in). Desktop = Tauri app in `src/` (untouched).
 
 ## Done (T-14 chat groups)
 - DB (`src/db/chatRooms.ts`): groups reuse the Phase 13 tables (`chat_conversations` kind `group` +
-  `chat_conversation_members`) — no new tables; only `archived_at` was added (drizzle/0014).
+  `chat_conversation_members`) — no new tables; only `archived_at` was added (drizzle/0015).
   New: createGroupConversation, listConversationMembers, add/removeConversationMember,
   archiveConversation. isMember / listConversations / unreadCount / rename all filter archived rooms,
   so a retired group is unreadable everywhere (never hard-deleted).
