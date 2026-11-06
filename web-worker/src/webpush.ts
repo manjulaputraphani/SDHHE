@@ -17,16 +17,16 @@ function unb64u(value: string): Uint8Array {
 }
 
 /** The VAPID JWT (ES256) that proves the push comes from this server. */
-async function vapidJwt(
+export async function vapidJwt(
   privateKey: string,
   publicKey: string,
   audience: string,
   subject: string,
 ): Promise<string> {
+  // The stored private key IS a PKCS8 (base64url) — generated once with node.
   const key = await crypto.subtle.importKey(
     "pkcs8",
-    // The stored key is the raw 32-byte scalar; wrap it in a PKCS8 EC key.
-    pkcs8FromRaw(unb64u(privateKey)),
+    unb64u(privateKey) as unknown as BufferSource,
     { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["sign"],
@@ -47,26 +47,8 @@ async function vapidJwt(
   return `${header}.${payload}.${b64u(signature)}`;
 }
 
-/** Wrap a raw 32-byte EC private scalar into a PKCS8 structure. */
-function pkcs8FromRaw(raw: Uint8Array): ArrayBuffer {
-  // RFC 5915 ECPrivateKey inside PKCS8: a fixed 26-byte prefix + the scalar.
-  const prefix = new Uint8Array([
-    0x30, 0x77, 0x02, 0x01, 0x01, 0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce,
-    0x3d, 0x02, 0x01, 0x30, 0x06, 0x2b, 0x81, 0x04, 0x00, 0x22, 0x03, 0x42, 0x00,
-  ]);
-  const out = new Uint8Array(prefix.length + raw.length + 3);
-  out.set(prefix, 0);
-  // the BIT STRING: 04 || 30 || len || 00 || 04 || scalar
-  out[prefix.length] = 0x04;
-  out[prefix.length + 1] = 0x63;
-  out[prefix.length + 2] = raw.length + 2;
-  out.set([0x04, raw.length], prefix.length + 3);
-  out.set(raw, prefix.length + 5);
-  return out.buffer as ArrayBuffer;
-}
-
 /** Encrypt one payload for one subscription (RFC 8291, aes128gcm). */
-async function encryptPayload(
+export async function encryptPayload(
   payload: string,
   p256dh: string,
   auth: string,
