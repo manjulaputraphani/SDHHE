@@ -5,7 +5,7 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat) and Phase 13 (Direct chat) are code-complete AND deployed.**
-Live worker version `7c4965bb-de0d-4c8b-bc11-d9b33e77ccf9` (2026-11-06 11:49) — web bundle `index-Db9EQ5UO.js`.
+Live worker version `cb638c5a-2cfb-4dd4-bc76-86c2c9467797` (2026-11-06 12:02) — web bundle `index-BQ83qNYG.js`.
 Live: https://sdhhe-api.blvphani.workers.dev/team-chat (shop room + private chats).
 **The live build has NO R2 binding** (R2 is not enabled on the account) → attaching a receipt file answers
 503 "Receipt storage is not configured"; everything else works.
@@ -15,6 +15,10 @@ Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
 Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 rows).
 
 ## Done
+- **Group rename (owner only)** (committed, deployed `cb638c5a`): the admin renames the shop room inline in the
+  room header (`POST /api/chat/rename`, role `owner`; staff get 403). The name is pushed into the room as a
+  "rename" frame, so every member sees it at once; a private chat keeps the name of the person. Local check
+  `scripts/local-rename-check.mjs` 4/4, Playwright 11/11, 445 unit tests.
 - **Phase 14 — modern chat + delivered/read ticks** (committed, deployed `7c4965bb`): grouped bubbles with
   avatars and tails, ✓ / ✓✓ / ✓✓✓ ticks (gold = read) on my own messages, a typing indicator in the room
   header, a jump-to-bottom button with the missed count, a friendly empty state — the drawing rules are shared

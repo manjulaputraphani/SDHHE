@@ -392,3 +392,15 @@ Reconciliation with the interim work of 2026-10-30:
   the desktop look the same. Playwright: the read tick and the typing indicator are covered (9/9 green).
 - [x] **T-14.5 Tests + deploy** — unit tests for the state logic, a local end-to-end check (send → delivered →
   read → the sender sees the blue tick), the Playwright spec for the ticks, the worker deployed.
+
+### Phase 14 — addendum: the owner renames the group (2026-11-06)
+- [x] **T-14.6 Rename the group (owner only)** — the admin (role **owner**) can give the shop room a name
+  (`POST /api/chat/rename`, `chat_conversations.title`); a staff member gets **403**. The new name is pushed
+  into the room as a "rename" frame, so everybody sees it at once, and the header shows it immediately.
+  A private chat keeps the name of the person — only a **group** can be renamed.
+  Acceptance: the owner renames the group and the list + header show the new name, staff get 403, an empty
+  name is refused, the name survives a reload.
+  (2026-11-06: `renameConversation` in `src/db/chatRooms.ts`, the owner check in the Worker, the "rename"
+  frame in the protocol, and the inline edit in the room header of both screens. Local check
+  `scripts/local-rename-check.mjs` — **4/4 green**; Playwright: the owner can rename, a staff member sees no
+  Rename button (**11/11**). Deployed as version `cb638c5a`.)

@@ -21,6 +21,7 @@ import {
   chatDelivered,
   chatMembers,
   chatMessages,
+  renameChatConversation,
   chatReceipts,
   chatReceiptUrl,
   chatSend,
@@ -61,6 +62,11 @@ export default function TeamChat() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [members, setMembers] = useState<ChatMember[]>([]);
   const [showNewChat, setShowNewChat] = useState(false);
+  /** The owner renames the group (Phase 14). */
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState("");
+  /** The name of the open room (set the moment it is renamed). */
+  const [customTitle, setCustomTitle] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [receipts, setReceipts] = useState<ReceiptRequest[]>([]);
   const [presence, setPresence] = useState<string[]>([]);
@@ -178,6 +184,10 @@ export default function TeamChat() {
               }),
             );
           }
+          if (frame.type === "rename") {
+            setCustomTitle(frame.title ?? null);
+            void load();
+          }
           if (frame.type === "typing" && frame.name) {
             setTyping(frame.name);
             if (typingTimer.current) window.clearTimeout(typingTimer.current);
@@ -233,6 +243,20 @@ export default function TeamChat() {
     setAtBottom(true);
     setMissed(0);
   }, []);
+
+  /** Save the new name of the group (the owner only). */
+  const saveName = useCallback(async () => {
+    const title = newName.trim();
+    setRenaming(false);
+    if (!title || !workerUrl || !token) return;
+    try {
+      await renameChatConversation(workerUrl, token, room, title);
+      setCustomTitle(title);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [newName, workerUrl, token, room, load]);
 
   /** Tell the others that I am typing. */
   const sendTyping = useCallback(() => {
@@ -366,7 +390,10 @@ export default function TeamChat() {
 
   const activeConversation = conversations.find((c) => c.room === room);
   const roomName =
-    activeConversation?.kind === "direct" ? activeConversation.other?.name ?? room : "Shop room";
+    customTitle ??
+    (activeConversation?.kind === "direct"
+      ? activeConversation.other?.name ?? room
+      : activeConversation?.title?.trim() || "Shop room");
   // The people whose ticks count: the other member of a private chat, or
   // everybody else in the shop room.
   const otherMemberIds = useMemo(() => {
@@ -469,7 +496,44 @@ export default function TeamChat() {
         <div className="relative">
           <div className="card flex min-h-[420px] flex-col overflow-hidden">
           <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
-            <h2 className="text-sm font-semibold text-ink">{roomName}</h2>
+            {renaming ? (
+              <form
+                className="flex items-center gap-1"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveName();
+                }}
+              >
+                <input
+                  className="input h-8 w-44 py-1 text-sm"
+                  value={newName}
+                  autoFocus
+                  onChange={(event) => setNewName(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setRenaming(false);
+                  }}
+                />
+                <button type="submit" className="btn-ghost text-xs">
+                  Save
+                </button>
+              </form>
+            ) : (
+              <h2 className="text-sm font-semibold text-ink">
+                {roomName}
+                {actorRole() === "owner" && activeConversation?.kind === "group" && (
+                  <button
+                    type="button"
+                    className="ml-2 text-[11px] font-normal text-muted underline"
+                    onClick={() => {
+                      setNewName(roomName);
+                      setRenaming(true);
+                    }}
+                  >
+                    Rename
+                  </button>
+                )}
+              </h2>
+            )}
             {activeConversation?.kind === "direct" && (
               <span className="badge badge-warn">Private</span>
             )}
@@ -764,6 +828,11 @@ export default function TeamChat() {
 function currentUserId(): number | null {
   const actor = getAuditActor();
   return actor.userId;
+}
+
+/** The signed-in member's role (owner may rename the group). */
+function actorRole(): string {
+  return getAuditActor().role ?? "staff";
 }
 
 /** The signed-in member's name (for the typing frame). */

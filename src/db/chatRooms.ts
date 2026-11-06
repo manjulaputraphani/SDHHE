@@ -23,6 +23,8 @@ export type ChatConversation = {
   id: number;
   room: string;
   kind: ConversationKind;
+  /** The name the owner gave the group (null = the default name). */
+  title: string | null;
   /** The other member of a direct chat (null for the shop room). */
   other: ChatMember | null;
   unread: number;
@@ -43,9 +45,31 @@ export function isSameRoom(a: string, b: string): boolean {
 }
 
 /** The name shown above a conversation. */
-export function roomTitleFor(room: string, other: ChatMember | null): string {
-  if (room === SHARED_ROOM) return "Shop room";
+export function roomTitleFor(
+  room: string,
+  other: ChatMember | null,
+  title?: string | null,
+): string {
+  // A group can be renamed by the owner; a private chat is named after the
+  // other person.
+  if (room === SHARED_ROOM) return title?.trim() || "Shop room";
   return other?.name ?? room;
+}
+
+/** Rename a group (only the owner may do this — the Worker checks that). */
+export async function renameConversation(
+  db: Db | TxDb,
+  room: string,
+  title: string,
+): Promise<string | null> {
+  const name = title.trim().slice(0, 60);
+  if (!name) return null;
+  const [updated] = await db
+    .update(chatConversations)
+    .set({ title: name })
+    .where(eq(chatConversations.room, room))
+    .returning();
+  return updated?.title ?? null;
 }
 
 /** Make sure the shop room exists and that this member is in it. */
@@ -83,6 +107,7 @@ export async function ensureGroupConversation(
     id: row.id,
     room: row.room,
     kind: row.kind as ConversationKind,
+    title: row.title ?? null,
     other: null,
     unread: 0,
     lastMessageAt: null,
@@ -131,6 +156,7 @@ export async function ensureDirectConversation(
     id: row.id,
     room: row.room,
     kind: row.kind as ConversationKind,
+    title: row.title ?? null,
     other: other[0] ?? null,
     unread: 0,
     lastMessageAt: null,
@@ -167,6 +193,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     select c.id,
            c.room,
            c.kind,
+           c.title,
            coalesce((
              select count(*) from chat_messages m
              where m.room = c.room
@@ -192,6 +219,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     id: number;
     room: string;
     kind: ConversationKind;
+    title: string | null;
     unread: number;
     last_message_at: string | null;
     other: ChatMember | null;
@@ -199,6 +227,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     id: row.id,
     room: row.room,
     kind: row.kind,
+    title: row.title ?? null,
     other: row.other ?? null,
     unread: Number(row.unread ?? 0),
     lastMessageAt: row.last_message_at ?? null,

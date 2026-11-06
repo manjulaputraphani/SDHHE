@@ -25,6 +25,8 @@ export type ChatFrame =
   /** These messages were delivered to / read by a member. */
   | { type: "delivered"; messageIds: number[]; userId: number; name: string }
   | { type: "read"; messageIds: number[]; userId: number; name: string }
+  /** The owner renamed the group. */
+  | { type: "rename"; room: string; title: string }
   | { type: "error"; message: string };
 
 export const CHAT_FRAME_TYPES = [
@@ -35,6 +37,7 @@ export const CHAT_FRAME_TYPES = [
   "typing",
   "delivered",
   "read",
+  "rename",
   "error",
 ] as const;
 

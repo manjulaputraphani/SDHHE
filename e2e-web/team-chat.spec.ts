@@ -87,6 +87,7 @@ const CONVERSATIONS = [
     id: 1,
     room: "main",
     kind: "group" as const,
+    title: null,
     other: null,
     unread: 0,
     lastMessageAt: "2026-11-06T09:43:00.000Z",
@@ -95,6 +96,7 @@ const CONVERSATIONS = [
     id: 2,
     room: "dm-1-4",
     kind: "direct" as const,
+    title: null,
     other: { id: 4, name: "RAJU", role: "staff" },
     unread: 2,
     lastMessageAt: "2026-11-06T09:40:00.000Z",
@@ -180,6 +182,9 @@ async function mockChat(
   );
   await page.route("**/api/chat/read**", (route) =>
     route.fulfill({ json: { ok: true, unread: 0 } }),
+  );
+  await page.route("**/api/chat/rename**", (route) =>
+    route.fulfill({ json: { ok: true, room: "main", title: "Morning team" } }),
   );
   await page.route("**/api/chat/token", (route) =>
     route.fulfill({ json: { token: "test-token", expiresAt: Date.now() + 3_600_000, user: member } }),
@@ -307,6 +312,27 @@ test.describe("Team Chat", () => {
     await mockChat(page, OWNER);
     await page.goto("/team-chat");
     await expect(page.getByText(/RAJU is typing/)).toBeVisible();
+  });
+
+  test("the owner can rename the group", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await page.goto("/team-chat");
+
+    await page.getByRole("button", { name: "Rename" }).click();
+    const input = page.getByRole("textbox", { name: "" }).first();
+    await input.fill("Morning team");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // The new name is asked for from the worker (and shown in the room).
+    await expect(page.getByText("Morning team")).toBeVisible();
+  });
+
+  test("a staff member cannot rename the group", async ({ page }) => {
+    await mockChat(page, STAFF);
+    await page.goto("/team-chat");
+
+    await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Rename" })).toHaveCount(0);
   });
 
   test("lists the conversations with their unread count", async ({ page }) => {

@@ -23,6 +23,7 @@ export type ChatFrame =
   | { type: "typing"; userId: number; name: string }
   | { type: "delivered"; messageIds: number[]; userId: number; name: string }
   | { type: "read"; messageIds: number[]; userId: number; name: string }
+  | { type: "rename"; room: string; title: string }
   | { type: "error"; message: string };
 
 /** A clean worker address: no trailing slash, https:// when there is no scheme. */
@@ -106,6 +107,8 @@ export type ChatConversation = {
   id: number;
   room: string;
   kind: "group" | "direct";
+  /** The name the owner gave the group (Phase 14). */
+  title: string | null;
   other: { id: number; name: string; role: string } | null;
   unread: number;
   lastMessageAt: string | null;
@@ -160,6 +163,22 @@ export async function startChatConversation(
     { method: "POST", body: JSON.stringify({ userId }) },
   );
   return data.conversation;
+}
+
+/** Rename a group (the owner only). */
+export async function renameChatConversation(
+  workerUrl: string,
+  token: string,
+  room: string,
+  title: string,
+): Promise<string> {
+  const data = await request<{ ok: boolean; room: string; title: string }>(
+    workerUrl,
+    token,
+    "/api/chat/rename",
+    { method: "POST", body: JSON.stringify({ room, title }) },
+  );
+  return data.title;
 }
 
 /** Tell the sender that this device got the message. */

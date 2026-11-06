@@ -73,6 +73,11 @@ export default function TeamChat({ user }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [showReceiptForm, setShowReceiptForm] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
+  /** The owner renames the group (Phase 14). */
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState("");
+  /** The name of the open room (set the moment it is renamed). */
+  const [customTitle, setCustomTitle] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
@@ -130,6 +135,7 @@ export default function TeamChat({ user }: Props) {
   useEffect(() => {
     setMessages([]);
     setReceipts([]);
+    setCustomTitle(null);
     void load();
   }, [load]);
 
@@ -191,6 +197,7 @@ export default function TeamChat({ user }: Props) {
             messageIds?: number[];
             userId?: number;
             name?: string;
+            title?: string;
           };
           try {
             frame = JSON.parse(String(event.data));
@@ -222,6 +229,10 @@ export default function TeamChat({ user }: Props) {
                 return { ...message, [key]: [...list, frame.userId!] };
               }),
             );
+          }
+          if (frame.type === "rename") {
+            setCustomTitle(frame.title ?? null);
+            void loadConversations();
           }
           if (frame.type === "typing" && frame.name) {
             setTyping(frame.name);
@@ -270,6 +281,20 @@ export default function TeamChat({ user }: Props) {
     setAtBottom(true);
     setMissed(0);
   }, []);
+
+  /** Save the new name of the group (the owner only). */
+  const saveName = useCallback(async () => {
+    const title = newName.trim();
+    setRenaming(false);
+    if (!title) return;
+    try {
+      await api.renameChatConversation(room, title);
+      setCustomTitle(title);
+      await loadConversations();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [newName, room, loadConversations]);
 
   /** Tell the others that I am typing. */
   const sendTyping = useCallback(() => {
@@ -421,7 +446,11 @@ export default function TeamChat({ user }: Props) {
     () => groupMessages(messages, user?.id ?? null),
     [messages, user?.id],
   );
-  const roomName = activeConversation?.kind === "direct" ? activeConversation.other?.name ?? room : "Shop room";
+  const roomName =
+    customTitle ??
+    (activeConversation?.kind === "direct"
+      ? activeConversation.other?.name ?? room
+      : activeConversation?.title?.trim() || "Shop room");
   let lastDay = "";
 
   return (
@@ -497,7 +526,44 @@ export default function TeamChat({ user }: Props) {
         <div className="relative">
           <div className="card flex min-h-[420px] flex-col overflow-hidden">
           <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
-            <h2 className="text-sm font-semibold text-ink">{roomName}</h2>
+            {renaming ? (
+              <form
+                className="flex items-center gap-1"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveName();
+                }}
+              >
+                <input
+                  className="input h-8 w-44 py-1 text-sm"
+                  value={newName}
+                  autoFocus
+                  onChange={(event) => setNewName(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setRenaming(false);
+                  }}
+                />
+                <button type="submit" className="btn-mini">
+                  Save
+                </button>
+              </form>
+            ) : (
+              <h2 className="text-sm font-semibold text-ink">
+                {roomName}
+                {user?.role === "owner" && activeConversation?.kind === "group" && (
+                  <button
+                    type="button"
+                    className="ml-2 text-[11px] font-normal text-muted underline"
+                    onClick={() => {
+                      setNewName(roomName);
+                      setRenaming(true);
+                    }}
+                  >
+                    Rename
+                  </button>
+                )}
+              </h2>
+            )}
             {activeConversation?.kind === "direct" && (
               <span className="badge badge-warn">Private</span>
             )}

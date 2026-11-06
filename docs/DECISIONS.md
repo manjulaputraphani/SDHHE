@@ -95,3 +95,7 @@
 - 2026-11-06 · The **read mark is pushed into the room** (the Worker broadcasts a "read" frame) and the
   **typing indicator** is relayed by the Durable Object · the tick therefore turns gold on the sender's
   screen while they are looking at it, without a refresh
+- 2026-11-06 · **Renaming a group is an owner job** (`POST /api/chat/rename`, role `owner` only; a staff
+  member gets 403) · the shop room can be called "Morning team" instead of "Shop room"; a **private chat is
+  never renamed** (it is named after the person) · the new name travels through the room as a "rename" frame,
+  so the header of every member changes at once

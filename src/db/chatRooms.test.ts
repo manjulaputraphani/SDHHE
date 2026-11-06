@@ -32,6 +32,20 @@ describe("roomTitleFor", () => {
     expect(roomTitleFor(SHARED_ROOM, null)).toBe("Shop room");
   });
 
+  it("uses the name the owner gave the group", () => {
+    expect(roomTitleFor(SHARED_ROOM, null, "Morning team")).toBe("Morning team");
+  });
+
+  it("falls back to the default name for an empty name", () => {
+    expect(roomTitleFor(SHARED_ROOM, null, "   ")).toBe("Shop room");
+  });
+
+  it("never renames a private chat (it is named after the person)", () => {
+    expect(roomTitleFor("dm-4-9", { id: 4, name: "RAJU", role: "staff" }, "Something else")).toBe(
+      "RAJU",
+    );
+  });
+
   it("names a direct chat after the other member", () => {
     expect(roomTitleFor("dm-4-9", { id: 4, name: "RAJU", role: "staff" })).toBe("RAJU");
   });

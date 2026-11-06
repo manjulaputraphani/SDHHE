@@ -60,6 +60,7 @@ import {
   listChatMembers,
   listConversations,
   markRead,
+  renameConversation,
   SHARED_ROOM,
   unreadCount,
 } from "../../src/db/chatRooms";
@@ -1211,6 +1212,29 @@ export default {
       const body = (["POST", "PUT"].includes(request.method)
         ? await request.json().catch(() => ({}))
         : {}) as Record<string, unknown>;
+
+      if (url.pathname === "/api/chat/rename" && request.method === "POST") {
+        // Renaming a group is an owner job (the admin).
+        if (session.role !== "owner") {
+          return json({ error: "Owner only" }, { status: 403 });
+        }
+        const room = String(body.room ?? "");
+        const title = String(body.title ?? "");
+        if (!room) return json({ error: "Which conversation?" }, { status: 400 });
+        if (!(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        const renamed = await renameConversation(db, room, title);
+        if (!renamed) return json({ error: "Give the group a name" }, { status: 400 });
+        // Everybody in the room sees the new name at once.
+        await broadcastToChat(env, { type: "rename", room, title: renamed }, room);
+        await logActivity(db, {
+          event: "chat.rename",
+          summary: `Chat renamed to ${renamed}`,
+          entity: "chat",
+        });
+        return json({ ok: true, room, title: renamed });
+      }
 
       // ---- Team Chat (Phase 13): conversations (writes) ----
       if (url.pathname === "/api/chat/conversations" && request.method === "POST") {

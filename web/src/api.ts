@@ -61,6 +61,8 @@ export type ChatConversation = {
   id: number;
   room: string;
   kind: "group" | "direct";
+  /** The name the owner gave the group (Phase 14). */
+  title: string | null;
   other: ChatUser | null;
   unread: number;
   lastMessageAt: string | null;
@@ -523,6 +525,11 @@ export const api = {
     request<{ ok: boolean; unread: number; read?: number[] }>("/api/chat/read", {
       method: "POST",
       body: JSON.stringify({ room, messageId }),
+    }),
+  renameChatConversation: (room: string, title: string) =>
+    request<{ ok: boolean; room: string; title: string }>("/api/chat/rename", {
+      method: "POST",
+      body: JSON.stringify({ room, title }),
     }),
   markChatDelivered: (messageId: number) =>
     request<{ ok: boolean }>("/api/chat/delivered", {
