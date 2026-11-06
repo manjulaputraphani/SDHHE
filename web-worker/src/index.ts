@@ -40,6 +40,16 @@ import {
 import { chatRoomStub } from "./chat/do";
 import type { ChatFrame } from "./chat/protocol";
 import { chatTokenExpiry, signChatToken, verifyChatToken } from "../../src/logic/chatToken";
+import {
+  createReceipt,
+  decideReceipt,
+  insertMessage,
+  linkReceiptMessage,
+  listMessages,
+  listReceipts,
+  parseMessageInput,
+  pendingReceiptCount,
+} from "../../src/db/chat";
 
 /** The Durable Object that holds the Team Chat room (Phase 12). */
 export { ChatRoom } from "./chat/do";
@@ -322,6 +332,23 @@ async function chatActor(request: Request, env: Env): Promise<Session | null> {
   };
 }
 
+/** The session behind a chat bearer token (no cookie involved). */
+async function chatTokenSession(request: Request, env: Env): Promise<Session | null> {
+  const header = request.headers.get("Authorization") ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!token) return null;
+  const payload = verifyChatToken(token, env.SESSION_SECRET as string);
+  if (!payload) return null;
+  return {
+    uid: payload.uid,
+    name: payload.name,
+    role: payload.role,
+    exp: payload.exp * 1000,
+    until: null,
+    lastActivity: Date.now(),
+  };
+}
+
 function retryAfterMs(phone: string): number {
   const entry = attempts.get(phone);
   if (!entry) return 0;
@@ -555,8 +582,72 @@ export default {
       return json({ user: { id: session.uid, name: session.name, role: session.role, permissions } });
     }
 
-    if (url.pathname === "/api/auth/signup" && request.method === "POST") {
-      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    // ---- Team Chat login (Phase 12) ----
+    // The desktop app has no worker cookie, so it signs in here with the same
+    // phone + password and gets a short-lived chat token.
+    if (url.pathname === "/api/chat/auth" && request.method === "POST") {
+      const raw = (await request.json().catch(() => ({}))) as { phone?: string; password?: string };
+      const phone = normalizePhone(String(raw.phone ?? ""));
+      const password = String(raw.password ?? "");
+      if (!phone.valid) return json({ error: phone.reason }, { status: 400 });
+      if (!password) return json({ error: "Password is required" }, { status: 400 });
+
+      const wait = retryAfterMs(phone.phone);
+      if (wait > 0) {
+        return json({ error: `Too many attempts. Try again in ${Math.ceil(wait / 1000)}s` }, { status: 429 });
+      }
+
+      const sql = neon(env.DATABASE_URL as string);
+      const rows = (await sql`
+        select id, name, password_hash, role, active, pending
+        from app_users where phone = ${phone.phone} limit 1
+      `) as {
+        id: number;
+        name: string;
+        password_hash: string;
+        role: string;
+        active: boolean;
+        pending: boolean;
+      }[];
+
+      const user = rows[0];
+      if (!user) {
+        recordFailure(phone.phone);
+        return json({ error: "No account found for this number" }, { status: 404 });
+      }
+      if (user.pending) {
+        return json({ error: "Account awaiting owner approval" }, { status: 403 });
+      }
+      if (!user.active) {
+        return json({ error: "This account is disabled — ask the owner" }, { status: 403 });
+      }
+
+      let valid = false;
+      try {
+        valid = verifyArgon2(password, user.password_hash);
+      } catch (err) {
+        console.error("argon2 verify failed:", err);
+      }
+      if (!valid) {
+        recordFailure(phone.phone);
+        return json({ error: "Wrong password" }, { status: 401 });
+      }
+      attempts.delete(phone.phone);
+
+      const role = normalizeRole(user.role);
+      const exp = chatTokenExpiry();
+      const token = signChatToken(
+        { uid: Number(user.id), name: String(user.name), role, exp },
+        env.SESSION_SECRET as string,
+      );
+      return json({
+        token,
+        expiresAt: exp * 1000,
+        user: { id: Number(user.id), name: String(user.name), role },
+      });
+    }
+
+    if (url.pathname === "/api/auth/signup" && request.method === "POST") {      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
       const name = String(body.name ?? "").trim();
       const phone = normalizePhone(String(body.phone ?? ""));
       const password = String(body.password ?? "");
@@ -594,7 +685,12 @@ export default {
     }
 
     // ---- W3 read API (session required) ----
-    const session = await readSession(request, env.SESSION_SECRET);
+    // A chat bearer token is only accepted on the Team Chat routes — it is not
+    // a general session.
+    const cookieSession = await readSession(request, env.SESSION_SECRET);
+    const session =
+      cookieSession ??
+      (url.pathname.startsWith("/api/chat/") ? await chatTokenSession(request, env) : null);
     if (!session) return json({ error: "Not signed in" }, { status: 401 });
 
     // 1-hour inactivity auto-logout (sliding window, refreshed on every API call).
@@ -620,9 +716,11 @@ export default {
     }
 
     // Refresh the session cookie on every authenticated response (sliding 1-hour window).
-    const refreshedSession: Session = { ...session, lastActivity: Date.now() };
-    const refreshToken = await createToken(refreshedSession, env.SESSION_SECRET as string);
-    pendingSetCookie = sessionCookie(refreshToken, url);
+    if (cookieSession) {
+      const refreshedSession: Session = { ...cookieSession, lastActivity: Date.now() };
+      const refreshToken = await createToken(refreshedSession, env.SESSION_SECRET as string);
+      pendingSetCookie = sessionCookie(refreshToken, url);
+    }
     const actor: AuditActor = { userId: session.uid, name: session.name, role: session.role };
 
     try {
@@ -899,10 +997,104 @@ export default {
         });
       }
 
+      // ---- Team Chat (Phase 12): messages and approvals ----
+      if (url.pathname === "/api/chat/messages" && request.method === "GET") {
+        const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 500);
+        return json({ messages: await listMessages(db, { limit }) });
+      }
+
+      if (url.pathname === "/api/chat/receipts" && request.method === "GET") {
+        const rawStatus = url.searchParams.get("status");
+        const status =
+          rawStatus === "pending" || rawStatus === "approved" || rawStatus === "rejected"
+            ? rawStatus
+            : undefined;
+        const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 200);
+        return json({
+          receipts: await listReceipts(db, { status, limit }),
+          pending: await pendingReceiptCount(db),
+        });
+      }
+
       // ---- W3b writes (session actor threaded per request) ----
       const body = (["POST", "PUT"].includes(request.method)
         ? await request.json().catch(() => ({}))
         : {}) as Record<string, unknown>;
+
+      // ---- Team Chat (Phase 12): send a message, decide a receipt ----
+      if (url.pathname === "/api/chat/messages" && request.method === "POST") {
+        let input: ReturnType<typeof parseMessageInput>;
+        try {
+          input = parseMessageInput(body);
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+        }
+
+        if (input.kind === "text") {
+          const message = await asActor(actor, () =>
+            insertMessage(db, {
+              userId: session.uid,
+              author: session.name,
+              role: session.role,
+              kind: "text",
+              body: input.body,
+            }),
+          );
+          await broadcastToChat(env, { type: "message", message });
+          return json({ message });
+        }
+
+        // A receipt: the file is already in R2, now it needs a decision.
+        const receipt = await asActor(actor, () =>
+          createReceipt(db, {
+            submittedBy: session.uid,
+            submitterName: session.name,
+            receipt: input.receipt!,
+          }),
+        );
+        const message = await asActor(actor, () =>
+          insertMessage(db, {
+            userId: session.uid,
+            author: session.name,
+            role: session.role,
+            kind: "receipt",
+            body: input.body || input.receipt!.title,
+            receiptId: receipt.id,
+          }),
+        );
+        await asActor(actor, () => linkReceiptMessage(db, receipt.id, message.id));
+        await broadcastToChat(env, { type: "receipt", receipt, message });
+        return json({ message, receipt });
+      }
+
+      const decisionMatch = url.pathname.match(/^\/api\/chat\/receipts\/(\d+)\/decision$/);
+      if (decisionMatch && request.method === "POST") {
+        const id = Number(decisionMatch[1]);
+        let receipt: Awaited<ReturnType<typeof decideReceipt>>;
+        try {
+          receipt = await asActor(actor, () =>
+            decideReceipt(db, id, body as { decision: string; note?: string }, {
+              userId: session.uid,
+              name: session.name,
+            }),
+          );
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const status = /not found/i.test(message) ? 404 : 400;
+          return json({ error: message }, { status });
+        }
+        const system = await asActor(actor, () =>
+          insertMessage(db, {
+            userId: session.uid,
+            author: session.name,
+            role: session.role,
+            kind: "system",
+            body: `${session.name} ${receipt.status === "approved" ? "approved" : "rejected"} receipt #${receipt.id} — ${receipt.title}`,
+          }),
+        );
+        await broadcastToChat(env, { type: "receipt", receipt, message: system });
+        return json({ receipt, message: system });
+      }
 
       if (url.pathname === "/api/ai/chat" && request.method === "POST") {
         if (!env.OLLAMA_API_KEY) {
