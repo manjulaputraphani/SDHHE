@@ -37,6 +37,12 @@ suite("Team Chat — messages and receipt approvals", () => {
     expect(messages[0].createdAt).not.toBe(messages[1].createdAt);
   });
 
+  it("stores and returns a multi-line message with the exact lines (T-16.1)", async () => {
+    await insertMessage(db!, { userId: null, author: "ANITA", kind: "text", body: "A\n\nB\nC" });
+    const [message] = await listMessages(db!);
+    expect(message.body).toBe("A\n\nB\nC");
+  });
+
   it("returns only the newest messages when a limit is given", async () => {
     for (const body of ["one", "two", "three"]) {
       await insertMessage(db!, { userId: null, author: "ANITA", kind: "text", body });

@@ -516,6 +516,23 @@ test.describe("Team Chat", () => {
     await expect(page.getByText("Sent with Enter", { exact: true })).toBeVisible();
   });
 
+  test("a pasted multi-line message keeps its exact lines (T-16.1)", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+
+    const composer = page.getByPlaceholder("Message…");
+    await composer.fill("Stock ok.\n\nLine two\nLast line");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+
+    // The bubble carries the same lines — not one collapsed paragraph…
+    const bubble = page.locator(".chat-bubble").filter({ hasText: "Stock ok." }).first();
+    const text = await bubble.evaluate((el) => el.textContent ?? "");
+    expect(text.startsWith("Stock ok.\n\nLine two\nLast line")).toBe(true);
+    // …and it RENDERS them: the bubble must not collapse the newlines.
+    const whiteSpace = await bubble.evaluate((el) => getComputedStyle(el).whiteSpace);
+    expect(whiteSpace).toBe("pre-wrap");
+  });
+
   test("on a touch phone the return key makes a new line — the button sends", async ({ page }) => {
     // A phone keyboard from the very first render: Playwright cannot emulate
     // a coarse pointer, so the media query is answered as a phone would.

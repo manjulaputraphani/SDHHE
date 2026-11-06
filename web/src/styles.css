@@ -554,6 +554,9 @@
   position: relative;
   /* Long words, links and numbers wrap instead of stretching the bubble. */
   overflow-wrap: anywhere;
+  /* A message keeps the lines its sender typed or pasted (T-16.1) — the
+     browser must not collapse the newlines into one paragraph. */
+  white-space: pre-wrap;
   min-width: 0;
 }
 .chat-bubble .chat-time {
@@ -569,7 +572,8 @@
 .chat-composer {
   field-sizing: content;
   min-height: 40px;
-  max-height: 150px;
+  /* Grow to ~8 lines, then scroll internally instead of clipping (T-16.1). */
+  max-height: 190px;
   resize: none;
   border: none;
   background: transparent;

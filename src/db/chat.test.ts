@@ -49,6 +49,11 @@ describe("parseMessageInput", () => {
     expect(() => parseMessageInput({ kind: "receipt", body: "hi" })).toThrow(/receipt/i);
   });
 
+  it("keeps the line breaks of a pasted message — only the ends are trimmed (T-16.1)", () => {
+    const parsed = parseMessageInput({ kind: "text", body: "  A\n\nB\nC  " });
+    expect(parsed.body).toBe("A\n\nB\nC");
+  });
+
   it("carries the AI polish flag of a text message (Phase 15)", () => {
     expect(parseMessageInput({ kind: "text", body: "Baki stock?", aiPolished: true }).aiPolished).toBe(
       true,
