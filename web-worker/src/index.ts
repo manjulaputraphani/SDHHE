@@ -49,7 +49,17 @@ import {
   listReceipts,
   parseMessageInput,
   pendingReceiptCount,
+  type ReceiptRequest,
 } from "../../src/db/chat";
+import {
+  buildDecisionMail,
+  buildPushText,
+  buildReceiptMail,
+  chatMailConfig,
+  type MailSender,
+} from "./chatMail";
+import { pushNtfy, sendMail } from "./mailer";
+import { socketTransport } from "./smtpSocket";
 
 /** The Durable Object that holds the Team Chat room (Phase 12). */
 export { ChatRoom } from "./chat/do";
@@ -71,6 +81,14 @@ export interface Env {
   RESEND_API_KEY?: string;
   OLLAMA_API_KEY?: string;
   MAIL_FROM?: string;
+  /** Team Chat mail (Phase 12) — Gmail SMTP. */
+  SMTP_USER?: string;
+  SMTP_PASS?: string;
+  SMTP_FROM?: string;
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  /** Team Chat push (Phase 12) — the ntfy topic. */
+  NTFY_TOPIC?: string;
   /** Receipt files (Phase 12) — R2 bucket `sdhhe-receipts`. */
   RECEIPTS?: R2BucketLike;
   /** The Team Chat room (Phase 12) — Durable Object. */
@@ -292,8 +310,51 @@ function sessionCookie(token: string, url: URL): string {
   return `${COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_HOURS * 3600}${secure}`;
 }
 
-/** Push a frame into the chat room — the Durable Object broadcasts it. */
-async function broadcastToChat(env: Env, frame: ChatFrame): Promise<void> {
+/** Send a mail through Gmail (the transport is the Workers socket). */
+const gmailSender: MailSender = (config, content) =>
+  sendMail(config, content, socketTransport);
+
+/**
+ * Tell the shop that a receipt is waiting — or that it was decided.
+ *
+ * Best effort: the mail and the push may fail, the action never does.
+ */
+async function notifyReceipt(
+  env: Env,
+  receipt: ReceiptRequest,
+  actorName: string,
+): Promise<void> {
+  try {
+    const config = chatMailConfig(env);
+    const push = buildPushText(receipt, actorName);
+    await pushNtfy(env.NTFY_TOPIC, push.title, push.message);
+
+    if (!config) return;
+    const recipients = await chatMailRecipients(env);
+    if (recipients.length === 0) return;
+    const mail =
+      receipt.status === "pending"
+        ? buildReceiptMail(receipt, actorName)
+        : buildDecisionMail(receipt, actorName);
+    const result = await gmailSender(config, { to: recipients, ...mail });
+    if (!result.ok) console.error("chat: mail not sent —", result.error);
+  } catch (err) {
+    console.error("chat: notification failed:", err);
+  }
+}
+
+/** Who gets the mail: the notification addresses of the shop. */
+async function chatMailRecipients(env: Env): Promise<string[]> {
+  const rows = await sqlQuery(env, "select value from settings where key = 'notify_emails'");
+  const shop = await getShopDetails(getDb(env.DATABASE_URL as string));
+  const raw = rows.length ? String(rows[0].value) : (shop.email ?? "");
+  return raw
+    .split(/[,;]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(entry));
+}
+
+/** Push a frame into the chat room — the Durable Object broadcasts it. */async function broadcastToChat(env: Env, frame: ChatFrame): Promise<void> {
   const stub = chatRoomStub(env);
   if (!stub) return;
   try {
@@ -1064,6 +1125,7 @@ export default {
         );
         await asActor(actor, () => linkReceiptMessage(db, receipt.id, message.id));
         await broadcastToChat(env, { type: "receipt", receipt, message });
+        await notifyReceipt(env, receipt, session.name);
         return json({ message, receipt });
       }
 
@@ -1093,6 +1155,7 @@ export default {
           }),
         );
         await broadcastToChat(env, { type: "receipt", receipt, message: system });
+        await notifyReceipt(env, receipt, session.name);
         return json({ receipt, message: system });
       }
 
