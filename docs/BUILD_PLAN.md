@@ -281,3 +281,34 @@ Reconciliation with the interim work of 2026-10-30:
 - [x] **T-12.8 Desktop Team Chat + Settings + Playwright** — `src/pages/TeamChat.tsx` (desktop route `team-chat`), `src/lib/chatClient.ts` (REST + WebSocket against the Worker URL), Settings → "Team Chat" card (Worker URL, saved in `settings`), chat token obtained at desktop login, `e2e/team-chat.spec.ts` (Playwright, mocked API, no database needed).
   Acceptance: all unit tests green, `npx tsc --noEmit` clean for the app and the worker, the Playwright test passes, the desktop screen shows the room, the composer and the receipt approvals.
   (2026-11-06: the desktop route is `/team-chat` (HashRouter → `#/team-chat`) and the nav link sits in a new **Team** group; the screen explains itself when the worker address or the token is missing. Settings → **Team Chat** saves the worker address in the `settings` table (`chat_worker_url`); the bearer token is fetched from the worker with the member's phone + password **at sign-in** and kept in the Keychain (`CHAT_TOKEN`, 12 h) — a chat failure never blocks the sign-in. `src/lib/chatClient.ts` (8 tests) normalises the address, builds the `wss://` socket URL and the receipt URL, and does the REST calls; `src/pages/TeamChat.test.tsx` (2 tests) covers the screen. The Playwright suite is `e2e-web/team-chat.spec.ts` with `playwright.web.config.ts` (`npm run test:e2e:web`) — it mocks the worker, so it needs **no database and no Cloudflare account**: the room, the URL, the owner approving a receipt, the staff member NOT seeing the approval buttons and sending a message — **5/5 green**. The desktop e2e folder (`e2e/`) still needs `DATABASE_URL_TEST` and is skipped without it.)
+
+## Phase 13 — Direct chat (1-to-1) (added 2026-11-06 on request)
+> The shared room stays. On top of it: private conversations between two members, a conversation list with
+> unread badges, room-scoped history, receipts inside a direct chat, and a privacy rule (a direct chat is
+> private — the owner sees that it happened, never what was written). Design: `docs/chat-in-app-preview.html`.
+- [ ] **T-13.1 Conversations + unread** — `chat_conversations` (room, kind `group`|`direct`, title) and
+  `chat_conversation_members` (last_read_message_id) tables + `src/db/chatRooms.ts` (directRoomName,
+  ensureGroup/DirectConversation, listConversations with unread, isMember, markRead, unreadCount) + migration
+  `drizzle/0007_direct_chat.sql`.
+  Acceptance: the shared room is a `group` conversation, a direct room is `dm-<smallId>-<bigId>`, the
+  unread count counts the messages of the other member after the last read one, tsc + tests green.
+- [ ] **T-13.2 Room-scoped API** — `GET /api/chat/conversations`, `GET /api/chat/members` (who may be
+  chatted with), `GET/POST /api/chat/messages?room=…`, `POST /api/chat/read`, `POST /api/chat/conversations`
+  (find or create a direct chat) — every room route checks that the caller is a member of that room (403).
+  Acceptance: 403 for a room you are not in, 401 without a session, a direct chat appears in the list of
+  both members, the unread count falls to 0 after reading.
+- [ ] **T-13.3 One Durable Object per room** — the socket asks for a room (`?room=dm-1-4`), the Worker
+  checks the membership before handing over the upgrade, the object only ever holds the sockets of its room.
+  Acceptance: a message in a direct chat reaches the two members only, the shared room is unaffected.
+- [ ] **T-13.4 Web conversations** — conversation list (shared room + direct chats, unread badges, last
+  message), a room switcher, "start a chat" from the member list, mark-as-read, export of a conversation.
+  Acceptance: web `tsc` clean, the screen switches rooms, the badge updates, a direct chat works.
+- [ ] **T-13.5 Desktop conversations** — the same list and switcher in `src/pages/TeamChat.tsx`.
+  Acceptance: tsc clean, the desktop switches rooms and shows the unread badge.
+- [ ] **T-13.6 Privacy + export** — a direct chat is private (only its two members read it); the activity log
+  records that a direct chat happened (who, when, how many messages) but never the text; every member can
+  export their own conversation history as a text file.
+  Acceptance: the owner cannot read a direct chat, the activity log has no message text, the export has
+  every message of the conversation.
+- [ ] **T-13.7 Tests + deploy** — unit tests for the new logic, Playwright for the conversation list and a
+  direct chat, the migration applied to Neon, the worker deployed, the handover updated.
