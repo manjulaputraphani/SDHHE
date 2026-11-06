@@ -421,6 +421,42 @@ export const receiptRequests = pgTable(
   ],
 );
 
+/**
+ * A chat conversation (Phase 13).
+ *
+ * The shop room is a `group` conversation ("main"); every other one is a
+ * private chat between two members (`dm-<smallId>-<bigId>`).
+ */
+export const chatConversations = pgTable(
+  "chat_conversations",
+  {
+    id: serial("id").primaryKey(),
+    room: text("room").notNull().unique(),
+    kind: text("kind").notNull().default("direct"),
+    /** Shown above the conversation (the shop room has a name). */
+    title: text("title"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("chat_conversations_kind_valid", sql`${t.kind} in ('group','direct')`)],
+);
+
+/** Who is in a conversation — and how far they have read it. */
+export const chatConversationMembers = pgTable(
+  "chat_conversation_members",
+  {
+    conversationId: integer("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    /** The last message this member has seen (the unread ones are newer). */
+    lastReadMessageId: integer("last_read_message_id").notNull().default(0),
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.conversationId, t.userId] })],
+);
+
 /** Cash / bank ledger — every money movement in or out of the business. */
 export const cashLedger = pgTable("cash_ledger", {
   id: serial("id").primaryKey(),

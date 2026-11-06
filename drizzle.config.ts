@@ -40,6 +40,8 @@ export default defineConfig({
     "public.roastings",
     "public.chat_messages",
     "public.receipt_requests",
+    "public.chat_conversations",
+    "public.chat_conversation_members",
   ],
   dbCredentials: { url },
 });

@@ -286,12 +286,17 @@ Reconciliation with the interim work of 2026-10-30:
 > The shared room stays. On top of it: private conversations between two members, a conversation list with
 > unread badges, room-scoped history, receipts inside a direct chat, and a privacy rule (a direct chat is
 > private — the owner sees that it happened, never what was written). Design: `docs/chat-in-app-preview.html`.
-- [ ] **T-13.1 Conversations + unread** — `chat_conversations` (room, kind `group`|`direct`, title) and
+- [x] **T-13.1 Conversations + unread** — `chat_conversations` (room, kind `group`|`direct`, title) and
   `chat_conversation_members` (last_read_message_id) tables + `src/db/chatRooms.ts` (directRoomName,
   ensureGroup/DirectConversation, listConversations with unread, isMember, markRead, unreadCount) + migration
   `drizzle/0007_direct_chat.sql`.
   Acceptance: the shared room is a `group` conversation, a direct room is `dm-<smallId>-<bigId>`, the
   unread count counts the messages of the other member after the last read one, tsc + tests green.
+  (2026-11-06: `chat_conversations` + `chat_conversation_members` tables (migration `0007_direct_chat.sql`,
+  applied to Neon — both tables exist, 0 rows); `src/db/chatRooms.ts` (directRoomName, ensureGroup/DirectConversation,
+  isMember, listConversations with the unread count, markRead, unreadCount, listChatMembers) + 8 unit tests
+  and an int test (skips without `DATABASE_URL_TEST`). The unread count is the messages of the OTHER member
+  after `last_read_message_id`.
 - [ ] **T-13.2 Room-scoped API** — `GET /api/chat/conversations`, `GET /api/chat/members` (who may be
   chatted with), `GET/POST /api/chat/messages?room=…`, `POST /api/chat/read`, `POST /api/chat/conversations`
   (find or create a direct chat) — every room route checks that the caller is a member of that room (403).
