@@ -4,13 +4,15 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**T-14.1/14.2/14.3 — chat groups: DB helpers, worker routes, DO kick, owner UI — committed.**
+**T-14.1/14.2/14.3 — chat groups: DEPLOYED and LIVE** (version `548fe2d8-3253-43cf-ae54-d4e0ca270f0e`,
+2026-11-07). DB migration applied BEFORE the deploy: `chat_messages.edited_at` (0013, was already in)
++ `chat_conversations.archived_at` (0014, applied now). The deploy also re-added the R2 binding
+(`sdhhe-receipts`) that the 2026-11-06 deploy had to skip.
 The owner can make groups ("New group"), and add / remove members or archive from the group header
 ⋮ menu. A removed member's socket is closed at once (close 1008 → toast, back to the room list).
-NOT LIVE YET: the worker + DB must be updated first (see Owner steps). Web LIVE:
-https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/` (untouched).
-Note: the message-editing work (PATCH route, updateMessage, 0013) was committed by its owner
-mid-session as `322fd51`; I only added the missing `editedAt` column to `src/db/schema.ts`.
+Live app: https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl gets a 302 to
+sdhhe.cloudflareaccess.com; verify the group UI by signing in). Desktop = Tauri app in `src/`
+(untouched). Message editing was committed by its owner as `322fd51`.
 
 ## Done (T-14 chat groups)
 - DB (`src/db/chatRooms.ts`): groups reuse the Phase 13 tables (`chat_conversations` kind `group` +
@@ -34,9 +36,8 @@ mid-session as `322fd51`; I only added the missing `editedAt` column to `src/db/
   team-chat.spec.ts. 470 unit green, 39/39 e2e-web green, tsc clean (root/web/worker).
 
 ## Owner steps that are still open
-1. Apply drizzle/0013 + 0014 to the Neon DB (dev branch first — 0014 adds `archived_at`; the new
-   worker code SELECTs it, so deploy only AFTER the column exists). Then deploy:
-   `cd web && npm run build && cd ../web-worker && npx wrangler deploy`.
+1. ~~Apply migrations + deploy~~ DONE 2026-11-07 (see Current state). In the app: Team Chat →
+   "New group" to try the feature; check that receipts from groups can be approved in Expenses.
 2. Desktop chat → Worker blocked by Cloudflare Access until a service token exists.
 3. Desktop 1-hour auto-logout (owner has not answered). 4. Roasting screen missing in desktop.
 
