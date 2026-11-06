@@ -47,6 +47,7 @@ import {
   linkReceiptMessage,
   listMessages,
   listReceipts,
+  messageRoom,
   parseMessageInput,
   pendingReceiptCount,
   receiptRoom,
@@ -62,6 +63,7 @@ import {
   SHARED_ROOM,
   unreadCount,
 } from "../../src/db/chatRooms";
+import { markDelivered, markRead as markMessageRead, statesForMessages } from "../../src/db/chatStates";
 import {
   buildDecisionMail,
   buildPushText,
@@ -379,8 +381,10 @@ async function chatMailRecipients(env: Env): Promise<string[]> {
  */
 async function chatRoomMember(db: Db, room: string, userId: number): Promise<boolean> {
   if (room === SHARED_ROOM) {
-    await ensureGroupConversation(db, userId);
-    return true;
+    // Everybody is in the shop room — the row is added on the spot. A member
+    // that does not exist gets no row and therefore no access.
+    const added = await ensureGroupConversation(db, userId);
+    return added !== null;
   }
   // A private chat must look like a private chat — anything else is refused
   // before the database is even asked.
@@ -1172,7 +1176,18 @@ export default {
         if (!(await chatRoomMember(db, room, session.uid))) {
           return json({ error: "Not allowed: chat view" }, { status: 403 });
         }
-        return json({ messages: await listMessages(db, { room, limit }) });
+        const messages = await listMessages(db, { room, limit });
+        // The ticks: who has received the message and who has read it.
+        const marks = await statesForMessages(db, messages.map((message) => message.id));
+        const withMarks = messages.map((message) => {
+          const states = marks.get(message.id) ?? [];
+          return {
+            ...message,
+            deliveredBy: states.filter((state) => state.delivered).map((state) => state.userId),
+            readBy: states.filter((state) => state.read).map((state) => state.userId),
+          };
+        });
+        return json({ messages: withMarks });
       }
 
       if (url.pathname === "/api/chat/receipts" && request.method === "GET") {
@@ -1220,8 +1235,44 @@ export default {
           return json({ error: "Not allowed: chat view" }, { status: 403 });
         }
         const messageId = Number(body.messageId ?? 0);
-        await markRead(db, room, session.uid, Number.isInteger(messageId) ? messageId : undefined);
-        return json({ ok: true, unread: await unreadCount(db, session.uid) });
+        const readIds = await markMessageRead(
+          db,
+          room,
+          session.uid,
+          Number.isInteger(messageId) ? messageId : undefined,
+        );
+        // Tell the others straight away, so their tick turns blue at once.
+        if (readIds.length > 0) {
+          await broadcastToChat(
+            env,
+            {
+              type: "read",
+              messageIds: readIds,
+              userId: session.uid,
+              name: session.name,
+            },
+            room,
+          );
+        }
+        return json({ ok: true, unread: await unreadCount(db, session.uid), read: readIds });
+      }
+
+      if (url.pathname === "/api/chat/delivered" && request.method === "POST") {
+        const messageId = Number(body.messageId ?? 0);
+        if (!Number.isInteger(messageId) || messageId <= 0) {
+          return json({ error: "Which message?" }, { status: 400 });
+        }
+        const room = await messageRoom(db, messageId);
+        if (!room || !(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        await markDelivered(db, messageId, session.uid);
+        await broadcastToChat(
+          env,
+          { type: "delivered", messageIds: [messageId], userId: session.uid, name: session.name },
+          room,
+        );
+        return json({ ok: true });
       }
 
       // ---- Team Chat (Phase 12): send a message, decide a receipt ----

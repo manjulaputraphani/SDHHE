@@ -457,6 +457,27 @@ export const chatConversationMembers = pgTable(
   (t) => [primaryKey({ columns: [t.conversationId, t.userId] })],
 );
 
+/**
+ * Delivery and read marks of a chat message (Phase 14).
+ *
+ * One row per (message, member): when their device got it and when they have
+ * seen it. The ticks in the chat are built from these rows.
+ */
+export const chatMessageStates = pgTable(
+  "chat_message_states",
+  {
+    messageId: integer("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId] })],
+);
+
 /** Cash / bank ledger — every money movement in or out of the business. */
 export const cashLedger = pgTable("cash_ledger", {
   id: serial("id").primaryKey(),

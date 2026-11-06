@@ -20,6 +20,9 @@ export type ChatFrame =
   | { type: "message"; message: ChatMessage }
   | { type: "receipt"; receipt: ReceiptRequest; message: ChatMessage }
   | { type: "presence"; users: unknown[] }
+  | { type: "typing"; userId: number; name: string }
+  | { type: "delivered"; messageIds: number[]; userId: number; name: string }
+  | { type: "read"; messageIds: number[]; userId: number; name: string }
   | { type: "error"; message: string };
 
 /** A clean worker address: no trailing slash, https:// when there is no scheme. */
@@ -157,6 +160,18 @@ export async function startChatConversation(
     { method: "POST", body: JSON.stringify({ userId }) },
   );
   return data.conversation;
+}
+
+/** Tell the sender that this device got the message. */
+export async function chatDelivered(
+  workerUrl: string,
+  token: string,
+  messageId: number,
+): Promise<void> {
+  await request(workerUrl, token, "/api/chat/delivered", {
+    method: "POST",
+    body: JSON.stringify({ messageId }),
+  });
 }
 
 /** Mark a conversation as read. */

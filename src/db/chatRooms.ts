@@ -52,7 +52,7 @@ export function roomTitleFor(room: string, other: ChatMember | null): string {
 export async function ensureGroupConversation(
   db: Db | TxDb,
   userId?: number,
-): Promise<ChatConversation> {
+): Promise<ChatConversation | null> {
   const [conversation] = await db
     .insert(chatConversations)
     .values({ room: SHARED_ROOM, kind: "group", title: "Shop room" })
@@ -67,12 +67,17 @@ export async function ensureGroupConversation(
       .limit(1))[0];
   if (!row) throw new Error("The shop room could not be created");
   if (userId) {
-    await db
-      .insert(chatConversationMembers)
-      .values({ conversationId: row.id, userId })
-      .onConflictDoNothing({
-        target: [chatConversationMembers.conversationId, chatConversationMembers.userId],
-      });
+    try {
+      await db
+        .insert(chatConversationMembers)
+        .values({ conversationId: row.id, userId })
+        .onConflictDoNothing({
+          target: [chatConversationMembers.conversationId, chatConversationMembers.userId],
+        });
+    } catch {
+      // The member does not exist (a made-up id) — no row, so no access.
+      return null;
+    }
   }
   return {
     id: row.id,

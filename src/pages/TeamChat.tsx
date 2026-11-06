@@ -9,7 +9,7 @@
  * Colours: only the tokens from src/App.css. The layout follows
  * docs/chat-in-app-preview.html.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getChatWorkerUrl } from "../db/settings";
 import { getAuditActor } from "../db/activity";
 import { getCurrentPermissions } from "../db/permissions";
@@ -18,6 +18,7 @@ import { getSecret, SECRET_KEYS } from "../lib/secrets";
 import {
   chatConversations,
   chatDecide,
+  chatDelivered,
   chatMembers,
   chatMessages,
   chatReceipts,
@@ -36,13 +37,13 @@ import {
 import type { ChatMessage, ReceiptRequest } from "../db/chat";
 import {
   canApproveReceipts,
-  formatChatDayLabel,
   formatChatTime,
   receiptStatusLabel,
   receiptStatusTone,
 } from "../logic/chat";
 import { formatRupees } from "../logic/units";
 import { exportFileName } from "../logic/chatPrivacy";
+import { groupMessages, initials, messageTick } from "../logic/chatView";
 
 type StoredToken = { token: string; expiresAt: number };
 
@@ -74,6 +75,16 @@ export default function TeamChat() {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [deciding, setDeciding] = useState<number | null>(null);
+  /** Who is typing right now (Phase 14). */
+  const [typing, setTyping] = useState<string | null>(null);
+  /** The reader is scrolled up — show the jump-to-bottom button. */
+  const [atBottom, setAtBottom] = useState(true);
+  const [missed, setMissed] = useState(0);
+  const typingTimer = useRef<number | null>(null);
+  const lastTypingSent = useRef(0);
+  const atBottomRef = useRef(true);
+  const socketRef = useRef<WebSocket | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const canApprove = canApproveReceipts(getCurrentPermissions());
@@ -146,7 +157,31 @@ export default function TeamChat() {
             setMessages((prev) =>
               prev.some((m) => m.id === frame.message!.id) ? prev : [...prev, frame.message!],
             );
-            scrollToBottom();
+            if (!atBottomRef.current) {
+              setMissed((count) => count + 1);
+            } else {
+              scrollToBottom();
+              void markChatRead(workerUrl, token, room, frame.message.id).catch(() => undefined);
+            }
+            void chatDelivered(workerUrl, token, frame.message.id).catch(() => undefined);
+          }
+          if (frame.type === "delivered" || frame.type === "read") {
+            const ids = (frame as { messageIds?: number[] }).messageIds ?? [];
+            const key = frame.type === "read" ? "readBy" : "deliveredBy";
+            const userId = (frame as { userId?: number }).userId ?? 0;
+            setMessages((prev) =>
+              prev.map((message) => {
+                if (!ids.includes(message.id)) return message;
+                const list = (message[key] ?? []) as number[];
+                if (list.includes(userId)) return message;
+                return { ...message, [key]: [...list, userId] };
+              }),
+            );
+          }
+          if (frame.type === "typing" && frame.name) {
+            setTyping(frame.name);
+            if (typingTimer.current) window.clearTimeout(typingTimer.current);
+            typingTimer.current = window.setTimeout(() => setTyping(null), 3000);
           }
           if (frame.type === "receipt" && frame.receipt && frame.message) {
             setMessages((prev) =>
@@ -168,6 +203,7 @@ export default function TeamChat() {
         },
         room,
       );
+      socketRef.current = socket;
       socket.onopen = () => setConnected(true);
       socket.onerror = () => setConnected(false);
     };
@@ -178,6 +214,35 @@ export default function TeamChat() {
       socket?.close();
     };
   }, [workerUrl, token, room, scrollToBottom]);
+
+
+  /** Is the reader at the bottom of the room? (the jump button depends on it) */
+  const onScroll = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+    atBottomRef.current = atBottom;
+    setAtBottom(atBottom);
+    if (atBottom) setMissed(0);
+  }, []);
+
+  /** Jump back to the newest message. */
+  const jumpToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView?.({ block: "end" });
+    atBottomRef.current = true;
+    setAtBottom(true);
+    setMissed(0);
+  }, []);
+
+  /** Tell the others that I am typing. */
+  const sendTyping = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTypingSent.current < 2000) return;
+    lastTypingSent.current = now;
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: "typing", userId: currentUserId() ?? 0, name: actorName() }));
+  }, []);
 
   /** Open a conversation and mark it as read. */
   async function openRoom(next: string) {
@@ -299,6 +364,19 @@ export default function TeamChat() {
     }
   }
 
+  const activeConversation = conversations.find((c) => c.room === room);
+  const roomName =
+    activeConversation?.kind === "direct" ? activeConversation.other?.name ?? room : "Shop room";
+  // The people whose ticks count: the other member of a private chat, or
+  // everybody else in the shop room.
+  const otherMemberIds = useMemo(() => {
+    if (activeConversation?.kind === "direct") {
+      return activeConversation.other ? [activeConversation.other.id] : [];
+    }
+    return members.map((member) => member.id);
+  }, [activeConversation, members]);
+  const groups = useMemo(() => groupMessages(messages, currentUserId()), [messages]);
+
   if (!workerUrl) {
     return (
       <div className="space-y-4">
@@ -324,10 +402,6 @@ export default function TeamChat() {
 
   const pending = receipts.filter((r) => r.status === "pending");
   const receiptById = new Map(receipts.map((r) => [r.id, r]));
-  const activeConversation = conversations.find((c) => c.room === room);
-  const roomName =
-    activeConversation?.kind === "direct" ? activeConversation.other?.name ?? room : "Shop room";
-  let lastDay = "";
 
   return (
     <div className="space-y-4">
@@ -392,40 +466,75 @@ export default function TeamChat() {
         </aside>
 
         {/* ---------------- the room ---------------- */}
-        <div className="card flex min-h-[420px] flex-col overflow-hidden">
+        <div className="relative">
+          <div className="card flex min-h-[420px] flex-col overflow-hidden">
           <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
             <h2 className="text-sm font-semibold text-ink">{roomName}</h2>
             {activeConversation?.kind === "direct" && (
               <span className="badge badge-warn">Private</span>
             )}
-          </div>
-          <div className="max-h-[52vh] flex-1 space-y-3 overflow-y-auto bg-bg p-4">
-            {messages.length === 0 && (
-              <p className="text-sm text-muted">No messages yet — say hello to the team.</p>
+            {typing && (
+              <span className="flex items-center gap-1 text-[11px] text-muted">
+                <span className="flex gap-0.5" aria-hidden="true">
+                  <span className="size-1 animate-pulse rounded-full bg-muted" />
+                  <span className="size-1 animate-pulse rounded-full bg-muted [animation-delay:150ms]" />
+                  <span className="size-1 animate-pulse rounded-full bg-muted [animation-delay:300ms]" />
+                </span>
+                {typing} is typing…
+              </span>
             )}
-            {messages.map((message) => {
-              const day = formatChatDayLabel(message.createdAt);
-              const showDay = day !== lastDay;
-              lastDay = day;
-              const mine = message.userId !== null && message.userId === currentUserId();
-              const receipt = message.receiptId ? receiptById.get(message.receiptId) : undefined;
-
+          </div>
+          <div
+            ref={listRef}
+            className="max-h-[52vh] flex-1 space-y-1 overflow-y-auto bg-bg p-4"
+            onScroll={onScroll}
+          >
+            {groups.length === 0 && (
+              <div className="grid h-full place-items-center text-center">
+                <div>
+                  <p className="text-sm font-medium text-ink">No messages yet</p>
+                  <p className="mt-1 text-xs text-muted">
+                    Say hello to the team — everyone in this chat sees it right away.
+                  </p>
+                </div>
+              </div>
+            )}
+            {groups.map((group) => {
+              const last = group.messages[group.messages.length - 1]!;
+              const tick = group.mine ? messageTick(last, otherMemberIds) : null;
               return (
-                <div key={message.id} className="space-y-2">
-                  {showDay && (
-                    <p className="mx-auto w-fit rounded-full border border-line bg-surface-2 px-3 py-0.5 text-[11px] text-muted">
-                      {day}
-                    </p>
+                <div
+                  key={group.key}
+                  className={`flex items-end gap-2 ${group.mine ? "justify-end" : "justify-start"}`}
+                >
+                  {!group.mine && (
+                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-3 text-[10px] font-semibold text-muted">
+                      {initials(group.author)}
+                    </span>
                   )}
-                  {message.kind === "system" ? (
-                    <p className="mx-auto w-fit rounded-full border border-line bg-surface-2 px-3 py-0.5 text-xs text-muted">
-                      {message.body}
-                    </p>
-                  ) : (
-                    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                      <div className="max-w-[85%] space-y-1">
-                        {message.kind === "receipt" && receipt ? (
-                          <div className="card space-y-2 p-3">
+                  <div className={`flex max-w-[78%] flex-col ${group.mine ? "items-end" : "items-start"}`}>
+                    {!group.mine && (
+                      <span className="mb-0.5 px-1 text-[11px] font-medium text-muted">
+                        {group.author}
+                      </span>
+                    )}
+                    {group.messages.map((message, index) => {
+                      const receipt = message.receiptId ? receiptById.get(message.receiptId) : undefined;
+                      const isFirst = index === 0;
+                      const isLast = index === group.messages.length - 1;
+                      if (message.kind === "system") {
+                        return (
+                          <p
+                            key={message.id}
+                            className="my-1 rounded-full border border-line bg-surface-2 px-3 py-0.5 text-center text-[11px] text-muted"
+                          >
+                            {message.body}
+                          </p>
+                        );
+                      }
+                      if (message.kind === "receipt" && receipt) {
+                        return (
+                          <div key={message.id} className="card space-y-2 p-3">
                             <p className="text-sm font-semibold text-ink">{receipt.title}</p>
                             <p className="text-lg font-semibold text-ink">
                               {formatRupees(receipt.amountPaise)}
@@ -435,7 +544,7 @@ export default function TeamChat() {
                               <img
                                 src={chatReceiptUrl(workerUrl, receipt.r2Key)}
                                 alt={receipt.filename}
-                                className="max-h-56 w-full rounded-lg border border-line object-cover"
+                                className="max-h-56 w-full rounded-xl border border-line object-cover"
                               />
                             ) : (
                               <a
@@ -451,21 +560,35 @@ export default function TeamChat() {
                               {receiptStatusLabel(receipt.status)}
                             </span>
                           </div>
-                        ) : (
-                          <div
-                            className={`rounded-xl px-3 py-2 text-sm ${
-                              mine ? "bg-primary text-on-primary" : "border border-line bg-surface text-ink"
-                            }`}
-                          >
-                            {message.body}
-                          </div>
-                        )}
-                        <p className={`text-[11px] text-muted ${mine ? "text-right" : ""}`}>
-                          {message.author} · {formatChatTime(message.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                        );
+                      }
+                      return (
+                        <div
+                          key={message.id}
+                          className={`rounded-2xl px-3.5 py-2 text-sm ${
+                            group.mine
+                              ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
+                              : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
+                          } ${isFirst ? "" : "mt-0.5"}`}
+                        >
+                          {message.body}
+                        </div>
+                      );
+                    })}
+                    <span className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-muted">
+                      {formatChatTime(last.createdAt)}
+                      {tick && (
+                        <span
+                          className={tick === "read" ? "text-accent-ink" : "text-muted"}
+                          title={
+                            tick === "read" ? "Read" : tick === "delivered" ? "Delivered" : "Sent"
+                          }
+                        >
+                          {tick === "read" ? "✓✓✓" : tick === "delivered" ? "✓✓" : "✓"}
+                        </span>
+                      )}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -484,7 +607,10 @@ export default function TeamChat() {
               className="input flex-1"
               placeholder="Message the team…"
               value={draft}
-              onChange={(e) => setDraft(e.currentTarget.value)}
+              onChange={(e) => {
+                setDraft(e.currentTarget.value);
+                sendTyping();
+              }}
               disabled={busy}
               maxLength={2000}
             />
@@ -532,6 +658,23 @@ export default function TeamChat() {
                 </button>
               </div>
             </form>
+          )}
+          </div>
+
+          {/* Jump to the newest message (with the number of missed ones). */}
+          {!atBottom && (
+            <button
+              type="button"
+              onClick={jumpToBottom}
+              className="absolute bottom-24 right-6 z-10 flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink shadow-lg"
+            >
+              {missed > 0 && (
+                <span className="rounded-full bg-accent-soft px-1.5 text-[11px] text-accent-ink">
+                  {missed}
+                </span>
+              )}
+              New messages ↓
+            </button>
           )}
         </div>
 
@@ -621,4 +764,9 @@ export default function TeamChat() {
 function currentUserId(): number | null {
   const actor = getAuditActor();
   return actor.userId;
+}
+
+/** The signed-in member's name (for the typing frame). */
+function actorName(): string {
+  return getAuditActor().name;
 }

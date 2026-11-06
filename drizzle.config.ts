@@ -42,6 +42,7 @@ export default defineConfig({
     "public.receipt_requests",
     "public.chat_conversations",
     "public.chat_conversation_members",
+    "public.chat_message_states",
   ],
   dbCredentials: { url },
 });

@@ -352,25 +352,43 @@ Reconciliation with the interim work of 2026-10-30:
 > The room gets the modern chat look (grouped bubbles, avatars, typing indicator, scroll-to-bottom with an
 > unread pill) and every message carries **sent / delivered / read** ticks — like WhatsApp: ✓ sent,
 > ✓✓ delivered to the other device, ✓✓✓ read (blue).
-- [ ] **T-14.1 Delivery/read state** — `chat_message_states` table (message_id, user_id, delivered_at, read_at)
+- [x] **T-14.1 Delivery/read state** — `chat_message_states` table (message_id, user_id, delivered_at, read_at)
   + `src/db/chatStates.ts` (markDelivered, markRead, statesForMessages, summarise) + migration
   `drizzle/0008_message_states.sql`.
   Acceptance: one row per (message, member), a member can be delivered but not read, the summary counts the
   other members, tsc + tests green.
-- [ ] **T-14.2 The API** — `POST /api/chat/delivered` (the client confirms it got the message),
+  (2026-11-06: `chat_message_states` table (migration `0008_message_states.sql`, applied to Neon),
+  `src/db/chatStates.ts` (markDelivered, markRead, statesForMessages) and `src/logic/chatStates.ts`
+  (tickState, summarise) + 9 unit tests.
+- [x] **T-14.2 The API** — `POST /api/chat/delivered` (the client confirms it got the message),
   `POST /api/chat/read` now also writes the read marks and **pushes a "read" frame into the room** (the
   sender sees the tick turn blue live), and `GET /api/chat/messages` returns `deliveredBy` / `readBy` per
   message.
   Acceptance: a delivered mark is stored for the receiver only, a read mark is stored and broadcast, the
   history carries the marks, 401/403 still hold.
-- [ ] **T-14.3 Typing + read frames in the room** — the Durable Object relays the "typing" frame to the
+  (2026-11-06: `POST /api/chat/delivered` (the device confirms it got the message) and `POST /api/chat/read`
+  (now also writes the marks and **pushes a "read" frame into the room**, so the sender's tick turns gold at
+  once); `GET /api/chat/messages` returns `deliveredBy` / `readBy` per message. A member that does not exist
+  gets no room row and therefore a 403 (that was a 500 until the FK was caught). `scripts/local-tick-check.mjs`
+  — **7/7 green**: fresh message without marks → delivered → the sender sees it → read → the sender sees it →
+  a stranger gets 403.
+- [x] **T-14.3 Typing + read frames in the room** — the Durable Object relays the "typing" frame to the
   other members and the "read" frame from the Worker.
   Acceptance: a typing indicator appears for the other member only, the read tick arrives live.
-- [ ] **T-14.4 The modern chat screen** (web + desktop) — grouped bubbles (tight on the sender's side),
+  (2026-11-06: the Durable Object relays the "typing" frame to the other members of the room (and the
+  "delivered"/"read" frames come from the Worker); the new frame types are in
+  `web-worker/src/chat/protocol.ts`.)
+- [x] **T-14.4 The modern chat screen** (web + desktop) — grouped bubbles (tight on the sender's side),
   the author name on the first message of a group, the time + ticks on the last one, the ✓ / ✓✓ / ✓✓✓ ticks
   (blue when read), the typing indicator in the header, a scroll-to-bottom button with the unread pill,
   a lighter, roomier layout.
   Acceptance: the screen matches the new look, the ticks follow the real state, the scroll button appears
   when the reader is scrolled up.
-- [ ] **T-14.5 Tests + deploy** — unit tests for the state logic, a local end-to-end check (send → delivered →
+  (2026-11-06: both screens (web + desktop) now draw **grouped bubbles** (messages of the same author within
+  five minutes form a group: one avatar, one name, tight bubbles, the tail only on the last one), the
+  **✓ / ✓✓ / ✓✓✓ ticks** next to the time on my own messages (gold = read), a **typing indicator** in the
+  room header, a **jump-to-bottom button** with the number of missed messages, and a friendly empty state.
+  The shared drawing rules live in `src/logic/chatView.ts` (grouping, the tick, the initials) so the web and
+  the desktop look the same. Playwright: the read tick and the typing indicator are covered (9/9 green).
+- [x] **T-14.5 Tests + deploy** — unit tests for the state logic, a local end-to-end check (send → delivered →
   read → the sender sees the blue tick), the Playwright spec for the ticks, the worker deployed.

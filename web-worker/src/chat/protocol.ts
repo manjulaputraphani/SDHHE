@@ -20,9 +20,23 @@ export type ChatFrame =
   | { type: "message"; message: unknown }
   | { type: "receipt"; receipt: unknown; message: unknown }
   | { type: "presence"; users: ChatUser[] }
+  /** Somebody is typing. */
+  | { type: "typing"; userId: number; name: string }
+  /** These messages were delivered to / read by a member. */
+  | { type: "delivered"; messageIds: number[]; userId: number; name: string }
+  | { type: "read"; messageIds: number[]; userId: number; name: string }
   | { type: "error"; message: string };
 
-export const CHAT_FRAME_TYPES = ["hello", "message", "receipt", "presence", "error"] as const;
+export const CHAT_FRAME_TYPES = [
+  "hello",
+  "message",
+  "receipt",
+  "presence",
+  "typing",
+  "delivered",
+  "read",
+  "error",
+] as const;
 
 /** Is this a member we can put in the presence list? */
 export function isChatUser(value: unknown): value is ChatUser {

@@ -13,6 +13,10 @@ export type ChatMessage = {
   body: string;
   receiptId: number | null;
   createdAt: string;
+  /** Who has received it (Phase 14). */
+  deliveredBy?: number[];
+  /** Who has read it (Phase 14). */
+  readBy?: number[];
 };
 
 export type ChatReceipt = {
@@ -516,9 +520,14 @@ export const api = {
       body: JSON.stringify({ userId }),
     }),
   markChatRead: (room: string, messageId?: number) =>
-    request<{ ok: boolean; unread: number }>("/api/chat/read", {
+    request<{ ok: boolean; unread: number; read?: number[] }>("/api/chat/read", {
       method: "POST",
       body: JSON.stringify({ room, messageId }),
+    }),
+  markChatDelivered: (messageId: number) =>
+    request<{ ok: boolean }>("/api/chat/delivered", {
+      method: "POST",
+      body: JSON.stringify({ messageId }),
     }),
 };
 

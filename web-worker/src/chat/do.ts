@@ -130,9 +130,37 @@ export class ChatRoom extends DurableObject<Env> {
     }
   }
 
-  /** A member sent something (only pings today — messages go through REST). */
+  /** A member sent something (a ping, or "I am typing"). */
   webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
-    if (typeof message === "string" && message === "ping") socket.send("pong");
+    if (typeof message !== "string") return;
+    if (message === "ping") {
+      socket.send("pong");
+      return;
+    }
+    try {
+      const frame = JSON.parse(message) as { type?: string; userId?: number; name?: string };
+      // "I am typing" is relayed to the other members of the room.
+      if (frame.type === "typing" && typeof frame.userId === "number") {
+        this.relay(socket, { type: "typing", userId: frame.userId, name: String(frame.name ?? "") });
+      }
+    } catch {
+      // A frame we do not understand is ignored.
+    }
+  }
+
+  /** Send a frame to everybody in the room except one socket. */
+  private relay(from: WebSocket, frame: ChatFrame): void {
+    const text = encodeFrame(frame);
+    for (const socket of this.ctx.getWebSockets()) {
+      if (socket === from) continue;
+      const attachment = socket.deserializeAttachment() as ChatUser | null;
+      if (isTokenExpired(attachment?.exp)) continue;
+      try {
+        socket.send(text);
+      } catch (err) {
+        console.error("chat: relay failed:", err);
+      }
+    }
   }
 
   /** Somebody left — tell the room. */

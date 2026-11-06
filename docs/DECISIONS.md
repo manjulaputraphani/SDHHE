@@ -88,3 +88,10 @@
   membership on every route and refuses a room name that is not a chat room), while the activity log only notes
   that a private chat happened — "had a private chat (1 message(s) with member #4)" — and never the text · the
   owner can moderate without reading; every member can export their own conversation as a text file
+- 2026-11-06 · **Delivered / read ticks** (Phase 14): one `chat_message_states` row per (message, member) —
+  `delivered_at` when their device got it, `read_at` when they have seen it · the sender sees ✓ (sent), ✓✓
+  (delivered) and ✓✓✓ in gold (read); the tick is computed from the *other* members, so a shop room reads
+  "read" only when everybody else has read it
+- 2026-11-06 · The **read mark is pushed into the room** (the Worker broadcasts a "read" frame) and the
+  **typing indicator** is relayed by the Durable Object · the tick therefore turns gold on the sender's
+  screen while they are looking at it, without a refresh

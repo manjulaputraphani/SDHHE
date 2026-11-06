@@ -30,15 +30,15 @@ suite("Team Chat — conversations and unread", () => {
       .returning();
 
     const room = await ensureGroupConversation(db!);
-    expect(room.room).toBe(SHARED_ROOM);
-    expect(room.kind).toBe("group");
+    expect(room?.room).toBe(SHARED_ROOM);
+    expect(room?.kind).toBe("group");
 
     // The shop room is a conversation every member belongs to.
     await db!
       .insert((await import("./schema")).chatConversationMembers)
       .values([
-        { conversationId: room.id, userId: owner.id },
-        { conversationId: room.id, userId: staff.id },
+        { conversationId: room!.id, userId: owner.id },
+        { conversationId: room!.id, userId: staff.id },
       ])
       .onConflictDoNothing();
 

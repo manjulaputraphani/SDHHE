@@ -35,6 +35,10 @@ export type ChatMessage = {
   body: string;
   receiptId: number | null;
   createdAt: string;
+  /** Who has received it (Phase 14). */
+  deliveredBy?: number[];
+  /** Who has read it (Phase 14). */
+  readBy?: number[];
 };
 
 export type ReceiptRequest = {
@@ -349,6 +353,16 @@ export async function receiptRoom(db: Db, receiptId: number): Promise<string | n
     .from(receiptRequests)
     .innerJoin(chatMessages, eq(chatMessages.id, receiptRequests.messageId))
     .where(eq(receiptRequests.id, receiptId))
+    .limit(1);
+  return row?.room ?? null;
+}
+
+/** The room a message belongs to. */
+export async function messageRoom(db: Db, messageId: number): Promise<string | null> {
+  const [row] = await db
+    .select({ room: chatMessages.room })
+    .from(chatMessages)
+    .where(eq(chatMessages.id, messageId))
     .limit(1);
   return row?.room ?? null;
 }

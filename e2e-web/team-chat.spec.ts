@@ -45,6 +45,9 @@ const MESSAGES = [
     body: "₹96/kg — kal 20 kg laya tha",
     receiptId: null,
     createdAt: "2026-11-06T09:43:00.000Z",
+    // Phase 14: the other member has received and read it.
+    deliveredBy: [4],
+    readBy: [4],
   },
 ];
 
@@ -221,7 +224,7 @@ async function mockChat(
     });
   });
   // The live room.
-  await page.routeWebSocket("**/api/chat/ws", (socket) => {
+  await page.routeWebSocket("**/api/chat/ws**", (socket) => {
     socket.onMessage((message) => {
       if (message === "ping") socket.send("pong");
     });
@@ -231,6 +234,9 @@ async function mockChat(
         user: { id: member.id, name: member.name, role: member.role },
         presence: [{ id: member.id, name: member.name, role: member.role }],
       }),
+    );
+    socket.send(
+      JSON.stringify({ type: "typing", userId: 4, name: "RAJU" }),
     );
   });
 }
@@ -286,6 +292,21 @@ test.describe("Team Chat", () => {
     await page.getByPlaceholder("Message…").fill("Kal subah 6 baje khula hai");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByText("Kal subah 6 baje khula hai")).toBeVisible();
+  });
+
+  test("shows the read tick on my own message", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await page.goto("/team-chat");
+
+    await expect(page.getByText("₹96/kg — kal 20 kg laya tha")).toBeVisible();
+    // Read by the other member → the three ticks.
+    await expect(page.getByText("✓✓✓")).toBeVisible();
+  });
+
+  test("shows who is typing", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await page.goto("/team-chat");
+    await expect(page.getByText(/RAJU is typing/)).toBeVisible();
   });
 
   test("lists the conversations with their unread count", async ({ page }) => {
