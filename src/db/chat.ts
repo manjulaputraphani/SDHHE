@@ -35,6 +35,8 @@ export type ChatMessage = {
   body: string;
   receiptId: number | null;
   createdAt: string;
+  /** When the message was last edited (if edited). */
+  editedAt?: string;
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */
@@ -202,6 +204,7 @@ type MessageRow = {
   body: string;
   receiptId: number | null;
   createdAt: Date;
+  editedAt: Date | null;
 };
 
 type ReceiptRow = {
@@ -236,6 +239,7 @@ export function toMessage(row: MessageRow): ChatMessage {
     body: row.body,
     receiptId: row.receiptId,
     createdAt: row.createdAt.toISOString(),
+    editedAt: row.editedAt ? row.editedAt.toISOString() : undefined,
   };
 }
 
@@ -309,6 +313,78 @@ export async function insertMessage(
     })
     .returning()) as MessageRow[];
   return toMessage(created);
+}
+
+/** Input for updating a message. */
+export type MessageEditInput = {
+  body: string;
+};
+
+/** Validate a message edit input. */
+export function parseMessageEditInput(input: unknown): MessageEditInput {
+  if (typeof input !== 'object' || input === null) {
+    throw new Error('Invalid message edit input');
+  }
+  const body = String((input as any).body ?? '').trim();
+  if (!body) {
+    throw new Error('Message cannot be empty');
+  }
+  if (body.length > MAX_MESSAGE_CHARS) {
+    throw new Error(`Message is too long (max ${MAX_MESSAGE_CHARS})`);
+  }
+  return { body };
+}
+
+/** Update a message's body and set the edited timestamp. */
+export async function updateMessage(
+  db: Db | TxDb,
+  messageId: number,
+  input: {
+    userId: number | null; // For authorization check
+    body: string;
+  },
+): Promise<ChatMessage> {
+  const { body } = parseMessageEditInput(input);
+  const { userId } = input;
+
+  // Verify the message exists and check authorization (basic check - full auth in API layer)
+  const [existing] = await db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.id, messageId))
+    .limit(1);
+
+  if (!existing) {
+    throw new Error('Message not found');
+  }
+
+  // Additional authorization: only the message author can edit it
+  // (Full authorization with roles/permissions should happen in the API layer)
+  if (userId !== null && existing.userId !== null && userId !== existing.userId) {
+    throw new Error('Not authorized to edit this message');
+  }
+
+  const [updated] = await db
+    .update(chatMessages)
+    .set({
+      body: body,
+      editedAt: new Date(),
+    })
+    .where(eq(chatMessages.id, messageId))
+    .returning() as MessageRow[];
+
+  if (!updated) {
+    throw new Error('Failed to update message');
+  }
+
+  await logActivity(db, {
+    event: 'message.update',
+    summary: `Message #${messageId} updated`,
+    entity: 'chat_messages',
+    entityId: messageId,
+  });
+
+  return toMessage(updated);
 }
 
 /** Point a receipt at the message that shows it. */

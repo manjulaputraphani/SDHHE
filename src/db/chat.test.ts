@@ -127,6 +127,7 @@ describe("row mapping", () => {
         body: "Baki stock?",
         receiptId: null,
         createdAt: at,
+        editedAt: null,
       }),
     ).toEqual({
       id: 7,

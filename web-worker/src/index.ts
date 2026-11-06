@@ -52,6 +52,7 @@ import {
   pendingReceiptCount,
   receiptRoom,
   type ReceiptRequest,
+updateMessage,
 } from "../../src/db/chat";
 import {
   ensureDirectConversation,

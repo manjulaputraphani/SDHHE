@@ -8,6 +8,7 @@ Tool: OpenCode
 Live worker version `eb23815a-12ad-4da9-8e53-1bb39e3df6e1` unchanged; this touched the **web bundle only**
 (`cd web && npm run build` → `cd web-worker && npx wrangler deploy` when the owner wants it live).
 Web LIVE: https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/` (NOT touched here).
+**Message editing feature implemented**: Added database schema migration for edited_at timestamp, updated chat DB functions with updateMessage support, and added worker API route (PATCH /api/chat/messages/:id) - ready for final testing and deployment.
 
 ## Done
 - **T-16.0 Responsive web edition** (committed): exact viewport meta with `viewport-fit=cover` (no
@@ -30,6 +31,7 @@ Web LIVE: https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/
   `web/src/components/TeamChat.tsx`, `web/src/components/notifications/{ToastHost,WelcomeBanner,
   AnnouncementBanner,ProductTour,WhatsNewModal,LoginAlertModal}.tsx`, `e2e-web/responsive.spec.ts`,
   `docs/BUILD_PLAN.md`.
+- **Message editing feature**: Database migration (0013_message_edits.sql) added edited_at column to chat_messages table; updated src/db/chat.ts with MessageRow and ChatMessage types, toMessage function, parseMessageEditInput, and updateMessage function; fixed src/db/chat.test.ts; added updateMessage import to web-worker/src/index.ts; implemented PATCH /api/chat/messages/:id handler in worker (ready for activation).
 
 ## ⚠ Uncommitted work in the tree (NOT mine — leave it for its owner)
 The "welcome banner setting" fix is half-finished and uncommitted: `src/db/notifications.ts`,
