@@ -13,7 +13,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Team Chat", body: "New message", url: "/team-chat" };
+  let data = { title: "Team Chat", body: "New message", url: "/team-chat?notify=1" };
   try {
     data = { ...data, ...event.data.json() };
   } catch (err) {
@@ -22,17 +22,19 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: "/favicon.svg",
+      icon: "/icons/icon-192.png",
       badge: "/favicon.svg",
       tag: "team-chat",
-      data: { url: data.url || "/team-chat" },
+      data: { url: data.url || "/team-chat?notify=1" },
     }),
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/team-chat";
+  // ?notify=1 opens the chat straight away — a plain /team-chat address now
+  // lands on the Dashboard (the owner's always-Dashboard rule).
+  const url = event.notification.data?.url || "/team-chat?notify=1";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const client of list) {

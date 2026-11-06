@@ -564,7 +564,26 @@ Reconciliation with the interim work of 2026-10-30:
   (no horizontal scroll, no auto-zoom, per page: Login, Dashboard, New Bill, Invoices, Items,
   Purchases, Roasting, Team Chat, Settings) + the full 34-test web suite.
 
+## Mobile & PWA polish (2026-11-07, requested by the owner)
+- [x] **PWA for Android and Apple** — `manifest.webmanifest` (standalone, portrait, brand colours)
+  + generated icons (192/512/maskable PNG, apple-touch-icon, favicon.svg) + Apple meta tags; the
+  existing `sw.js` is now REGISTERED (it never was — push could not work before).
+- [x] **Message notifications ON BY DEFAULT** — right after sign-in the app asks for the permission
+  once and subscribes (idempotent re-sync on every login; a denial is never nagged again; the 🔔 in
+  Team Chat stays the manual switch). Pushes now also go to group members ("X wrote in <group>");
+  a tapped notification opens the chat (`/team-chat?notify=1`) — a plain /team-chat address still
+  opens the Dashboard.
+- [x] **Blank login page on phones fixed** — the Google-Fonts stylesheet no longer blocks the
+  first paint (it previously left a white screen on slow mobile networks) and index.html carries
+  an inline boot splash (brand + pulse, light/dark) that React replaces on mount.
+- [x] **WhatsApp-style phone keyboard** — on touch devices the return key makes a new line and
+  only the send button sends (desktop keeps Enter-sends); the Team Chat header is compact on
+  phones (smaller title, subtitle hidden). e2e pins both.
+- [x] **e2e race fixed (welcome banner)** — the login-flag helper re-set the flag on every reload
+  (init scripts re-run); it now sets it once per tab, so "a refresh shows no banner" is real.
+
 ## Phase 15 — AI polish (added 2026-11-07)
+
 The owner turns AI polish on per group; in those groups a message is rewritten professionally
 before sending — as a suggestion the sender confirms. *Adapted like Phase 14: groups live in
 `chat_conversations` (kind `group`, room strings) — there is no `chat_rooms` table or `useChat`

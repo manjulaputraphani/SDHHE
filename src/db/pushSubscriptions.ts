@@ -1,7 +1,7 @@
 /**
  * The Web Push subscriptions (Phase 16) — who wants the phone notifications.
  */
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Db, TxDb } from "./client";
 import { pushSubscriptions } from "./schema";
 
@@ -45,6 +45,28 @@ export async function pushSubscriptionsForRoom(
   const rows = await db
     .select()
     .from(pushSubscriptions);
+  return rows
+    .filter((row) => row.userId !== exceptUserId)
+    .map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      endpoint: row.endpoint,
+      p256dh: row.p256dh,
+      auth: row.auth,
+    }));
+}
+
+/** The subscriptions of the given members (the sender is left out). */
+export async function pushSubscriptionsForUsers(
+  db: Db,
+  userIds: number[],
+  exceptUserId: number,
+): Promise<PushSubscriptionRow[]> {
+  if (userIds.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(pushSubscriptions)
+    .where(inArray(pushSubscriptions.userId, userIds));
   return rows
     .filter((row) => row.userId !== exceptUserId)
     .map((row) => ({

@@ -51,6 +51,7 @@ import ToastHost from "./components/notifications/ToastHost";
 import NotificationsHost from "./components/notifications/NotificationsHost";
 import AnnouncementsAdmin from "./components/AnnouncementsAdmin";
 import { showToast } from "./components/notifications/toastStore";
+import { ensurePushSubscription, markPushAsked, pushAsked, pushSupported } from "./components/notifications/pushSetup";
 import type { LoginEntry } from "./api";
 import { TOURS } from "./components/notifications/tourSteps";
 import {
@@ -262,7 +263,18 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   // The app ALWAYS opens on the Dashboard — even from a /team-chat URL (the
   // owner asked; the chat deep link now only works through in-app navigation).
-  const [view, setView] = useState<View>("dashboard");
+  // One exception: a tapped notification (?notify=1) opens the chat, because
+  // that is a deliberate jump.
+  const [view, setView] = useState<View>(() => {
+    if (typeof window !== "undefined" && window.location.pathname === "/team-chat") {
+      try {
+        if (new URLSearchParams(window.location.search).has("notify")) return "team-chat";
+      } catch {
+        // fall through to the dashboard
+      }
+    }
+    return "dashboard";
+  });
   const [bills, setBills] = useState<BillRow[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
@@ -687,6 +699,28 @@ export default function App() {
     const first = MODULES.find((moduleKey) => allowed(user.permissions, moduleKey, "view"));
     if (first) setView(first as View);
   }, [user, view]);
+
+  // Message notifications are ON BY DEFAULT: right after the sign-in the app
+  // asks for the permission once and subscribes. A member who answers "no" (or
+  // turns them off) is never nagged again — the 🔔 in the Team Chat can always
+  // switch them back on.
+  useEffect(() => {
+    if (!user || !pushSupported() || Notification.permission === "denied") return;
+    if (pushAsked() && Notification.permission !== "granted") return;
+    let cancelled = false;
+    void (async () => {
+      const firstAsk = !pushAsked();
+      const outcome = await ensurePushSubscription();
+      if (cancelled) return;
+      if (firstAsk) {
+        markPushAsked();
+        if (outcome === "on") showToast("Message notifications are on", "success", 3000);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   /**
    * The Team Chat has its own URL (/team-chat) so it can be shared or opened

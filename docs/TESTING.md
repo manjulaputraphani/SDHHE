@@ -73,6 +73,11 @@ Reset dev data before each run (truncate tables in a test setup file).
 - e2e: author taps their own bubble → edits in place → Save → new text + "edited" mark.
 - e2e: cold load at `/team-chat` lands on the Dashboard and settles to `/` (always-default rule).
 - Unit: chat times are 12-hour local — "09:42 AM", "09:07 PM", "12:07 AM", "12:00 PM" (chat.test / chatView.test).
+- e2e: on a touch phone (coarse-pointer matchMedia) the return key makes a new line — the send button sends; desktop keeps Enter-to-send.
+- e2e: PWA shell — manifest + apple-touch-icon + favicon referenced in index.html; the login-flag helper sets the flag once per tab (a refresh
+  must not resurrect the consumed welcome banner).
+- Notifications default-on: pushSetup.ensurePushSubscription is idempotent (permission → key → SW → subscribe → POST), App asks once
+  (sdhhe-push-asked), a denial never re-asks.
 
 
 ## D. Data safety (manual)

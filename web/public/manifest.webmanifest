@@ -1,0 +1,16 @@
+{
+  "name": "SREE DURGA HARIHARA ENTERPRISES",
+  "short_name": "SDHHE",
+  "description": "Stock, billing, expenses and the team chat of the coffee trading shop — live from the shop itself.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F1E8",
+  "theme_color": "#6F4E37",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -6,12 +6,33 @@
     <meta name="theme-color" content="#F7F1E8" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1C1612" media="(prefers-color-scheme: dark)" />
     <title>SREE DURGA HARIHARA ENTERPRISES</title>
+
+    <!-- Icons + PWA (Android install banner + Apple Add to Home Screen). -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SDHHE" />
+
+    <!-- The fonts never block the first paint (a slow phone network used to
+         leave the login page blank until the stylesheet arrived). -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+
     <script>
       /* Resolve the theme before first paint (no flash of the wrong palette). */
       (function () {
@@ -27,9 +48,79 @@
         }
       })();
     </script>
+    <style>
+      /* The boot splash: the bundle takes a moment on a phone network, and a
+         plain white page looks broken. React replaces this node on mount. */
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #f7f1e8;
+        color: #6f4e37;
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+        text-align: center;
+        z-index: 1;
+      }
+      [data-theme="dark"] #boot {
+        background: #1c1612;
+        color: #c8a27c;
+      }
+      #boot .disc {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 18px;
+        border-radius: 22px;
+        background: #6f4e37;
+        display: grid;
+        place-items: center;
+        animation: disc-pulse 1.6s ease-in-out infinite;
+      }
+      [data-theme="dark"] #boot .disc {
+        background: #c8a27c;
+      }
+      #boot .disc span {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: #f7f1e8;
+        display: grid;
+        place-items: center;
+      }
+      #boot .disc span i {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #c8963e;
+      }
+      [data-theme="dark"] #boot .disc span i {
+        background: #6f4e37;
+      }
+      #boot p {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      @keyframes disc-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.06); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot .disc { animation: none; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot" aria-hidden="true">
+        <div>
+          <div class="disc"><span><i></i></span></div>
+          <p>SREE DURGA HARIHARA<br />ENTERPRISES</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -128,9 +128,15 @@ async function mockApp(page: import("@playwright/test").Page, member: typeof OWN
 
 /** Simulate a REAL login: the login success handler sets the one-time flag. */
 async function withLoginFlag(page: import("@playwright/test").Page) {
-  await page.addInitScript(() =>
-    window.sessionStorage.setItem("sdhhe:just-logged-in", "1"),
-  );
+  // Once per tab, never on a refresh: init scripts re-run on every reload and
+  // would otherwise resurrect the consumed flag (a refresh must show nothing).
+  await page.addInitScript(() => {
+    const mark = "sdhhe:login-flag-was-set";
+    if (!window.sessionStorage.getItem(mark)) {
+      window.sessionStorage.setItem(mark, "1");
+      window.sessionStorage.setItem("sdhhe:just-logged-in", "1");
+    }
+  });
 }
 
 test.describe("The notification system", () => {

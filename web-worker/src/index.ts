@@ -57,6 +57,7 @@ updateMessage,
 import {
   addConversationMember,
   archiveConversation,
+  conversationTitle,
   createGroupConversation,
   ensureDirectConversation,
   ensureGroupConversation,
@@ -86,6 +87,7 @@ import { sendWebPush } from "./webpush";
 import {
   forgetPushSubscription,
   pushSubscriptionsForRoom,
+  pushSubscriptionsForUsers,
   savePushSubscription,
 } from "../../src/db/pushSubscriptions";
 import {
@@ -592,14 +594,35 @@ async function pushToTheTeam(
   exceptUserId: number,
   message: { title: string; body: string; url?: string },
 ): Promise<void> {
+  const db = getDb(env.DATABASE_URL as string);
+  await pushToSubscriptions(env, db, await pushSubscriptionsForRoom(db, exceptUserId), message);
+}
+
+/** Push a message to the phones of the members of a group (the sender is left out). */
+async function pushToUsers(
+  env: Env,
+  userIds: number[],
+  exceptUserId: number,
+  message: { title: string; body: string; url?: string },
+): Promise<void> {
+  const db = getDb(env.DATABASE_URL as string);
+  await pushToSubscriptions(env, db, await pushSubscriptionsForUsers(db, userIds, exceptUserId), message);
+}
+
+/** The shared fan-out: every device gets the push, dead subscriptions go. */
+async function pushToSubscriptions(
+  env: Env,
+  db: Db,
+  subscriptions: Awaited<ReturnType<typeof pushSubscriptionsForRoom>>,
+  message: { title: string; body: string; url?: string },
+): Promise<void> {
   const config = webPushConfig(env);
   if (!config) return;
   try {
-    const subscriptions = await pushSubscriptionsForRoom(getDb(env.DATABASE_URL as string), exceptUserId);
     await Promise.allSettled(
       subscriptions.map(async (subscription) => {
         const ok = await sendWebPush(config, subscription, message);
-        if (!ok) await forgetPushSubscription(getDb(env.DATABASE_URL as string), subscription.endpoint);
+        if (!ok) await forgetPushSubscription(db, subscription.endpoint);
       }),
     );
   } catch (err) {
@@ -2035,20 +2058,29 @@ const handler = {
           await logFirstDirectMessage(db, room, session, message);
           await broadcastToChat(env, { type: "message", message }, room);
           await markRead(db, room, session.uid, message.id);
-          // The shop room pushes the phones of the team (Cloudflare Web Push
-          // first, ntfy as the fallback). A private chat does not — the push
-          // channel is shared and the text of a 1-to-1 chat is private.
+          // The shop room pushes the phones of the whole team; a group pushes
+          // only its members (Cloudflare Web Push first, ntfy as the
+          // fallback). A private chat does not push — the push channel is
+          // shared and the text of a 1-to-1 chat is private.
           if (room === SHARED_ROOM) {
             await pushToTheTeam(env, session.uid, {
               title: `${session.name} wrote in the shop room`,
               body: input.body.slice(0, 120),
-              url: "/team-chat",
+              url: "/team-chat?notify=1",
             });
             await pushNtfy(
               env.NTFY_TOPIC,
               `${session.name} wrote in the shop room`,
               input.body.slice(0, 120),
             );
+          } else if (isGroupRoom(room)) {
+            const memberIds = (await listConversationMembers(db, room)).map((member) => member.id);
+            const title = (await conversationTitle(db, room)) ?? "the group";
+            await pushToUsers(env, memberIds, session.uid, {
+              title: `${session.name} wrote in ${title}`,
+              body: input.body.slice(0, 120),
+              url: "/team-chat?notify=1",
+            });
           }
           return json({ message });
         }

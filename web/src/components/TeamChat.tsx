@@ -138,6 +138,20 @@ function useIsMd(): boolean {
   return isMd;
 }
 
+/** Is this a touch device? On a phone the return key makes a new line —
+ *  WhatsApp behaviour — and the send button sends (no accidental sends). */
+function useIsCoarse(): boolean {
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    const update = () => setCoarse(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return coarse;
+}
+
 export default function TeamChat({ user }: Props) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [members, setMembers] = useState<ChatMember[]>([]);
@@ -207,6 +221,8 @@ export default function TeamChat({ user }: Props) {
   const keyboardOffset = useKeyboardOffset();
   /** Tablet (md+) shows the list and the room side by side. */
   const isMd = useIsMd();
+  /** A phone keyboard: the return key makes a new line, the button sends. */
+  const isCoarse = useIsCoarse();
   /** Pinned / muted chats — a local preference of this browser only. */
   const [pinned, setPinned] = useState<string[]>([]);
   const [muted, setMuted] = useState<string[]>([]);
@@ -885,10 +901,10 @@ export default function TeamChat({ user }: Props) {
           : undefined
       }
     >
-      <div className="flex flex-wrap items-end justify-between gap-3 pb-3">
+      <div className="flex flex-wrap items-end justify-between gap-2 pb-2 md:gap-3 md:pb-3">
         <div>
-          <h1 className="page-title text-xl font-semibold tracking-tight md:text-2xl">Team Chat</h1>
-          <p className="text-sm text-muted">
+          <h1 className="page-title text-base font-semibold tracking-tight md:text-2xl">Team Chat</h1>
+          <p className="hidden text-sm text-muted sm:block">
             Talk about the shop and send receipts for approval.
           </p>
         </div>
@@ -1697,8 +1713,10 @@ export default function TeamChat({ user }: Props) {
                   sendTyping();
                 }}
                 onKeyDown={(e) => {
-                  // Enter sends, Shift+Enter makes a new line.
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  // Enter sends, Shift+Enter makes a new line — but on a
+                  // touch phone the return key ALWAYS makes a new line
+                  // (WhatsApp behaviour): the send button sends.
+                  if (e.key === "Enter" && !e.shiftKey && !isCoarse) {
                     e.preventDefault();
                     void submitDraft();
                   }

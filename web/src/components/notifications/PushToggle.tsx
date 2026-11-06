@@ -2,25 +2,21 @@
  * The phone notifications toggle (Phase 16) — Cloudflare Web Push.
  *
  * The browser subscribes with the app's VAPID key and the Worker sends the
- * pushes. No third-party app is needed.
+ * pushes. No third-party app is needed. The plumbing lives in pushSetup —
+ * the app also subscribes by default (once), this button shows the state
+ * and lets the member switch it off.
  */
 import { useEffect, useState } from "react";
+import { ensurePushSubscription, pushSupported } from "./pushSetup";
 import { api } from "../../api";
 import { showToast } from "./toastStore";
-
-function toBase64Url(bytes: ArrayBuffer): string {
-  const array = new Uint8Array(bytes);
-  let text = "";
-  for (const byte of array) text += String.fromCharCode(byte);
-  return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
 
 export default function PushToggle() {
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (!pushSupported()) return;
     navigator.serviceWorker
       .getRegistration()
       .then((registration) => registration?.pushManager.getSubscription())
@@ -31,36 +27,17 @@ export default function PushToggle() {
   async function subscribe() {
     setBusy(true);
     try {
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
+      const outcome = await ensurePushSubscription();
+      if (outcome === "on") {
+        setOn(true);
+        showToast("Phone notifications are on", "success");
+      } else if (outcome === "permission") {
         showToast("The notifications need your permission", "warning");
-        return;
-      }
-      const { publicKey } = await api.pushKey();
-      if (!publicKey) {
+      } else if (outcome === "no-keys") {
         showToast("The push keys are not configured yet", "error");
-        return;
+      } else if (outcome !== "unsupported") {
+        showToast("Notifications could not be turned on", "error");
       }
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      await navigator.serviceWorker.ready;
-      const key = Uint8Array.from(
-        atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")),
-        (char) => char.charCodeAt(0),
-      );
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: key as unknown as BufferSource,
-      });
-      const json = subscription.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
-      await api.pushSubscribe({
-        endpoint: json.endpoint ?? "",
-        p256dh: json.keys?.p256dh ?? "",
-        auth: json.keys?.auth ?? "",
-      });
-      setOn(true);
-      showToast("Phone notifications are on", "success");
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
     } finally {
       setBusy(false);
     }
@@ -84,7 +61,7 @@ export default function PushToggle() {
     }
   }
 
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  if (!pushSupported()) return null;
 
   return (
     <button

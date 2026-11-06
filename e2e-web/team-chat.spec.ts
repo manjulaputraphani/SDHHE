@@ -516,6 +516,43 @@ test.describe("Team Chat", () => {
     await expect(page.getByText("Sent with Enter", { exact: true })).toBeVisible();
   });
 
+  test("on a touch phone the return key makes a new line — the button sends", async ({ page }) => {
+    // A phone keyboard from the very first render: Playwright cannot emulate
+    // a coarse pointer, so the media query is answered as a phone would.
+    await page.addInitScript(() => {
+      const original = window.matchMedia.bind(window);
+      window.matchMedia = ((query: string) => {
+        const mql = original(query);
+        if (query !== "(pointer: coarse)") return mql;
+        return {
+          matches: true,
+          media: query,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+        } as MediaQueryList;
+      }) as typeof window.matchMedia;
+    });
+    await mockChat(page, OWNER);
+    await openChat(page);
+
+    const composer = page.getByPlaceholder("Message…");
+    await composer.fill("Kal subah 6 baje");
+    await composer.press("Enter");
+    await composer.type("khula hai");
+    // The return key made a new line — nothing has gone out yet.
+    await expect(page.getByRole("note", { name: "AI polish suggestion" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    // One message, both lines (WhatsApp behaviour).
+    await expect(
+      page.locator('[aria-label*="Kal subah 6 baje"][aria-label*="khula hai"]'),
+    ).toBeVisible();
+  });
+
   test("a staff member cannot rename the group", async ({ page }) => {
     await mockChat(page, STAFF);
     await openChat(page);

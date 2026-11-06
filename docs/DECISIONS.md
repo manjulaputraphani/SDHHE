@@ -144,3 +144,11 @@
    the app kept opening on the chat because push notifications link to `/team-chat`); the URL is settled back to `/`, and the in-app Team Chat link
    still pushes `/team-chat` for sharing. Chat times are 12-hour local ("09:42 AM"), and messages can be fixed by tapping one's own bubble
    (PATCH route + `update` frame — was half-committed before: only the DB function and the import existed, no route, no UI).
+- 2026-11-07 · **Installable PWA + default-on message notifications** — the site is now a real PWA (manifest + icons + Apple meta; the service
+   worker existed but was NEVER registered, so Web Push could not work at all). Message notifications are ON BY DEFAULT: right after sign-in the
+   app asks once and subscribes (idempotent re-sync each login, a denial is never nagged again; the 🔔 stays as the manual switch). Group messages
+   push to the group's members ("X wrote in <group>"); direct chats never push. A tapped notification opens the chat via `/team-chat?notify=1` —
+   the one deep link that bypasses the always-Dashboard rule (a deliberate jump), while a plain `/team-chat` address still lands on the Dashboard.
+- 2026-11-07 · **Mobile boot + keyboard** — the Google-Fonts stylesheet no longer blocks the first paint (on a slow phone network it left the login
+   page blank-white until the CSS arrived); index.html carries an inline boot splash (brand disc + pulse, light/dark) that React replaces on mount.
+   On touch devices the chat return key makes a NEW LINE and only the send button sends (WhatsApp behaviour) — desktop keeps Enter-to-send.

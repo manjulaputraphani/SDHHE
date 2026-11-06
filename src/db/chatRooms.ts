@@ -537,3 +537,19 @@ export async function polishEnabled(db: Db | TxDb, room: string): Promise<boolea
     .limit(1);
   return Boolean(row?.aiPolish);
 }
+
+/** The name of a live group (null when it does not exist or is retired). */
+export async function conversationTitle(db: Db | TxDb, room: string): Promise<string | null> {
+  const [row] = await db
+    .select({ title: chatConversations.title })
+    .from(chatConversations)
+    .where(
+      and(
+        eq(chatConversations.room, room),
+        eq(chatConversations.kind, "group"),
+        isNull(chatConversations.archivedAt),
+      ),
+    )
+    .limit(1);
+  return row?.title ?? null;
+}
