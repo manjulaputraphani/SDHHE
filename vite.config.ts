@@ -35,6 +35,11 @@ export default defineConfig(() => ({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // The app screens are heavy (the Settings screen re-renders everything on
+    // every keystroke), so the default 5 s was too tight for a loaded CI
+    // runner — the tests were timing out although the app was fine.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     // DB tests need a live database — run them with `npm run test:db`, never in the normal suite.
     // The Playwright specs (desktop e2e/ and web e2e-web/) are not unit tests.
     exclude: ["**/node_modules/**", "**/dist/**", "**/*.int.test.ts", "e2e/**", "e2e-web/**"],

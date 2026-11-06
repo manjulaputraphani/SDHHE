@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Settings from "./Settings";
 import { DbProvider } from "../lib/db-context";
@@ -112,7 +112,13 @@ beforeEach(() => {
   vi.mocked(setUserActive).mockReset().mockResolvedValue(undefined);
 });
 
-describe("Settings — security", () => {
+/**
+ * The Settings screen is the heaviest screen in the app (shop details, email,
+ * members, the roles matrix, the activity list). Every keystroke re-renders
+ * all of it, so these tests need more than Vitest's 5 s default — on a loaded
+ * CI runner they were timing out.
+ */
+describe("Settings — security", { timeout: 30_000 }, () => {
   it("shows what is stored in the keychain without revealing values", async () => {
     renderPage();
     expect(await screen.findByText(/PIN: set/)).toBeInTheDocument();
@@ -123,11 +129,13 @@ describe("Settings — security", () => {
 
   it("locks the app on 'Lock now'", async () => {
     const onLock = renderPage();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole("button", { name: "Lock now" }));
-    expect(logActivity).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ event: "user.logout" }),
+    await waitFor(() =>
+      expect(logActivity).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ event: "user.logout" }),
+      ),
     );
     expect(onLock).toHaveBeenCalledTimes(1);
   });
@@ -149,7 +157,7 @@ describe("Settings — security", () => {
 
   it("changes the PIN after checking the current one", async () => {
     renderPage();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByText(/PIN: set/);
 
     await user.type(screen.getByLabelText("Current PIN"), "1234");
@@ -158,7 +166,7 @@ describe("Settings — security", () => {
     await user.click(screen.getByRole("button", { name: "Update PIN" }));
 
     expect(verifyPin).toHaveBeenCalledWith("1234", "saved");
-    expect(hashPin).toHaveBeenCalledWith("5678");
+    await waitFor(() => expect(hashPin).toHaveBeenCalledWith("5678"));
     expect(saveSecret).toHaveBeenCalledWith("PIN_HASH", "$argon2id$new-hash");
     expect(await screen.findByText("PIN updated")).toBeInTheDocument();
   });
@@ -166,7 +174,7 @@ describe("Settings — security", () => {
   it("refuses a wrong current PIN", async () => {
     vi.mocked(verifyPin).mockResolvedValue(false);
     renderPage();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByText(/PIN: set/);
 
     await user.type(screen.getByLabelText("Current PIN"), "0000");
@@ -180,7 +188,7 @@ describe("Settings — security", () => {
 
   it("validates the new PIN format and match", async () => {
     renderPage();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByText(/PIN: set/);
 
     await user.type(screen.getByLabelText("Current PIN"), "1234");
@@ -215,7 +223,7 @@ describe("Settings — security", () => {
       },
     ]);
     renderPage();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
 
     expect(await screen.findByText("Phani signed in")).toBeInTheDocument();
     expect(screen.getByText("Sale SD-2026-000010")).toBeInTheDocument();
@@ -227,7 +235,7 @@ describe("Settings — security", () => {
 
   it("owner sees members and can add one", async () => {
     renderPage();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
 
     expect(await screen.findByText("Ravi")).toBeInTheDocument();
     await user.type(screen.getByLabelText("Member name"), "Priya");
@@ -235,22 +243,24 @@ describe("Settings — security", () => {
     await user.type(screen.getByLabelText("Member password"), "secret123");
     await user.click(screen.getByRole("button", { name: "Add member" }));
 
-    expect(createUser).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ name: "Priya", phone: "9000000000", role: "staff" }),
+    await waitFor(() =>
+      expect(createUser).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ name: "Priya", phone: "9000000000", role: "staff" }),
+      ),
     );
     expect(await screen.findByText("Member added")).toBeInTheDocument();
   });
 
   it("owner can deactivate a member", async () => {
     renderPage();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
 
     await screen.findByText("Ravi");
     const [raviDeactivate] = screen.getAllByRole("button", { name: "Deactivate" });
     await user.click(raviDeactivate);
 
-    expect(setUserActive).toHaveBeenCalledWith(expect.anything(), 2, false);
+    await waitFor(() => expect(setUserActive).toHaveBeenCalledWith(expect.anything(), 2, false));
     expect(await screen.findByText(/Ravi disabled/)).toBeInTheDocument();
   });
 
@@ -267,7 +277,7 @@ describe("Settings — security", () => {
       key === "OLLAMA_API_KEY" ? "secret-key" : "saved",
     );
     renderPage();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
 
     expect(await screen.findByText(/AI cloud key: saved/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Remove key" }));
