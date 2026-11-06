@@ -53,7 +53,7 @@ export default function AnnouncementBanner({
       <button
         type="button"
         onClick={() => onDismiss(announcement.id)}
-        className="shrink-0 rounded px-1.5 text-xs opacity-70 hover:opacity-100"
+        className="tap-44 grid shrink-0 place-items-center rounded px-1.5 text-xs opacity-70 hover:opacity-100"
         aria-label={`Close the announcement: ${announcement.title}`}
       >
         ✕

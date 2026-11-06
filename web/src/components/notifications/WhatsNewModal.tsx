@@ -40,7 +40,7 @@ export default function WhatsNewModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="whats-new-title"
-        className="card max-h-[85vh] w-full max-w-md overflow-y-auto p-5"
+        className="card max-h-viewport-85 w-full max-w-md overflow-y-auto p-5"
       >
         {release.imageUrl && (
           <img

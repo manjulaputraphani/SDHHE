@@ -60,7 +60,14 @@ export type LoginEntry = {
 export type OnboardingStep = { key: string; label: string; done: boolean };
 
 export type NotificationBootstrap = {
-  user: { id: number; name: string; role: string; lastLoginAt: string | null };
+  user: {
+    id: number;
+    name: string;
+    role: string;
+    lastLoginAt: string | null;
+    /** The member's switch for the "Welcome back" card (Phase 15 fix). */
+    showWelcomeBanner: boolean;
+  };
   announcements: Announcement[];
   release: Release | null;
   onboarding: { steps: OnboardingStep[]; done: number; total: number; completed: boolean };
@@ -467,6 +474,25 @@ export async function lastLoginAt(db: Db, userId: number): Promise<string | null
 /** Remember when this member signed in. */
 export async function setLastLoginAt(db: Db | TxDb, userId: number, at: Date = new Date()): Promise<void> {
   await db.update(appUsers).set({ lastLoginAt: at }).where(eq(appUsers.id, userId));
+}
+
+/** Is the "Welcome back" card switched on for this member? (default: on) */
+export async function getShowWelcomeBanner(db: Db, userId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ value: appUsers.showWelcomeBanner })
+    .from(appUsers)
+    .where(eq(appUsers.id, userId))
+    .limit(1);
+  return row?.value ?? true;
+}
+
+/** The Settings toggle / the banner's "Don't show again" link. */
+export async function setShowWelcomeBanner(
+  db: Db | TxDb,
+  userId: number,
+  value: boolean,
+): Promise<void> {
+  await db.update(appUsers).set({ showWelcomeBanner: value }).where(eq(appUsers.id, userId));
 }
 
 /**

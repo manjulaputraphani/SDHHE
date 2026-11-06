@@ -19,7 +19,7 @@ export default function LoginAlertModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:items-center sm:p-3"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

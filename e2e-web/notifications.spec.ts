@@ -11,7 +11,13 @@ const OWNER = { id: 1, name: "B PHANI KUMAR", role: "owner" as const, permission
 const STAFF = { id: 4, name: "RAJU", role: "staff" as const, permissions: DEFAULT_ROLE_PERMISSIONS.staff };
 
 const BOOTSTRAP = {
-  user: { id: 1, name: "B PHANI KUMAR", role: "owner", lastLoginAt: "2026-11-06T09:00:00.000Z" },
+  user: {
+    id: 1,
+    name: "B PHANI KUMAR",
+    role: "owner",
+    lastLoginAt: "2026-11-06T09:00:00.000Z",
+    showWelcomeBanner: true,
+  },
   announcements: [
     {
       id: 5,
@@ -115,18 +121,56 @@ async function mockApp(page: import("@playwright/test").Page, member: typeof OWN
   await page.route("**/api/notifications/login-history", (route) =>
     route.fulfill({ json: { logins: [] } }),
   );
+  await page.route("**/api/notifications/welcome-banner", (route) =>
+    route.fulfill({ json: { ok: true, showWelcomeBanner: false } }),
+  );
+}
+
+/** Simulate a REAL login: the login success handler sets the one-time flag. */
+async function withLoginFlag(page: import("@playwright/test").Page) {
+  await page.addInitScript(() =>
+    window.sessionStorage.setItem("sdhhe:just-logged-in", "1"),
+  );
 }
 
 test.describe("The notification system", () => {
-  test("welcomes the member after the sign-in", async ({ page }) => {
+  test("welcomes the member once after a real login and hides after 6 s", async ({ page }) => {
     await mockApp(page, OWNER);
+    await withLoginFlag(page);
     await page.goto("/");
     await expect(page.getByText("Welcome back, B PHANI KUMAR!")).toBeVisible();
     await expect(page.getByText(/Your last sign-in was/)).toBeVisible();
+    // Auto-hides after 6 seconds.
+    await expect(page.getByText("Welcome back, B PHANI KUMAR!")).toHaveCount(0, {
+      timeout: 8000,
+    });
   });
 
-  test("the welcome banner can be closed", async ({ page }) => {
+  test("shows NO welcome banner on a refresh or a new tab (no login flag)", async ({ page }) => {
     await mockApp(page, OWNER);
+    // No login flag — this is a session restore (refresh / new tab).
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: /Dashboard/ }).first()).toBeVisible();
+    await expect(page.getByText("Welcome back, B PHANI KUMAR!")).toHaveCount(0);
+    // A page refresh must not bring it back either.
+    await page.reload();
+    await expect(page.getByText("Welcome back, B PHANI KUMAR!")).toHaveCount(0);
+    await expect(page.getByText(/Logged in successfully/)).toHaveCount(0);
+  });
+
+  test("the welcome banner does not come back after the flag is consumed", async ({ page }) => {
+    await mockApp(page, OWNER);
+    await withLoginFlag(page);
+    await page.goto("/");
+    await expect(page.getByText("Welcome back, B PHANI KUMAR!")).toBeVisible();
+    // The flag was consumed on mount — a refresh in the SAME tab shows nothing.
+    await page.reload();
+    await expect(page.getByText("Welcome back, B PHANI KUMAR!")).toHaveCount(0);
+  });
+
+  test("the welcome banner can be closed with the X", async ({ page }) => {
+    await mockApp(page, OWNER);
+    await withLoginFlag(page);
     await page.goto("/");
     await page
       .getByRole("button", { name: "Close the welcome message" })
@@ -135,10 +179,20 @@ test.describe("The notification system", () => {
     await expect(page.getByText("Welcome back, B PHANI KUMAR!")).toHaveCount(0);
   });
 
-  test("shows the toast after the sign-in", async ({ page }) => {
+  test("the welcome banner never shows when the member's setting is off", async ({ page }) => {
     await mockApp(page, OWNER);
+    await page.route("**/api/notifications", (route) =>
+      route.fulfill({
+        json: {
+          ...BOOTSTRAP,
+          user: { ...BOOTSTRAP.user, showWelcomeBanner: false },
+        },
+      }),
+    );
+    await withLoginFlag(page);
     await page.goto("/");
-    await expect(page.getByText(/Logged in successfully/).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Dashboard/ }).first()).toBeVisible();
+    await expect(page.getByText("Welcome back, B PHANI KUMAR!")).toHaveCount(0);
   });
 
   test("shows the announcement bar", async ({ page }) => {

@@ -68,7 +68,7 @@ export default function ProductTour({
           style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
         />
       )}
-      <div className="absolute inset-x-3 bottom-4 mx-auto w-auto max-w-sm sm:left-1/2 sm:right-auto sm:-translate-x-1/2">
+      <div className="absolute inset-x-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] mx-auto w-auto max-w-sm sm:left-1/2 sm:right-auto sm:-translate-x-1/2">
         <div className="card space-y-3 p-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">

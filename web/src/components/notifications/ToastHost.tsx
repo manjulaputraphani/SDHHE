@@ -30,7 +30,7 @@ export default function ToastHost() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:items-end"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center gap-2 px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:inset-x-auto sm:right-4 sm:bottom-4 sm:items-end"
       role="region"
       aria-label="Notifications"
     >
@@ -50,7 +50,7 @@ export default function ToastHost() {
             <button
               type="button"
               onClick={() => dismissToast(toast.id)}
-              className="pointer-events-auto shrink-0 rounded px-1 text-xs opacity-70 hover:opacity-100"
+              className="tap-44 pointer-events-auto grid shrink-0 place-items-center rounded px-1 text-xs opacity-70 hover:opacity-100"
               aria-label="Close notification"
             >
               ✕

@@ -16,6 +16,15 @@ Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 r
 **Planning complete for Phase 14 — Chat groups**: Added T-14.0 to BUILD_PLAN.md and DECISIONS.md. Ready to implement T-14.1 Database.
 
 ## Done
+ - **Welcome-banner fix (2026-11-07, deployed `3b97646f`)**: the banner showed on EVERY page load
+   (`NotificationsHost` rendered it whenever not dismissed) and `/api/auth/me` re-fired a "Logged in" toast on
+   every session restore. Fixed per spec: the login success handler is the ONLY trigger — it sets a one-time
+   `sessionStorage` flag (`src/logic/welcomeBanner.ts`, consumed once on mount, so refresh/tab-change/new-tab
+   never show it); the card is now a small toast top-right, auto-hides after 6 s, ✕ closes it, and "Don't show
+   again" persists `app_users.show_welcome_banner=false` (migration `0012_welcome_banner_setting.sql`, applied;
+   `POST /api/notifications/welcome-banner`; Settings → In-app notifications toggle). Other one-time popups were
+   audited and are already condition-gated (what's-new = unseen release marked in DB, onboarding = not completed,
+   announcement = active + not dismissed). 466 unit tests (3 new for the flag), Playwright 21/21.
 - **Chat Phase 1** (committed, deployed `eb23815a`): the rename is stored in ONE place
   (`chat_conversations.title`, the list read from the server) and posts a system message
   "X renamed the group to …"; presence (a 30 s heartbeat over the socket + `POST /api/chat/heartbeat`,

@@ -87,6 +87,7 @@ import {
   createRelease,
   dismissAnnouncement,
   forceOtherSessionsOut,
+  getShowWelcomeBanner,
   lastLoginAt,
   listActiveAnnouncements,
   listAllAnnouncements,
@@ -97,6 +98,7 @@ import {
   recordLogin,
   sessionForcedOut,
   setLastLoginAt,
+  setShowWelcomeBanner,
   updateAnnouncement,
   completedTours,
 } from "../../src/db/notifications";
@@ -1477,6 +1479,7 @@ const handler = {
             name: session.name,
             role: session.role,
             lastLoginAt: previousLogin,
+            showWelcomeBanner: await getShowWelcomeBanner(db, session.uid),
           },
           announcements: await listActiveAnnouncements(db, session.uid),
           release: await latestUnseenRelease(db, session.uid),
@@ -1549,6 +1552,12 @@ const handler = {
       if (url.pathname === "/api/notifications/onboarding/complete" && request.method === "POST") {
         await completeOnboarding(db, session.uid);
         return json({ ok: true });
+      }
+
+      // The member's own switch for the "Welcome back" card (Phase 15 fix).
+      if (url.pathname === "/api/notifications/welcome-banner" && request.method === "POST") {
+        await setShowWelcomeBanner(db, session.uid, Boolean(body.show));
+        return json({ ok: true, showWelcomeBanner: Boolean(body.show) });
       }
 
       if (url.pathname.match(/^\/api\/notifications\/releases\/\d+\/seen$/) && request.method === "POST") {

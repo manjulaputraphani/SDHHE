@@ -91,6 +91,52 @@ export function conversationText(
 
 type MobileView = "list" | "room" | "approvals";
 
+/**
+ * How much of the window the keyboard covers right now (px).
+ *
+ * On iOS Safari the layout viewport does not shrink when the keyboard
+ * opens — only the visual viewport does. The chat shell follows that, so
+ * the composer stays visible above the keyboard and the page does not
+ * jump. On md+ the keyboard overlays nothing, so the offset stays 0.
+ */
+function useKeyboardOffset(): number {
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      if (window.matchMedia("(min-width: 768px)").matches) {
+        setOffset(0);
+        return;
+      }
+      setOffset(Math.max(0, Math.round(window.innerHeight - vv.height)));
+    };
+    update();
+    vv.addEventListener("resize", update);
+    window.addEventListener("resize", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  return offset;
+}
+
+/** True from the md breakpoint up (768px) — tablet and desktop. */
+function useIsMd(): boolean {
+  const [isMd, setIsMd] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsMd(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isMd;
+}
+
 export default function TeamChat({ user }: Props) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [members, setMembers] = useState<ChatMember[]>([]);
@@ -136,6 +182,10 @@ export default function TeamChat({ user }: Props) {
   const [mobileView, setMobileView] = useState<MobileView>("list");
   /** The approvals panel is collapsible on desktop (a tab on mobile). */
   const [approvalsOpen, setApprovalsOpen] = useState(true);
+  /** The on-screen keyboard's height — the shell shrinks to fit (iOS). */
+  const keyboardOffset = useKeyboardOffset();
+  /** Tablet (md+) shows the list and the room side by side. */
+  const isMd = useIsMd();
   /** Pinned / muted chats — a local preference of this browser only. */
   const [pinned, setPinned] = useState<string[]>([]);
   const [muted, setMuted] = useState<string[]>([]);
@@ -584,7 +634,16 @@ export default function TeamChat({ user }: Props) {
       : room;
 
   return (
-    <section className="relative flex h-[calc(100dvh-3rem)] flex-col md:h-[calc(100dvh-4rem)]">
+    <section
+      className="chat-shell relative flex flex-col"
+      style={
+        keyboardOffset > 0
+          ? {
+              height: `calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardOffset}px)`,
+            }
+          : undefined
+      }
+    >
       <div className="flex flex-wrap items-end justify-between gap-3 pb-3">
         <div>
           <h1 className="page-title text-xl font-semibold tracking-tight md:text-2xl">Team Chat</h1>
@@ -610,13 +669,14 @@ export default function TeamChat({ user }: Props) {
       </div>
 
       {/* Mobile: the list is the screen; a chat opens full-screen, the
-          approvals become a tab (Phase 2). On lg all three panels sit
-          side by side and this tab bar is hidden. */}
-      {mobileView !== "list" && (
+          approvals become a tab (Phase 2). On md the list and the room sit
+          side by side (the tab bar still switches the approvals slide-over);
+          on lg all three panels sit side by side and this tab bar is hidden. */}
+      {(mobileView !== "list" || isMd) && (
         <div className="mb-2 flex gap-2 lg:hidden">
           <button
             type="button"
-            className={`btn-mini ${mobileView === "room" ? "bg-surface-3 font-semibold" : ""}`}
+            className={`btn-mini ${mobileView === "approvals" ? "" : "bg-surface-3 font-semibold"}`}
             onClick={() => setMobileView("room")}
           >
             Chat
@@ -632,7 +692,7 @@ export default function TeamChat({ user }: Props) {
       )}
 
       <div
-        className={`grid min-h-0 flex-1 gap-4 ${
+        className={`relative grid min-h-0 flex-1 gap-4 md:grid-cols-[240px_minmax(0,1fr)] ${
           approvalsOpen
             ? "lg:grid-cols-[300px_minmax(0,1fr)_340px]"
             : "lg:grid-cols-[300px_minmax(0,1fr)_64px]"
@@ -641,8 +701,8 @@ export default function TeamChat({ user }: Props) {
         {/* ---------------- conversations ---------------- */}
         <aside
           className={`${
-            mobileView === "list" ? "flex" : "hidden"
-          } card min-h-0 flex-col space-y-2 p-3 lg:flex`}
+            mobileView === "list" ? "flex" : "hidden md:flex"
+          } card min-h-0 flex-col space-y-2 p-3`}
         >
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ink">Chats</h2>
@@ -750,15 +810,15 @@ export default function TeamChat({ user }: Props) {
         {/* ---------------- the room ---------------- */}
         <div
           className={`relative ${
-            mobileView === "room" ? "flex" : "hidden"
-          } min-h-0 flex-1 flex-col lg:flex`}
+            mobileView === "room" ? "flex" : "hidden md:flex"
+          } min-h-0 flex-1 flex-col`}
         >
           <div className="card flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="relative z-10 flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-2">
             <button
               type="button"
               aria-label="Back to chats"
-              className="grid size-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink lg:hidden"
+              className="tap-44 grid size-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink md:hidden"
               onClick={() => setMobileView("list")}
             >
               <IconArrowLeft size={17} />
@@ -812,7 +872,7 @@ export default function TeamChat({ user }: Props) {
               type="button"
               aria-label="Search messages"
               title="Search in this chat"
-              className={`grid size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-3 ${
+              className={`tap-44 grid size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-3 ${
                 showRoomSearch ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
               }`}
               onClick={() => {
@@ -827,7 +887,7 @@ export default function TeamChat({ user }: Props) {
                 type="button"
                 aria-label="Members"
                 title="Members"
-                className={`hidden size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-3 sm:grid ${
+                className={`tap-44 hidden size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-3 sm:grid ${
                   showMembers ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
                 }`}
                 onClick={() => setShowMembers((open) => !open)}
@@ -840,7 +900,7 @@ export default function TeamChat({ user }: Props) {
                 type="button"
                 aria-label="Chat menu"
                 title="Chat menu"
-                className={`grid size-8 place-items-center rounded-full transition-colors hover:bg-surface-3 ${
+                className={`tap-44 grid size-8 place-items-center rounded-full transition-colors hover:bg-surface-3 ${
                   menuOpen ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
                 }`}
                 onClick={() => setMenuOpen((open) => !open)}
@@ -1011,7 +1071,7 @@ export default function TeamChat({ user }: Props) {
                             {initials(group.author)}
                           </span>
                         )}
-                        <div className={`flex max-w-[78%] flex-col ${group.mine ? "items-end" : "items-start"}`}>
+                        <div className={`flex max-w-[80%] flex-col md:max-w-[65%] ${group.mine ? "items-end" : "items-start"}`}>
                           {!group.mine && (
                             <span className="mb-0.5 px-1 text-[11px] font-medium text-muted">
                               {group.author}
@@ -1064,7 +1124,9 @@ export default function TeamChat({ user }: Props) {
                             return (
                               <div
                                 key={message.id}
-                                className={`chat-bubble rounded-2xl px-3.5 py-2 text-sm ${
+                                tabIndex={0}
+                                aria-label={`${group.author}: ${message.body}`}
+                                className={`chat-bubble outline-none rounded-2xl px-3.5 py-2 text-sm ${
                                   group.mine
                                     ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
                                     : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
@@ -1158,20 +1220,23 @@ export default function TeamChat({ user }: Props) {
             <div ref={bottomRef} />
           </div>
 
-          <form onSubmit={send} className="relative z-10 border-t border-line bg-surface p-3">
+          <form
+            onSubmit={send}
+            className="relative z-10 border-t border-line bg-surface px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+          >
             <div className="flex items-end gap-1 rounded-full border border-line bg-surface-2 py-1 pl-1.5 pr-1 transition-colors focus-within:border-primary">
               <button
                 type="button"
                 aria-label="Attach receipt"
                 title="Attach receipt"
-                className="grid size-9 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink"
+                className="tap-44 grid size-9 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink"
                 onClick={() => setShowReceiptForm((open) => !open)}
               >
                 <IconPaperclip size={17} />
               </button>
               <details className="group/emoji relative shrink-0">
                 <summary
-                  className="grid size-9 cursor-pointer list-none place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink [&::-webkit-details-marker]:hidden"
+                  className="tap-44 grid size-9 cursor-pointer list-none place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink [&::-webkit-details-marker]:hidden"
                   aria-label="Emoji"
                 >
                   <IconSmile size={17} />
@@ -1217,7 +1282,7 @@ export default function TeamChat({ user }: Props) {
                 type="submit"
                 aria-label="Send"
                 disabled={busy || !draft.trim()}
-                className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-on-primary transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted"
+                className="tap-44 grid size-10 shrink-0 place-items-center rounded-full bg-primary text-on-primary transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted"
               >
                 <IconSend size={16} />
               </button>
@@ -1274,7 +1339,7 @@ export default function TeamChat({ user }: Props) {
             <button
               type="button"
               onClick={jumpToBottom}
-              className="absolute bottom-28 right-6 z-10 flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink shadow-lg"
+              className="absolute right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10 flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink shadow-lg"
             >
               {missed > 0 && (
                 <span className="rounded-full bg-accent-soft px-1.5 text-[11px] text-accent-ink">
@@ -1289,8 +1354,10 @@ export default function TeamChat({ user }: Props) {
         {/* ---------------- approvals ---------------- */}
         <aside
           className={`${
-            mobileView === "approvals" ? "flex" : "hidden"
-          } card min-h-0 flex-col space-y-3 p-4 lg:flex`}
+            mobileView === "approvals"
+              ? "flex md:absolute md:inset-y-0 md:right-0 md:z-20 md:w-80 md:shadow-2xl"
+              : "hidden"
+          } card min-h-0 flex-col space-y-3 p-4 lg:static lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none lg:flex`}
         >
           <div className="flex items-center justify-between gap-2">
             {approvalsOpen ? (

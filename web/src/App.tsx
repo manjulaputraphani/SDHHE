@@ -20,6 +20,7 @@ import {
   type User,
 } from "./api";
 import { buildBillHtml } from "../../src/lib/printBill";
+import { clearWelcomeFlag, setWelcomeFlag } from "../../src/logic/welcomeBanner";
 import { planRoast } from "../../src/logic/roasting";
 import { billWhatsAppText, buildWhatsAppLink } from "../../src/lib/whatsapp";
 import type { ShopDetails } from "../../src/db/settings";
@@ -292,6 +293,9 @@ export default function App() {
   const [logoutAllStatus, setLogoutAllStatus] = useState<string | null>(null);
   /** The notification system (Phase 15). */
   const [loginHistory, setLoginHistory] = useState<LoginEntry[]>([]);
+  /** The member's switch for the "Welcome back" card (Phase 15 fix). */
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState(true);
+  const [welcomeBannerMsg, setWelcomeBannerMsg] = useState<string | null>(null);
   const [signedInElsewhere, setSignedInElsewhere] = useState<{
     browser?: string | null;
     os?: string | null;
@@ -416,14 +420,34 @@ export default function App() {
       .loginHistory()
       .then((result) => setLoginHistory(result.logins))
       .catch(() => setLoginHistory([]));
+    api
+      .notifications()
+      .then((result) => setShowWelcomeBanner(result.user.showWelcomeBanner ?? true))
+      .catch(() => undefined);
   }, [user]);
+
+  /** Settings → the "Show welcome message after login" toggle (saved in Neon). */
+  async function saveWelcomeBanner(checked: boolean) {
+    setShowWelcomeBanner(checked);
+    setWelcomeBannerMsg(null);
+    try {
+      await api.setWelcomeBanner(checked);
+      setWelcomeBannerMsg(
+        checked ? "Welcome message on" : "Welcome message off — it will not show after login",
+      );
+    } catch (err) {
+      setShowWelcomeBanner(!checked);
+      setWelcomeBannerMsg(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   useEffect(() => {
     api
       .me()
       .then(({ user }) => {
+        // A session restore (refresh, new tab) — NOT a login: no welcome
+        // toast, no banner (the flag is only set by the login handler).
         setUser(user);
-        showToast(`Logged in successfully — welcome, ${user.name.split(" ")[0]}`, "success");
       })
       .catch(() => setUser(null))
       .finally(() => setChecking(false));
@@ -1280,6 +1304,9 @@ export default function App() {
     try {
       const { user } = await api.login(phone, password);
       setUser(user);
+      // The one-time welcome flag: only a real login sets it (never a
+      // refresh / tab change / new tab — the host consumes it once).
+      setWelcomeFlag();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1432,12 +1459,12 @@ export default function App() {
   }
 
   if (checking) {
-    return <main className="grid min-h-screen place-items-center text-sm text-muted">Loading…</main>;
+    return <main className="grid min-h-viewport place-items-center text-sm text-muted">Loading…</main>;
   }
 
   if (!user) {
     return (
-      <main className="grid min-h-screen md:grid-cols-2">
+      <main className="grid min-h-viewport md:grid-cols-2">
         {/* Left: the café photo with a brown gradient overlay (desktop only) */}
         <div className="relative hidden overflow-hidden bg-[#4a3325] md:block">
           {loginPhotoOk ? (
@@ -1479,7 +1506,7 @@ export default function App() {
         </div>
 
         {/* Right: the form */}
-        <div className="flex items-center justify-center bg-bg p-6">
+        <div className="flex items-center justify-center bg-bg px-6 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           <div className="card w-full max-w-sm p-6">
             <div className="mb-6">
               {/* On mobile the logo sits above the form (the photo panel is hidden). */}
@@ -1608,18 +1635,18 @@ export default function App() {
       <ToastHost />
       {/* Everything that is due after a sign-in — one thing at a time. The
           banners sit above the app shell so they are full width. */}
-      <div className="px-3 pt-3 md:px-6">
+      <div className="px-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:px-6">
         <NotificationsHost
           signedInElsewhere={signedInElsewhere}
           startTour={tourToStart}
           onTourStarted={() => setTourToStart(null)}
         />
       </div>
-      <div className="min-h-screen md:flex">
+      <div className="min-h-viewport md:flex">
       {/* Desktop: the rail is sticky and exactly one viewport tall, so it stays put
           while only the main content scrolls. The nav scrolls internally when the
           links outgrow the screen; the footer stays pinned at the bottom. */}
-      <aside className="nav-texture sticky top-0 hidden h-screen w-60 shrink-0 self-start flex-col bg-nav px-3 py-5 text-nav-text supports-[height:100dvh]:h-dvh md:flex">
+      <aside className="nav-texture sticky top-0 hidden h-viewport w-60 shrink-0 self-start flex-col bg-nav px-3 py-5 text-nav-text md:flex">
         <div className="relative z-10 mb-6 flex items-start gap-3 px-2">
           <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-nav-text/15 text-nav-text">
             <IconCoffeeNav />
@@ -1662,17 +1689,29 @@ export default function App() {
           <ThemeToggle onDark />
           <div className="space-y-1">
             <p className="text-nav-muted">{user.name} · {user.role}</p>
-            <button className="underline text-nav-muted" onClick={() => void api.logout().then(() => setUser(null))}>Sign out</button>
+            <button
+              className="underline text-nav-muted"
+              onClick={() =>
+                void api.logout().then(() => {
+                  clearWelcomeFlag();
+                  setUser(null);
+                })
+              }
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </aside>
 
       {/* Mobile: icon-only header + a side drawer that opens when the menu is tapped */}
       <div className="md:hidden">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-nav px-3 py-2 text-nav-text">
+        {/* The top bar is 3.5rem tall + the notch inset; the chat page's
+            height calc in styles.css (.chat-shell) counts on exactly this. */}
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-nav px-3 pb-1.5 pt-[calc(0.375rem+env(safe-area-inset-top))] text-nav-text">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-nav-text/15 text-nav-text">
-              <IconCoffeeNav />
+            <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-nav-text/15 text-nav-text">
+              <IconCoffeeNav size={22} />
             </span>
             <p className="min-w-0 text-[9px] font-semibold uppercase leading-[1.3] tracking-[0.12em]">
               SREE DURGA HARIHARA
@@ -1686,18 +1725,23 @@ export default function App() {
               type="button"
               aria-label={menuOpen ? "Close menu" : "Open menu"}
               aria-expanded={menuOpen}
-              className="grid size-8 place-items-center rounded-lg text-nav-text hover:bg-nav-hover"
+              className="tap-44 grid size-11 place-items-center rounded-lg text-nav-text hover:bg-nav-hover"
               onClick={() => setMenuOpen((open) => !open)}
             >
-              {menuOpen ? <IconClose size={18} /> : <IconMenu size={18} />}
+              {menuOpen ? <IconClose size={20} /> : <IconMenu size={20} />}
             </button>
             <button
               type="button"
               aria-label="Sign out"
-              className="grid size-8 place-items-center rounded-lg text-nav-text hover:bg-nav-hover"
-              onClick={() => void api.logout().then(() => setUser(null))}
+              className="tap-44 grid size-11 place-items-center rounded-lg text-nav-text hover:bg-nav-hover"
+              onClick={() =>
+                void api.logout().then(() => {
+                  clearWelcomeFlag();
+                  setUser(null);
+                })
+              }
             >
-              <IconSignOut size={17} />
+              <IconSignOut size={19} />
             </button>
           </div>
         </header>
@@ -1710,7 +1754,7 @@ export default function App() {
               className="fixed inset-0 z-40 cursor-default bg-[#1C1612]/50"
               onClick={() => setMenuOpen(false)}
             />
-            <aside className="nav-texture thin-scrollbar fixed inset-y-0 left-0 z-50 flex w-64 flex-col overflow-y-auto bg-nav px-3 py-4 text-nav-text">
+            <aside className="nav-texture thin-scrollbar fixed inset-y-0 left-0 z-50 flex w-64 flex-col overflow-y-auto bg-nav px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] text-nav-text">
               <div className="relative z-10 mb-5 flex items-start gap-3 px-2">
                 <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-nav-text/15 text-nav-text">
                   <IconCoffeeNav />
@@ -1734,7 +1778,7 @@ export default function App() {
                         <button
                           key={link.key}
                           data-tour={link.key === "team-chat" ? "team-chat" : undefined}
-                          className={`flex items-center gap-2.5 rounded-lg border-l-2 px-3 py-2.5 text-left text-sm transition-colors ${
+                          className={`tap-44 flex items-center gap-2.5 rounded-lg border-l-2 px-3 py-2.5 text-left text-sm transition-colors ${
                             view === link.key
                               ? "border-accent bg-nav-active font-medium text-nav-text shadow-sm"
                               : "border-transparent text-nav-muted hover:bg-nav-hover hover:text-nav-text"
@@ -1757,7 +1801,12 @@ export default function App() {
                 <p className="text-nav-muted">{user.name} · {user.role}</p>
                 <button
                   className="flex items-center gap-1.5 text-nav-muted underline"
-                  onClick={() => void api.logout().then(() => setUser(null))}
+                  onClick={() =>
+                void api.logout().then(() => {
+                  clearWelcomeFlag();
+                  setUser(null);
+                })
+              }
                 >
                   <IconSignOut size={14} /> Sign out
                 </button>
@@ -1767,7 +1816,7 @@ export default function App() {
         ) : null}
       </div>
 
-      <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
+      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 md:px-8 md:py-8">
         {error && <p role="alert" className="mb-4 rounded bg-error-soft px-3 py-2 text-sm text-error-ink">{error}</p>}
 
         {view === "dashboard" && (
@@ -1816,7 +1865,7 @@ export default function App() {
                 <p className="mt-0.5 text-xs text-muted">Sales, stock, expenses and money in rotation — live.</p>
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
               {[
                 {
                   label: "Today's sales",
@@ -1897,7 +1946,7 @@ export default function App() {
                     This month to date · as of {formatDate(rotation.asOfDate)}
                   </p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
                   <div className="card card-hover p-4">
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Amount in rotation</p>
@@ -2410,8 +2459,8 @@ export default function App() {
               />
 
               {editingPurchase && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1C1612]/50 p-4">
-                  <div className="card max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto p-4">
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#1C1612]/50 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:items-center sm:p-4">
+                  <div className="card max-h-viewport-85 w-full max-w-lg space-y-3 overflow-y-auto p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-lg font-semibold tracking-tight">Edit purchase — {editingPurchase.name}</h2>
                       <button className="btn-mini" disabled={purchaseEditSaving} onClick={() => setEditingPurchase(null)}>Close</button>
@@ -2840,8 +2889,8 @@ export default function App() {
             />
 
               {editingExpense && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1C1612]/50 p-4">
-                  <div className="card max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto p-4">
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#1C1612]/50 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:items-center sm:p-4">
+                  <div className="card max-h-viewport-85 w-full max-w-lg space-y-3 overflow-y-auto p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-lg font-semibold tracking-tight">Edit expense — {editingExpense.category}</h2>
                       <button className="btn-mini" disabled={expenseEditSaving} onClick={() => setEditingExpense(null)}>Close</button>
@@ -4063,6 +4112,23 @@ export default function App() {
                 </div>
               )}
               {notifyStatus && <p role="status" className="text-sm text-muted">{notifyStatus}</p>}
+            </div>
+            <div className="card space-y-3 p-4">
+              <div>
+                <h2 className="text-sm font-medium">In-app notifications</h2>
+                <p className="text-sm text-muted">
+                  Small cards after you sign in. Saved to your account, so it applies on every device.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={showWelcomeBanner}
+                  onChange={(e) => void saveWelcomeBanner(e.currentTarget.checked)}
+                />
+                Show welcome message after login
+              </label>
+              {welcomeBannerMsg && <p role="status" className="text-sm text-muted">{welcomeBannerMsg}</p>}
             </div>
           </section>
         )}

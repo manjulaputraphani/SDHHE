@@ -109,7 +109,14 @@ export type LoginEntry = {
 };
 
 export type NotificationBootstrap = {
-  user: { id: number; name: string; role: string; lastLoginAt: string | null };
+  user: {
+    id: number;
+    name: string;
+    role: string;
+    lastLoginAt: string | null;
+    /** The member's switch for the "Welcome back" card (Phase 15 fix). */
+    showWelcomeBanner?: boolean;
+  };
   announcements: Announcement[];
   release: Release | null;
   onboarding: { steps: OnboardingStep[]; done: number; total: number; completed: boolean };
@@ -591,6 +598,11 @@ export const api = {
     request<{ ok: boolean }>(`/api/notifications/announcements/${id}/dismiss`, { method: "POST" }),
   completeOnboarding: () =>
     request<{ ok: boolean }>("/api/notifications/onboarding/complete", { method: "POST" }),
+  setWelcomeBanner: (show: boolean) =>
+    request<{ ok: boolean; showWelcomeBanner: boolean }>("/api/notifications/welcome-banner", {
+      method: "POST",
+      body: JSON.stringify({ show }),
+    }),
   markReleaseSeen: (id: number) =>
     request<{ ok: boolean }>(`/api/notifications/releases/${id}/seen`, { method: "POST" }),
   completeTour: (tourId: string) =>

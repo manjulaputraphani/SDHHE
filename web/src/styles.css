@@ -155,9 +155,31 @@
 }
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
   html {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* Never inflate the text when the phone rotates to landscape. */
+    -webkit-text-size-adjust: 100%;
+  }
+  html,
+  body {
+    margin: 0;
+    max-width: 100%;
+    /* No horizontal scroll on phones — content must shrink or scroll
+       inside its own container instead. */
+    overflow-x: hidden;
+  }
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
   }
   body {
     background:
@@ -238,6 +260,13 @@
     outline: none;
     border-color: var(--c-primary);
     box-shadow: 0 0 0 3px var(--c-ring);
+  }
+  /* iOS Safari zooms the whole page in when a focused field is smaller
+     than 16px — every input/select/textarea must stay at 16px on phones. */
+  @media (max-width: 767px) {
+    .input {
+      font-size: 16px;
+    }
   }
   /* Dropdowns: the native arrow/padding varies by browser, so draw our own
      chevron and force the same left padding as a text input. */
@@ -501,6 +530,8 @@
 .page-title {
   font-family: var(--font-display);
   letter-spacing: -0.01em;
+  /* Scale the heading with the viewport: phone ~24px, desktop capped at 36px. */
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
 }
 
 /* Skeleton loaders while the chat list / messages load. */
@@ -521,6 +552,9 @@
 /* A message bubble that shows its time on hover (Phase 2). */
 .chat-bubble {
   position: relative;
+  /* Long words, links and numbers wrap instead of stretching the bubble. */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 .chat-bubble .chat-time {
   opacity: 0;
@@ -547,4 +581,78 @@
 .chat-composer::placeholder {
   color: var(--c-muted);
   opacity: 0.8;
+}
+
+/* ------------------------------------------------------------------
+   iPhone Safari & general responsive fixes
+   ------------------------------------------------------------------ */
+
+/* 100dvh with a 100vh fallback (the address bar collapses/expands on
+   iPhone, so the dynamic unit is the truth; older browsers keep 100vh). */
+.h-viewport {
+  height: 100vh;
+}
+.min-h-viewport {
+  min-height: 100vh;
+}
+.max-h-viewport-85 {
+  max-height: 85vh;
+}
+@supports (height: 100dvh) {
+  .h-viewport {
+    height: 100dvh;
+  }
+  .min-h-viewport {
+    min-height: 100dvh;
+  }
+  .max-h-viewport-85 {
+    max-height: 85dvh;
+  }
+}
+
+/*
+ * The chat page must end exactly at the viewport bottom on a phone:
+ * the top bar (3.5rem) + the main paddings (3rem = py-6). On md+ the
+ * top bar is hidden and the main uses py-8 (4rem). The safe-area insets
+ * keep the composer above the home bar and below the notch.
+ */
+.chat-shell {
+  height: calc(100vh - 3.5rem - 3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+@supports (height: 100dvh) {
+  .chat-shell {
+    height: calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (min-width: 768px) {
+  .chat-shell {
+    height: calc(100vh - 4rem);
+  }
+}
+/* Browsers without dvh drop this rule and keep the 100vh one above. */
+@media (min-width: 768px) {
+  .chat-shell {
+    height: calc(100dvh - 4rem);
+  }
+}
+
+/*
+ * Touch devices (phones, tablets): real 44×44px tap targets. `.tap-44`
+ * grows only the hit area of small icon buttons; `.btn`/`.btn-mini`
+ * become full-height so a thumb never misses them.
+ * (Unlayered CSS on purpose: it must win over the size and h utilities.)
+ */
+@media (pointer: coarse) {
+  .btn,
+  .btn-mini {
+    min-height: 44px;
+  }
+  .tap-44 {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .theme-switch button {
+    width: 40px;
+    height: 40px;
+  }
 }
