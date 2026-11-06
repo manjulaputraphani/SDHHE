@@ -24,3 +24,18 @@ jobs:
 
       - name: unit tests
         run: npm test
+
+      # The web app and the Cloudflare Worker are separate packages — they are
+      # deployed on their own, so they get their own typecheck here.
+      - name: install web dependencies
+        run: npm ci --prefix web
+
+      - name: typecheck (web)
+        run: npm run typecheck --prefix web
+
+      - name: install worker dependencies
+        run: npm ci --prefix web-worker
+
+      - name: typecheck (worker)
+        run: npx tsc --noEmit
+        working-directory: web-worker
