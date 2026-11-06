@@ -33,6 +33,7 @@ import {
 import { formatRupees } from "../../../src/logic/units";
 import { exportFileName } from "../../../src/logic/chatPrivacy";
 import { showToast } from "./notifications/toastStore";
+import PushToggle from "./notifications/PushToggle";
 import { groupMessages, initials, messageTick, readCount } from "../../../src/logic/chatView";
 
 type Props = { user: User | null };
@@ -469,7 +470,9 @@ export default function TeamChat({ user }: Props) {
             Talk about the shop and send receipts for approval.
           </p>
         </div>
-        <p className="flex items-center gap-2 text-xs text-muted" data-testid="chat-status">
+        <div className="flex items-center gap-2">
+          <PushToggle />
+          <p className="flex items-center gap-2 text-xs text-muted" data-testid="chat-status">
           <span
             className={`size-2 rounded-full ${connected ? "bg-secondary" : "bg-muted"}`}
             aria-hidden="true"
@@ -480,7 +483,8 @@ export default function TeamChat({ user }: Props) {
               · {presence.map((member) => member.name).join(", ")} online
             </span>
           )}
-        </p>
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_320px]">

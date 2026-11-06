@@ -122,3 +122,8 @@
 - 2026-11-06 · The **security headers** (the "zero trust" hardening in code): HSTS, a strict CSP, no framing,
   no sniffing, no camera/microphone/geolocation — on every response of the Worker (the API, the app and the
   receipt files)
+- 2026-11-06 · **The chat notifications are sent by the Worker itself** (Cloudflare Web Push, RFC 8291 +
+  VAPID, written with WebCrypto) — no third-party push service, no new npm package. The phones subscribe in
+  the browser with one tap (🔔 in the chat header) and the Worker pushes every shop-room message
+  · ntfy stays as the fallback, so a member without the browser permission still gets the phone push
+  · a private chat never pushes (the channel is shared and the text is private)

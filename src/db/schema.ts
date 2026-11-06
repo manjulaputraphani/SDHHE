@@ -630,3 +630,19 @@ export const loginHistory = pgTable(
   },
   (t) => [index("login_history_user_idx").on(t.userId, t.createdAt)],
 );
+
+/** The Web Push subscriptions (Phase 16) — the phone notifications of the team. */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("push_subscriptions_user_idx").on(t.userId)],
+);

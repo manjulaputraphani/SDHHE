@@ -483,3 +483,21 @@ Reconciliation with the interim work of 2026-10-30:
   bar, the "what's new" window and the checklist → **17/17** in the web suite.
 - [x] **T-15.5 The chat reads** — everybody can see **how many** of the others
   have read a message ("Read by 3") and the group can be renamed by the owner.
+
+## Phase 16 — Cloudflare Web Push for the team chat (added 2026-11-06 on request)
+> The chat messages push the phones of the team **from your own Worker** — no
+> third-party push service, no npm dependency (the Web Push crypto is written with
+> WebCrypto).
+- [x] **T-16.1 The VAPID keys** — a P-256 pair generated once; the public key comes from
+  `GET /api/push/key`, the private key is a worker secret (`VAPID_PRIVATE_KEY`). ✓ set.
+- [x] **T-16.2 The subscriptions** — `push_subscriptions` (user, endpoint, p256dh, auth) +
+  `src/db/pushSubscriptions.ts`; `POST/DELETE /api/push/subscribe` (a member subscribes their
+  own device; a dead subscription is removed when the browser says 404/410). ✓ migration applied.
+- [x] **T-16.3 The crypto** — `web-worker/src/webpush.ts`: the VAPID JWT (ES256) and the
+  RFC 8291 payload encryption (ECDH + HKDF + AES-GCM), all with WebCrypto.
+- [x] **T-16.4 The service worker** — `web/public/sw.js`: shows the notification when the app
+  is closed and opens the chat when it is tapped.
+- [x] **T-16.5 The toggle** — `web/src/components/notifications/PushToggle.tsx` in the chat
+  header: 🔔/🔕, asks for the permission, subscribes, unsubscribes.
+- [x] **T-16.6 The hook** — a message in the shop room pushes the team's phones
+  (`pushToTheTeam`, skipping the sender); ntfy stays as the fallback. Deployed as `28e85bbc`.

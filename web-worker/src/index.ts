@@ -74,6 +74,12 @@ import {
 } from "./chatMail";
 import { pushNtfy, sendMail } from "./mailer";
 import { describeDevice } from "./device";
+import { sendWebPush } from "./webpush";
+import {
+  forgetPushSubscription,
+  pushSubscriptionsForRoom,
+  savePushSubscription,
+} from "../../src/db/pushSubscriptions";
 import {
   completeOnboarding,
   completeTour,
@@ -126,6 +132,10 @@ export interface Env {
   SMTP_PORT?: string;
   /** Team Chat push (Phase 12) — the ntfy topic. */
   NTFY_TOPIC?: string;
+  /** Web Push (Phase 16) — the VAPID keys of the app. */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
   /** Receipt files (Phase 12) — R2 bucket `sdhhe-receipts`. */
   RECEIPTS?: R2BucketLike;
   /** The Team Chat room (Phase 12) — Durable Object. */
@@ -229,6 +239,10 @@ function routePermission(
   if (pathname === "/api/chat/receipts") return { module: "chat", action: read ? "view" : "create" };
   if (/^\/api\/chat\/receipts\/[A-Za-z0-9_-]+$/.test(pathname)) return { module: "chat", action: "view" };
   if (/^\/api\/chat\/receipts\/\d+\/decision$/.test(pathname)) return { module: "chat", action: "edit" };
+  // Web Push (Phase 16): any member may subscribe their own device.
+  if (pathname === "/api/push/subscribe") return { module: "chat", action: "view" };
+  if (pathname === "/api/push/key") return null;
+
   // The notification system (Phase 15).
   if (pathname.startsWith("/api/notifications/announcements")) {
     return { module: "team", action: read ? "view" : "edit" };
@@ -504,6 +518,41 @@ async function logFirstDirectMessage(
     entity: "chat",
     entityId: message.id,
   });
+}
+
+/** The Web Push settings (null when the keys are not set). */
+function webPushConfig(env: Env) {
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return null;
+  return {
+    publicKey: env.VAPID_PUBLIC_KEY,
+    privateKey: env.VAPID_PRIVATE_KEY,
+    subject: env.VAPID_SUBJECT || "mailto:owner@sdhhe.local",
+  };
+}
+
+/**
+ * Push a message to the phones of the team (Cloudflare Web Push).
+ *
+ * Best effort: a dead subscription is removed, nothing is ever thrown.
+ */
+async function pushToTheTeam(
+  env: Env,
+  exceptUserId: number,
+  message: { title: string; body: string; url?: string },
+): Promise<void> {
+  const config = webPushConfig(env);
+  if (!config) return;
+  try {
+    const subscriptions = await pushSubscriptionsForRoom(getDb(env.DATABASE_URL as string), exceptUserId);
+    await Promise.allSettled(
+      subscriptions.map(async (subscription) => {
+        const ok = await sendWebPush(config, subscription, message);
+        if (!ok) await forgetPushSubscription(getDb(env.DATABASE_URL as string), subscription.endpoint);
+      }),
+    );
+  } catch (err) {
+    console.error("push failed:", err);
+  }
 }
 
 /** Push a frame into a chat room — the Durable Object broadcasts it. */
@@ -1520,6 +1569,28 @@ const handler = {
         });
       }
 
+      // ---- Web Push (Phase 16) ----
+      if (url.pathname === "/api/push/key" && request.method === "GET") {
+        return json({ publicKey: env.VAPID_PUBLIC_KEY ?? null });
+      }
+
+      if (url.pathname === "/api/push/subscribe" && request.method === "POST") {
+        const endpoint = String(body.endpoint ?? "");
+        const p256dh = String(body.p256dh ?? "");
+        const auth = String(body.auth ?? "");
+        if (!/^https:\/\//.test(endpoint) || !p256dh || !auth) {
+          return json({ error: "A complete subscription is needed" }, { status: 400 });
+        }
+        await savePushSubscription(db, { userId: session.uid, endpoint, p256dh, auth });
+        return json({ ok: true });
+      }
+
+      if (url.pathname === "/api/push/subscribe" && request.method === "DELETE") {
+        const endpoint = String(body.endpoint ?? "");
+        if (endpoint) await forgetPushSubscription(db, endpoint);
+        return json({ ok: true });
+      }
+
       // ---- Team Chat (Phase 13): conversations (writes) ----
       if (url.pathname === "/api/chat/conversations" && request.method === "POST") {
         const otherId = Number(body.userId);
@@ -1610,9 +1681,15 @@ const handler = {
           await logFirstDirectMessage(db, room, session, message);
           await broadcastToChat(env, { type: "message", message }, room);
           await markRead(db, room, session.uid, message.id);
-          // The shop room pushes the phones of the team (ntfy). A private chat
-          // does not — the push topic is shared, and the text is private.
+          // The shop room pushes the phones of the team (Cloudflare Web Push
+          // first, ntfy as the fallback). A private chat does not — the push
+          // channel is shared and the text of a 1-to-1 chat is private.
           if (room === SHARED_ROOM) {
+            await pushToTheTeam(env, session.uid, {
+              title: `${session.name} wrote in the shop room`,
+              body: input.body.slice(0, 120),
+              url: "/team-chat",
+            });
             await pushNtfy(
               env.NTFY_TOPIC,
               `${session.name} wrote in the shop room`,

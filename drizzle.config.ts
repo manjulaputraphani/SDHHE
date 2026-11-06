@@ -43,6 +43,7 @@ export default defineConfig({
     "public.chat_conversations",
     "public.chat_conversation_members",
     "public.chat_message_states",
+    "public.push_subscriptions",
   ],
   dbCredentials: { url },
 });

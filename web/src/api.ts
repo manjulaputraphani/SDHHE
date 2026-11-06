@@ -613,6 +613,16 @@ export const api = {
     }),
   loginHistory: () => request<{ logins: LoginEntry[] }>("/api/notifications/login-history"),
 
+  // ---- Web Push (Phase 16) ----
+  pushKey: () => request<{ publicKey: string | null }>("/api/push/key"),
+  pushSubscribe: (body: { endpoint: string; p256dh: string; auth: string }) =>
+    request<{ ok: boolean }>("/api/push/subscribe", { method: "POST", body: JSON.stringify(body) }),
+  pushUnsubscribe: (endpoint: string) =>
+    request<{ ok: boolean }>("/api/push/subscribe", {
+      method: "DELETE",
+      body: JSON.stringify({ endpoint }),
+    }),
+
   renameChatConversation: (room: string, title: string) =>
     request<{ ok: boolean; room: string; title: string }>("/api/chat/rename", {
       method: "POST",
