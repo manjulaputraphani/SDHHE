@@ -538,3 +538,16 @@ Reconciliation with the interim work of 2026-10-30:
     Ravi sends a receipt there; owner approves from Expenses; owner removes Ravi → Ravi loses access live;
     staff cannot see "+ New group".
   - Acceptance: end-to-end tests pass, covers all acceptance criteria.
+## Phase 16 — Responsive web edition (iPhone Safari)
+
+- [x] **T-16.0 The web edition fits phones, tablets and desktops** — the exact viewport meta
+  (`width=device-width, initial-scale=1, viewport-fit=cover`, no user-scalable lock), global CSS
+  (border-box, `-webkit-text-size-adjust: 100%`, `overflow-x: hidden` on html/body, media max-widths),
+  every input/select/textarea ≥16px on phones (iOS auto-zoom), `100dvh` with `100vh` fallback,
+  safe-area insets on the header/drawer/composer/toasts/modals/tour, 44px tap targets on touch,
+  stacked-card tables / scroll containers (never page-wide), bottom-sheet modals on phones,
+  auto-fit dashboard cards, and the chat: one panel on a phone, list + room on a tablet with the
+  approvals as a slide-over, three panels on desktop, the composer follows the keyboard via
+  `visualViewport`. Verified by `e2e-web/responsive.spec.ts` at 375 / 390 / 430 / 768 / 1280 px
+  (no horizontal scroll, no auto-zoom, per page: Login, Dashboard, New Bill, Invoices, Items,
+  Purchases, Roasting, Team Chat, Settings) + the full 34-test web suite.
