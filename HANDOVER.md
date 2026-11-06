@@ -34,6 +34,6 @@ T-12.3 R2 receipts → T-12.4 Durable Object room → T-12.5 worker chat API →
 
 ## Blockers
 - **R2 not enabled**: `npx wrangler r2 bucket list` → "Please enable R2 through the Cloudflare Dashboard" (code 10042). Wrangler itself IS logged in (OAuth, blvphani@gmail.com, account `0a3450b9c7a5e5ca53ce168a6fe33b41`) — only the R2 switch is missing. Owner must enable R2 in the dashboard, then `npx wrangler r2 bucket create sdhhe-receipts`.
-- `prompts/TEAM_CHAT_ALL.md` and `docs/chat-in-app-preview.html` did not exist in the repo — the Phase 12 task split is the plan in `docs/BUILD_PLAN.md` (T-12.0); the preview file was created there.
+- `prompts/TEAM_CHAT_ALL.md` and `docs/chat-in-app-preview.html` were missing from the repo — both now exist (TEAM_CHAT_ALL.md written 2026-11-06 as the Phase 12 master prompt + spec; the preview file created in T-12.0).
 - `sdhhe-api.DATABASE_URL` is not readable/verifiable, but login probes confirm the worker sees the same DB as the local `.env`.
 - Owner login: account id=1, phone `7569208757`, active.
