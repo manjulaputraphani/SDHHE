@@ -123,6 +123,28 @@ describe("Team Chat screen (desktop)", () => {
     expect(chatSend).toHaveBeenCalled();
   });
 
+  it("keeps line breaks: Shift+Enter adds a line, Enter sends, the bubble shows the same lines", async () => {
+    vi.mocked(getChatWorkerUrl).mockResolvedValue("https://worker.dev");
+    vi.mocked(getSecret).mockResolvedValue(JSON.stringify({ token: "t", expiresAt: Date.now() + 60_000 }));
+    vi.mocked(chatMessages).mockResolvedValue([{ ...MESSAGE, body: "A\n\nB\nC" }]);
+    vi.mocked(chatSend).mockResolvedValue({ message: { ...MESSAGE, id: 6, body: "X\nY" } });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const bubble = await screen.findByText((_, el) => el?.textContent === "A\n\nB\nC" && el.children.length === 0);
+    expect(bubble.className).toContain("whitespace-pre-wrap");
+
+    const input = screen.getByPlaceholderText("Message the team…");
+    expect(input.tagName).toBe("TEXTAREA");
+    await user.type(input, "X{Shift>}{Enter}{/Shift}Y");
+    expect((input as HTMLTextAreaElement).value).toBe("X\nY");
+    await user.type(input, "{Enter}");
+
+    await waitFor(() => expect(chatSend).toHaveBeenCalled());
+    expect(vi.mocked(chatSend).mock.lastCall?.[2].body).toBe("X\nY");
+  });
+
   it("lists the conversations and switches to a private chat", async () => {
     vi.mocked(getChatWorkerUrl).mockResolvedValue("https://worker.dev");
     vi.mocked(getSecret).mockResolvedValue(JSON.stringify({ token: "t", expiresAt: Date.now() + 60_000 }));

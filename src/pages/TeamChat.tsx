@@ -89,6 +89,15 @@ export default function TeamChat() {
   const atBottomRef = useRef(true);
   const socketRef = useRef<WebSocket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // The composer grows with its text up to about 8 lines, then scrolls.
+  useEffect(() => {
+    const box = composerRef.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${Math.min(box.scrollHeight, 190)}px`;
+  }, [draft]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const canApprove = canApproveReceipts(getCurrentPermissions());
@@ -633,7 +642,7 @@ export default function TeamChat() {
                             group.mine
                               ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
                               : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
-                          } ${isFirst ? "" : "mt-0.5"}`}
+                          } ${isFirst ? "" : "mt-0.5"} whitespace-pre-wrap [overflow-wrap:anywhere]`}
                         >
                           {message.body}
                         </div>
@@ -665,7 +674,7 @@ export default function TeamChat() {
             <div ref={bottomRef} />
           </div>
 
-          <form onSubmit={send} className="flex items-center gap-2 border-t border-line bg-surface p-3">
+          <form onSubmit={send} className="flex items-end gap-2 border-t border-line bg-surface p-3">
             <button
               type="button"
               className="btn-ghost text-xs"
@@ -673,13 +682,22 @@ export default function TeamChat() {
             >
               Attach receipt
             </button>
-            <input
-              className="input flex-1"
+            {/* A textarea keeps pasted line breaks: Enter sends, Shift+Enter adds a line. */}
+            <textarea
+              ref={composerRef}
+              className="input flex-1 resize-none overflow-y-auto"
               placeholder="Message the team…"
+              rows={1}
               value={draft}
               onChange={(e) => {
                 setDraft(e.currentTarget.value);
                 sendTyping();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
               }}
               disabled={busy}
               maxLength={2000}
