@@ -5,8 +5,9 @@
  * a private chat between two members; its room name is `dm-<smallId>-<bigId>`
  * so both people always end up in the same room.
  */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db, TxDb } from "./client";
+import { isGroupRoom } from "../logic/chatPrivacy";
 import { appUsers, chatConversationMembers, chatConversations } from "./schema";
 
 export const SHARED_ROOM = "main";
@@ -69,7 +70,7 @@ export async function renameConversation(
   const [updated] = await db
     .update(chatConversations)
     .set({ title: name })
-    .where(eq(chatConversations.room, room))
+    .where(and(eq(chatConversations.room, room), isNull(chatConversations.archivedAt)))
     .returning();
   return updated?.title ?? null;
 }
@@ -167,7 +168,7 @@ export async function ensureDirectConversation(
   };
 }
 
-/** Is this member part of the room? */
+/** Is this member part of the room? (a retired group lets nobody in) */
 export async function isMember(
   db: Db | TxDb,
   room: string,
@@ -181,6 +182,7 @@ export async function isMember(
       and(
         eq(chatConversations.room, room),
         eq(chatConversationMembers.userId, userId),
+        isNull(chatConversations.archivedAt),
       ),
     )
     .limit(1);
@@ -222,6 +224,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     from chat_conversations c
     join chat_conversation_members cm
       on cm.conversation_id = c.id and cm.user_id = ${userId}
+    where c.archived_at is null
     order by (c.room = 'main') desc, last_message_at desc nulls last, c.id desc
   `);
 
@@ -295,7 +298,12 @@ export async function unreadCount(db: Db, userId: number): Promise<number> {
       chatConversationMembers,
       eq(chatConversationMembers.conversationId, chatConversations.id),
     )
-    .where(eq(chatConversationMembers.userId, userId));
+    .where(
+      and(
+        eq(chatConversationMembers.userId, userId),
+        isNull(chatConversations.archivedAt),
+      ),
+    );
   return row?.total ?? 0;
 }
 
@@ -307,4 +315,175 @@ export async function listChatMembers(db: Db): Promise<ChatMember[]> {
     .where(eq(appUsers.active, true))
     .orderBy(desc(appUsers.name));
   return rows;
+}
+
+// ---- Chat groups (Phase 14) — the owner makes them and picks the members ----
+
+/** A member of a conversation, with the online dot of the header popup. */
+export type ConversationMember = ChatMember & {
+  lastSeenAt: string | null;
+};
+
+/** The live conversation of a room (null when it does not exist or is retired). */
+async function liveConversation(
+  db: Db | TxDb,
+  room: string,
+): Promise<{ id: number; kind: string } | null> {
+  const [row] = await db
+    .select({ id: chatConversations.id, kind: chatConversations.kind })
+    .from(chatConversations)
+    .where(and(eq(chatConversations.room, room), isNull(chatConversations.archivedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Create a group the owner made (Phase 14).
+ *
+ * Null when the name is empty, the room is not a group room, or one of the
+ * members does not exist — nothing is written in that case.
+ */
+export async function createGroupConversation(
+  db: Db | TxDb,
+  options: { room: string; title: string; memberIds: number[] },
+): Promise<ChatConversation | null> {
+  const name = options.title.trim().slice(0, 60);
+  if (!name || !isGroupRoom(options.room)) return null;
+
+  const wanted = [...new Set(options.memberIds)].filter(
+    (id) => Number.isInteger(id) && id > 0,
+  );
+  if (wanted.length === 0) return null;
+  // Every picked member must exist — a group is never created half-full.
+  const known = await db
+    .select({ id: appUsers.id })
+    .from(appUsers)
+    .where(inArray(appUsers.id, wanted));
+  if (known.length !== wanted.length) return null;
+
+  const [conversation] = await db
+    .insert(chatConversations)
+    .values({ room: options.room, kind: "group", title: name })
+    .onConflictDoNothing({ target: chatConversations.room })
+    .returning();
+  const row =
+    conversation ??
+    (await db
+      .select()
+      .from(chatConversations)
+      .where(eq(chatConversations.room, options.room))
+      .limit(1))[0];
+  if (!row) throw new Error("The group could not be created");
+
+  for (const member of wanted) {
+    await db
+      .insert(chatConversationMembers)
+      .values({ conversationId: row.id, userId: member })
+      .onConflictDoNothing({
+        target: [chatConversationMembers.conversationId, chatConversationMembers.userId],
+      });
+  }
+
+  return {
+    id: row.id,
+    room: row.room,
+    kind: row.kind as ConversationKind,
+    title: row.title ?? null,
+    other: null,
+    unread: 0,
+    lastMessageAt: null,
+    lastMessage: null,
+  };
+}
+
+/** The members of a conversation — the header popup and the owner's menu. */
+export async function listConversationMembers(
+  db: Db | TxDb,
+  room: string,
+): Promise<ConversationMember[]> {
+  const rows = await db
+    .select({
+      id: appUsers.id,
+      name: appUsers.name,
+      role: appUsers.role,
+      lastSeenAt: appUsers.lastSeenAt,
+    })
+    .from(chatConversationMembers)
+    .innerJoin(chatConversations, eq(chatConversations.id, chatConversationMembers.conversationId))
+    .innerJoin(appUsers, eq(appUsers.id, chatConversationMembers.userId))
+    .where(
+      and(
+        eq(chatConversations.room, room),
+        isNull(chatConversations.archivedAt),
+        eq(appUsers.active, true),
+      ),
+    )
+    .orderBy(desc(appUsers.name));
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    lastSeenAt: row.lastSeenAt ? new Date(row.lastSeenAt).toISOString() : null,
+  }));
+}
+
+/** Add a member to an owner-made group (false: not a live group, or a made-up id). */
+export async function addConversationMember(
+  db: Db | TxDb,
+  room: string,
+  userId: number,
+): Promise<boolean> {
+  if (!isGroupRoom(room) || room === SHARED_ROOM) return false;
+  const conversation = await liveConversation(db, room);
+  if (!conversation || conversation.kind !== "group") return false;
+  try {
+    await db
+      .insert(chatConversationMembers)
+      .values({ conversationId: conversation.id, userId })
+      .onConflictDoNothing({
+        target: [chatConversationMembers.conversationId, chatConversationMembers.userId],
+      });
+  } catch {
+    // A made-up member id — the row is not written, so no access.
+    return false;
+  }
+  return true;
+}
+
+/** Remove a member from an owner-made group (false: not a live group, or not a member). */
+export async function removeConversationMember(
+  db: Db | TxDb,
+  room: string,
+  userId: number,
+): Promise<boolean> {
+  if (!isGroupRoom(room) || room === SHARED_ROOM) return false;
+  const conversation = await liveConversation(db, room);
+  if (!conversation || conversation.kind !== "group") return false;
+  const removed = await db
+    .delete(chatConversationMembers)
+    .where(
+      and(
+        eq(chatConversationMembers.conversationId, conversation.id),
+        eq(chatConversationMembers.userId, userId),
+      ),
+    )
+    .returning();
+  return removed.length > 0;
+}
+
+/** Retire a group — it leaves every list, but is never hard-deleted. */
+export async function archiveConversation(db: Db | TxDb, room: string): Promise<boolean> {
+  if (!isGroupRoom(room) || room === SHARED_ROOM) return false;
+  const [updated] = await db
+    .update(chatConversations)
+    .set({ archivedAt: new Date() })
+    .where(
+      and(
+        eq(chatConversations.room, room),
+        eq(chatConversations.kind, "group"),
+        isNull(chatConversations.archivedAt),
+      ),
+    )
+    .returning();
+  return Boolean(updated);
 }

@@ -397,6 +397,8 @@ export const chatMessages = pgTable(
     body: text("body").notNull().default(""),
     /** Set when the message shows a receipt (see receiptRequests.id). */
     receiptId: integer("receipt_id"),
+    /** Set when the author edited the text (Phase 17 — message editing). */
+    editedAt: timestamp("edited_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("chat_messages_kind_valid", sql`${t.kind} in ('text','receipt','system')`)],
@@ -455,6 +457,8 @@ export const chatConversations = pgTable(
     kind: text("kind").notNull().default("direct"),
     /** Shown above the conversation (the shop room has a name). */
     title: text("title"),
+    /** Set when an owner-made group is retired (never hard-deleted). */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("chat_conversations_kind_valid", sql`${t.kind} in ('group','direct')`)],

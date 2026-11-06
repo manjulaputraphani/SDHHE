@@ -127,11 +127,31 @@ const CONVERSATIONS = [
 
 const MEMBERS = [{ id: 4, name: "RAJU", role: "staff" }];
 
+/** A group the owner made (Phase 14). */
+const GROUP = {
+  id: 3,
+  room: "group-buy",
+  kind: "group" as const,
+  title: "Purchase team",
+  other: null,
+  unread: 0,
+  lastMessageAt: "2026-11-06T09:50:00.000Z",
+  lastMessage: {
+    author: "RAJU",
+    body: "Kal ka purchase ready?",
+    kind: "text",
+    createdAt: "2026-11-06T09:50:00.000Z",
+  },
+};
+
+/** Who is in that group (the roster of the header popup). */
+const GROUP_MEMBERS = [{ id: 4, name: "RAJU", role: "staff", lastSeenAt: null }];
+
 /** Mock the whole chat API of the worker. */
 async function mockChat(
   page: Page,
   member: typeof OWNER | typeof STAFF,
-  options: { onDecision?: (id: number) => void } = {},
+  options: { onDecision?: (id: number) => void; groups?: boolean } = {},
 ) {
   // Anything else the app asks for (the shop details, the activity, ...) is
   // answered with an empty result — a 401 would sign the app out again and a
@@ -232,8 +252,31 @@ async function mockChat(
     );
     return route.fulfill({ json: { ok: true, room: "main", title: "Morning team" } });
   });
+  // Chat groups (Phase 14): the owner makes them and picks the members.
+  await page.route("**/api/chat/groups", (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fulfill({ json: { conversations: [] } });
+    }
+    conversationsState = [...conversationsState, GROUP];
+    return route.fulfill({
+      json: {
+        conversation: GROUP,
+        message: { id: 101, room: GROUP.room, kind: "system", body: "created the group" },
+      },
+    });
+  });
+  await page.route("**/api/chat/groups/members**", (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      return route.fulfill({ json: { members: GROUP_MEMBERS } });
+    }
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.route("**/api/chat/groups/archive**", (route) =>
+    route.fulfill({ json: { ok: true } }),
+  );
   // Start every test from the default conversation list.
-  conversationsState = CONVERSATIONS;
+  conversationsState = options.groups ? [...CONVERSATIONS, GROUP] : CONVERSATIONS;
   await page.route("**/api/auth/logout-all", (route) =>
     route.fulfill({ json: { ok: true, epoch: 2 } }),
   );
@@ -432,5 +475,74 @@ test.describe("Team Chat", () => {
     // The private chat is marked as such.
     await expect(page.getByText("Private")).toBeVisible();
     await expect(page.getByText(/only you and RAJU can read it/)).toBeVisible();
+  });
+
+  // ---- Chat groups (Phase 14) ----
+  test("the owner can make a group with the members they pick", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await page.goto("/team-chat");
+
+    await page.getByRole("button", { name: "New group" }).click();
+    await expect(page.getByRole("heading", { name: "New group" })).toBeVisible();
+    await page.getByRole("textbox", { name: "Group name" }).fill("Purchase team");
+    // Tick RAJU (the owner is part of the group automatically).
+    await page.getByRole("button", { name: "RAJU", exact: true }).click();
+    await expect(page.getByRole("button", { name: "✓ RAJU", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Create group" }).click();
+
+    // The group opens and shows in the list.
+    await expect(page.getByRole("heading", { name: "Purchase team" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Purchase team/ })).toBeVisible();
+  });
+
+  test("staff cannot make a group", async ({ page }) => {
+    await mockChat(page, STAFF);
+    await page.goto("/team-chat");
+
+    await expect(page.getByRole("button", { name: "New group" })).toHaveCount(0);
+  });
+
+  test("the owner can manage the members of a group from the header menu", async ({ page }) => {
+    await mockChat(page, OWNER, { groups: true });
+    await page.goto("/team-chat");
+
+    await page.getByRole("button", { name: /Purchase team/ }).click();
+    await page.getByRole("button", { name: "Chat menu" }).click();
+    await expect(page.getByRole("button", { name: "Add members" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove member" })).toBeVisible();
+
+    // The shop room is not manageable this way (Rename only).
+    await expect(page.getByRole("button", { name: "Archive group" })).toBeVisible();
+    await page.getByRole("button", { name: "Close menu" }).click();
+    await page.getByRole("button", { name: /Shop room/ }).click();
+    await page.getByRole("button", { name: "Chat menu" }).click();
+    await expect(page.getByRole("button", { name: "Add members" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Remove member" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Archive group" })).toHaveCount(0);
+  });
+
+  test("the owner can remove a member from a group", async ({ page }) => {
+    await mockChat(page, OWNER, { groups: true });
+    await page.goto("/team-chat");
+
+    await page.getByRole("button", { name: /Purchase team/ }).click();
+    await page.getByRole("button", { name: "Chat menu" }).click();
+    await page.getByRole("button", { name: "Remove member" }).click();
+    await page.getByRole("button", { name: "RAJU", exact: true }).click();
+
+    await expect(page.getByText(/RAJU left the group/)).toBeVisible();
+  });
+
+  test("the owner can archive a group", async ({ page }) => {
+    await mockChat(page, OWNER, { groups: true });
+    await page.goto("/team-chat");
+
+    await page.getByRole("button", { name: /Purchase team/ }).click();
+    await page.getByRole("button", { name: "Chat menu" }).click();
+    await page.getByRole("button", { name: "Archive group" }).click();
+
+    await expect(page.getByText("Group archived")).toBeVisible();
+    // The owner lands back in the shop room.
+    await expect(page.getByRole("heading", { name: "Shop room" })).toBeVisible();
   });
 });

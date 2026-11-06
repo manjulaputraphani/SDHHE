@@ -4,55 +4,51 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**T-16.0 — the web edition is fully responsive (iPhone Safari) — committed & verified.**
-Live worker version `eb23815a-12ad-4da9-8e53-1bb39e3df6e1` unchanged; this touched the **web bundle only**
-(`cd web && npm run build` → `cd web-worker && npx wrangler deploy` when the owner wants it live).
-Web LIVE: https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/` (NOT touched here).
-**Message editing feature implemented**: Added database schema migration for edited_at timestamp, updated chat DB functions with updateMessage support, and added worker API route (PATCH /api/chat/messages/:id) - ready for final testing and deployment.
+**T-14.1/14.2/14.3 — chat groups: DB helpers, worker routes, DO kick, owner UI — committed.**
+The owner can make groups ("New group"), and add / remove members or archive from the group header
+⋮ menu. A removed member's socket is closed at once (close 1008 → toast, back to the room list).
+NOT LIVE YET: the worker + DB must be updated first (see Owner steps). Web LIVE:
+https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/` (untouched).
+Note: the message-editing work (PATCH route, updateMessage, 0013) was committed by its owner
+mid-session as `322fd51`; I only added the missing `editedAt` column to `src/db/schema.ts`.
 
-## Done
-- **T-16.0 Responsive web edition** (committed): exact viewport meta with `viewport-fit=cover` (no
-  user-scalable lock); global CSS (border-box, `-webkit-text-size-adjust: 100%`, `overflow-x: hidden`,
-  img/svg max-width); **every** input/select/textarea ≥16px on phones (iOS auto-zoom gone — incl. the
-  chat searches, rename, margin% field); `100dvh` with `100vh` fallback (`.h-viewport`, `.chat-shell`);
-  safe-area insets (header, drawer, composer, toasts, modals, tour); 44px tap targets under
-  `(pointer: coarse)` (`.tap-44`, `.btn/.btn-mini`); bottom-sheet modals on phones; dashboard cards
-  `repeat(auto-fit, minmax(160px, 1fr))`; padding 16/24/32px (phone/tablet/desktop).
-- **Team Chat**: one panel on a phone (list ↔ room with back arrow), on **md (768–1023)** the list +
-  room sit side by side and the approvals slide over the grid, three panels on lg; bubbles
-  `max-w-[80%] md:max-w-[65%]` + `overflow-wrap: anywhere`; the composer stays above the keyboard
-  via `visualViewport` (`useKeyboardOffset`) — no page jump; message time now opens by tap
-  (`tabIndex={0}` on bubbles); the chat shell height counts the 3.5rem top bar + safe areas
-  (`.chat-shell` in styles.css — change both together if the header height changes).
-- **Verification**: new `e2e-web/responsive.spec.ts` (13 tests) walks every page at **375 / 390 / 430**
-  px (no horizontal scroll, no auto-zoom) + drawer behaviour + chat at 768/1280 + login at 375.
-  Web suite **34/34 green**, 466 unit tests, tsc clean (root / web / worker), web build ok.
-- Files: `web/index.html`, `web/src/styles.css`, `web/src/App.tsx`,
-  `web/src/components/TeamChat.tsx`, `web/src/components/notifications/{ToastHost,WelcomeBanner,
-  AnnouncementBanner,ProductTour,WhatsNewModal,LoginAlertModal}.tsx`, `e2e-web/responsive.spec.ts`,
-  `docs/BUILD_PLAN.md`.
-- **Message editing feature**: Database migration (0013_message_edits.sql) added edited_at column to chat_messages table; updated src/db/chat.ts with MessageRow and ChatMessage types, toMessage function, parseMessageEditInput, and updateMessage function; fixed src/db/chat.test.ts; added updateMessage import to web-worker/src/index.ts; implemented PATCH /api/chat/messages/:id handler in worker (ready for activation).
-
-## ⚠ Uncommitted work in the tree (NOT mine — leave it for its owner)
-The "welcome banner setting" fix is half-finished and uncommitted: `src/db/notifications.ts`,
-`src/db/schema.ts`, `web-worker/src/index.ts`, `web/src/api.ts`,
-`web/src/components/notifications/{NotificationsHost,WelcomeBanner}.tsx`,
-`drizzle/0012_welcome_banner_setting.sql`, `src/logic/welcomeBanner.{ts,test.ts}`.
-I only added a `tap-44` class to WelcomeBanner's ✕. The file was being edited WHILE I worked
-(3 of my TeamChat edits got reverted once and were re-applied — re-check before committing).
+## Done (T-14 chat groups)
+- DB (`src/db/chatRooms.ts`): groups reuse the Phase 13 tables (`chat_conversations` kind `group` +
+  `chat_conversation_members`) — no new tables; only `archived_at` was added (drizzle/0014).
+  New: createGroupConversation, listConversationMembers, add/removeConversationMember,
+  archiveConversation. isMember / listConversations / unreadCount / rename all filter archived rooms,
+  so a retired group is unreadable everywhere (never hard-deleted).
+- Rules: `isGroupRoom()` (src/logic/chatPrivacy.ts) — room shape `group-…`; chatRoomMember in the
+  worker accepts group rooms; logFirstDirectMessage skips them.
+- Worker (web-worker/src/index.ts): POST /api/chat/groups (create + system message),
+  GET/POST/DELETE /api/chat/groups/members, POST /api/chat/groups/archive. Owner-only (role check,
+  like rename — T-14.2 deviation, see DECISIONS). Receipt decisions: membership only enforced for
+  direct chats, so owner/CA can approve a group receipt without being a member.
+- DO (web-worker/src/chat/do.ts): new POST /kick closes one member (or all) with code 1008.
+  Protocol: new `members` frame (reload lists). Body parsing now includes DELETE.
+- Web UI (TeamChat.tsx): owner "New group" button + dialog (name + tick members); ⋮ menu gains
+  Add members / Remove member / Archive (group rooms only, never the shop room); members popup
+  shows the group roster; socket close 1008 → toast + back to the list. api.ts: 5 new calls.
+- Tests: chatPrivacy/chatView/protocol unit tests, 6 group int tests (skip without
+  DATABASE_URL_TEST; resetAll now also truncates the chat conversation tables), 5 new e2e in
+  team-chat.spec.ts. 470 unit green, 39/39 e2e-web green, tsc clean (root/web/worker).
 
 ## Owner steps that are still open
-1. Access service token for the desktop app (Zero Trust → Service Auth).
-2. Desktop 1-hour auto-logout (owner has not answered).
-3. The Roasting screen is still missing in the desktop app.
-4. Deploy the new web bundle when wanted: `cd web && npm run build && cd ../web-worker && npx wrangler deploy`.
+1. Apply drizzle/0013 + 0014 to the Neon DB (dev branch first — 0014 adds `archived_at`; the new
+   worker code SELECTs it, so deploy only AFTER the column exists). Then deploy:
+   `cd web && npm run build && cd ../web-worker && npx wrangler deploy`.
+2. Desktop chat → Worker blocked by Cloudflare Access until a service token exists.
+3. Desktop 1-hour auto-logout (owner has not answered). 4. Roasting screen missing in desktop.
+
+## Next task (BUILD_PLAN Phase 14)
+- **T-14.4 UI polish**: initials avatar for groups in the list, floating chat panel starts on the
+  group list, light+dark check. **T-14.5**: live two-user e2e (Ravi loses access live; receipt from
+  a group approved from Expenses) — needs the deployed worker.
 
 ## Blockers
-- Desktop chat → Worker blocked by Cloudflare Access until a service token exists.
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
 
 ## Commands
-- Tests: `npx vitest run --reporter=dot` (466) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
-  `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (34, mocked worker)
-- Responsive check: `npx playwright test --config playwright.web.config.ts e2e-web/responsive.spec.ts`
-- Deploy: `cd web && npm run build && cd ../web-worker && ./node_modules/.bin/wrangler deploy` (ask first)
+- Tests: `npx vitest run --reporter=dot` (470) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
+  `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (39, mocked worker)
+- Deploy (ask first): `cd web && npm run build && cd ../web-worker && ./node_modules/.bin/wrangler deploy`

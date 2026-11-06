@@ -54,6 +54,17 @@ Reset dev data before each run (truncate tables in a test setup file).
 - PIN: wrong PIN blocked; 5 wrong → lockout message.
 - Setup: invalid Neon URL → "Cannot connect" error.
 
+### C2 Team Chat (logic + e2e-web, mocked worker)
+- Group room shape: `isGroupRoom("group-buy")` true; `main`, `dm-4-9`, `group-` false (chatPrivacy.test).
+- Owner creates a group (name + ticked members) → appears in the list, opens (team-chat.spec e2e).
+- Staff sees no "New group" button and no group menu items (e2e).
+- Owner adds / removes a member from the header menu (e2e); removal kicks that member's socket (close 1008).
+- Owner archives a group → it leaves every list, members may not read it (chatRooms.int.test, e2e).
+- The shop room can never be managed: no add/remove/archive (int test).
+- Receipt approver (owner/CA) may decide a receipt of any group without being a member (route logic).
+- Untitled group falls back to the room name in list/exports (chatView.test).
+
+
 ## D. Data safety (manual)
 - Install on 2nd laptop, enter same Neon URL → same data.
 - Internet off while saving → clear error, nothing half-saved.

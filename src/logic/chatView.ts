@@ -156,7 +156,8 @@ export function conversationName(conversation: ConversationListEntry): string {
   if (conversation.kind === "direct") {
     return conversation.other?.name ?? conversation.room;
   }
-  return conversation.title?.trim() || "Shop room";
+  // The shop room has a default name; a group the owner made is never untitled.
+  return conversation.title?.trim() || (conversation.room === "main" ? "Shop room" : conversation.room);
 }
 
 /** The chat list filtered by the search bar (Phase 2) — matches the name only. */

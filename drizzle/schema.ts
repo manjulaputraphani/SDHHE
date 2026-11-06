@@ -30,7 +30,7 @@ export const users = pgTable("Users", {
 ]);
 
 export const userClaims = pgTable("UserClaims", {
-	id: integer("Id").primaryKey().generatedByDefaultAsIdentity({ name: ""UserClaims_Id_seq"", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647 }),
+	id: integer("Id").primaryKey().generatedByDefaultAsIdentity({ name: 'UserClaims_Id_seq', startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647 }),
 	userId: uuid("UserId").notNull(),
 	claimType: text("ClaimType"),
 	claimValue: text("ClaimValue"),
@@ -57,6 +57,22 @@ export const settings = pgTable("settings", {
 	key: text().primaryKey().notNull(),
 	value: text().notNull(),
 });
+
+export const chatMessages = pgTable("chat_messages", {
+	id: serial().primaryKey().notNull(),
+	room: text().notNull().default('main'),
+	userId: integer("user_id"),
+	author: text().notNull(),
+	role: text().notNull().default('staff'),
+	kind: text().notNull().default('text'),
+	body: text().notNull().default(''),
+	receiptId: integer("receipt_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	editedAt: timestamp("edited_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	index("chat_messages_room_id_idx").on(table.room, table.id),
+	check("chat_messages_kind_valid", sql`kind = ANY (ARRAY['text'::text, 'receipt'::text, 'system'::text])`),
+]);
 
 export const stockMovements = pgTable("stock_movements", {
 	id: serial().primaryKey().notNull(),
@@ -197,7 +213,7 @@ export const roles = pgTable("Roles", {
 ]);
 
 export const roleClaims = pgTable("RoleClaims", {
-	id: integer("Id").primaryKey().generatedByDefaultAsIdentity({ name: ""RoleClaims_Id_seq"", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647 }),
+	id: integer("Id").primaryKey().generatedByDefaultAsIdentity({ name: 'RoleClaims_Id_seq', startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647 }),
 	roleId: uuid("RoleId").notNull(),
 	claimType: text("ClaimType"),
 	claimValue: text("ClaimValue"),
@@ -281,7 +297,7 @@ export const products = pgTable("Products", {
 	createdBy: text("CreatedBy"),
 	updatedBy: text("UpdatedBy"),
 	categoryId: uuid("CategoryId"),
-	hsnCode: varchar("HsnCode", { length: 20 }).default(').notNull(),
+	hsnCode: varchar("HsnCode", { length: 20 }).default('').notNull(),
 	stockItemId: uuid("StockItemId"),
 	taxRate: numeric("TaxRate", { precision: 5, scale:  2 }).default('0.0').notNull(),
 }, (table) => [

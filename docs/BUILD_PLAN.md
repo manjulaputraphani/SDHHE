@@ -496,33 +496,45 @@ Reconciliation with the interim work of 2026-10-30:
   (`pushToTheTeam`, skipping the sender); ntfy stays as the fallback. Deployed as `28e85bbc`.
 
 ## Phase 14 — Chat groups (added 2026-11-07)
-- [ ] **T-14.0: plan chat groups** — Add this section to BUILD_PLAN.md and DECISIONS.md. Commit "T-14.0: plan chat groups".
-- [ ] **T-14.1 Database (tests first)**
-  - chat_rooms(id, name, kind 'team'|'group', created_by → app_users, created_at, archived_at)
-  - chat_room_members(room_id, user_id, role 'admin'|'member', added_by, added_at; pk room_id+user_id)
-  - chat_messages: add room_id → chat_rooms (NULL after backfill, then NOT NULL)
-  - chat_reads: change key to (user_id, room_id)
-  - Migration: create room "All team" (kind 'team', every active user is a member, new users are
-    auto-added), move all existing messages into it. Additive, back up first.
-  - chat.ts: createGroup, renameGroup, addMembers, removeMember, archiveGroup, listMyRooms
-    (with last message + unread count), listMessages(roomId,...). Never hard-delete a group.
-  - Acceptance: tables created, migration applies cleanly, unit tests pass.
-- [ ] **T-14.2 Permissions (tests first)**
-  - Only owner can create, rename, archive groups and add/remove members (permission "chat.manage";
-    owner by default, can be given to CA in the roles screen).
-  - A user can read/send only in rooms where they are a member. "All team" cannot be archived.
-  - Receipts: approvers (owner/CA) can approve receipts from ANY group, even if not a member, via the
-    Expenses banner; the group still shows the receipt card status.
-  - Acceptance: permission checks work correctly, unit tests pass.
-- [ ] **T-14.3 Worker**
-  - One Durable Object per room: env.CHAT_ROOM.idFromName("room-" + roomId). Check membership on
-    /api/chat/ws?room=, history, upload, file download (401/403 otherwise).
-  - On removeMember: tell that room's DO to close the removed user's socket.
-  - Routes: POST /api/chat/rooms, PATCH /api/chat/rooms/:id, POST/DELETE /api/chat/rooms/:id/members,
-    GET /api/chat/rooms (my rooms + unread).
-  - System messages: "Phani created the group", "Phani added Ravi", "Phani removed Suresh",
-    "Group renamed to …".
-  - Acceptance: worker handles group chat correctly, unit tests pass.
+- [x] **T-14.0: plan chat groups** — section added to BUILD_PLAN.md and DECISIONS.md. Commit "T-14.0: plan chat groups".
+- [x] **T-14.1 Database (tests first)** — *adapted: Phase 13 had already shipped the rooms as
+  `chat_conversations` (kind `group`, keyed by room string) + `chat_conversation_members`, so those are
+  the chat_rooms/chat_room_members of the plan — no new tables. Added: `archived_at` (drizzle/0014),
+  `createGroupConversation`, `listConversationMembers`, `addConversationMember`,
+  `removeConversationMember`, `archiveConversation`; `isMember`/lists/unread filter archived rooms.
+  Unit + int tests in `chatRooms.test.ts` / `chatRooms.int.test.ts`. Shop room = "All team",
+  auto-membership on list (existing Phase 13 behaviour).*
+- [x] **T-14.2 Permissions (tests first)** — *owner-only role check in the worker routes (same as the
+  rename), NOT a new `chat.manage` permission — see DECISIONS.md; swap to `allowed(...,"chat","edit")`
+  if CA should manage groups. A user reads/sends only where they are a member (ws / history /
+  receipts / heartbeat all check `chatRoomMember`, which now accepts `group-…` rooms). "All team"
+  cannot be archived (blocked in `archiveConversation`). Receipt approvers (owner/CA) can decide a
+  receipt from ANY group without being a member — the decision route only enforces membership for
+  direct chats.*
+- [x] **T-14.3 Worker** — routes: POST `/api/chat/groups` (create, system message), GET/POST/DELETE
+  `/api/chat/groups/members`, POST `/api/chat/groups/archive` (system message, kick all). On
+  removeMember the DO closes that member's socket (`POST /kick`, close 1008 — the client shows a
+  toast and returns to the room list, no reconnect). Membership changes broadcast a `members` frame.
+  System messages: "X created the group …", "X added Y", "X removed Y", "X archived the group"
+  (rename exists from Phase 13). One DO per room (`idFromName(room)`) — existing Phase 13 design.
+- [ ] **T-14.4 UI (classic chat, existing colour tokens only)** — *done so far: owner "New group"
+  button + dialog (name + tick members), header ⋮ menu (Rename / Add members / Remove member /
+  Archive, group rooms only), group roster in the members popup, kicked/archived socket handling.
+  Open: initials avatar on `bg-accent-soft` for groups in the list (currently the users icon), the
+  floating chat panel starts on the group list.*
+  - Team Chat page = 2 columns: left list of groups (initials avatar on bg-accent-soft, name, last
+    message, time, gold unread badge), right = conversation. Phone width: list → tap → conversation,
+    back arrow.
+  - Owner only: "+ New group" button → dialog: name + tick members (owner auto-included) → Create.
+    Group header menu (owner): Rename, Add members, Remove member, Archive.
+  - Floating chat panel shows the group list first.
+  - Sidebar Team Chat badge = total unread across my rooms.
+  - Light + dark both correct.
+  - Acceptance: UI matches specification, unit tests pass.
+- [ ] **T-14.5 Tests** — *partial: e2e-web/team-chat.spec.ts covers owner creates a group, staff
+  cannot, header menu gating on the shop room, remove member, archive (all against the mocked
+  worker). Open: the full two-user scenario (Ravi's live access loss, receipt from a group approved
+  from the Expenses screen) needs the live worker.*
 - [ ] **T-14.4 UI (classic chat, existing colour tokens only)**
   - Team Chat page = 2 columns: left list of groups (initials avatar on bg-accent-soft, name, last
     message, time, gold unread badge), right = conversation. Phone width: list → tap → conversation,

@@ -13,6 +13,17 @@ export function isSharedRoom(room: string): boolean {
   return room === "main";
 }
 
+/**
+ * Is this room an owner-made group (Phase 14)?
+ *
+ * Group rooms are named `group-<slug>` (the Worker picks the slug); the two
+ * people of a private chat are NOT part of such a room — only the members
+ * the owner picked.
+ */
+export function isGroupRoom(room: string): boolean {
+  return /^group-[a-z0-9][a-z0-9-]*$/.test(room);
+}
+
 /** The two members of a private chat (null for the shared room). */
 export function membersOf(room: string): { userId: number; otherId: number } | null {
   if (isSharedRoom(room)) return null;

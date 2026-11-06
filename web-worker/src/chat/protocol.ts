@@ -27,6 +27,8 @@ export type ChatFrame =
   | { type: "read"; messageIds: number[]; userId: number; name: string }
   /** The owner renamed the group. */
   | { type: "rename"; room: string; title: string }
+  /** The members of a group changed (added, removed, archived) — reload. */
+  | { type: "members"; room: string }
   | { type: "error"; message: string };
 
 export const CHAT_FRAME_TYPES = [
@@ -38,6 +40,7 @@ export const CHAT_FRAME_TYPES = [
   "delivered",
   "read",
   "rename",
+  "members",
   "error",
 ] as const;
 

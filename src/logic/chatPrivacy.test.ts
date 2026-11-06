@@ -4,6 +4,7 @@ import {
   canStartDirectChat,
   chatAuditLine,
   exportFileName,
+  isGroupRoom,
   isSharedRoom,
   membersOf,
 } from "./chatPrivacy";
@@ -12,6 +13,22 @@ describe("isSharedRoom", () => {
   it("knows the shop room", () => {
     expect(isSharedRoom("main")).toBe(true);
     expect(isSharedRoom("dm-4-9")).toBe(false);
+    expect(isSharedRoom("group-abc123")).toBe(false);
+  });
+});
+
+describe("isGroupRoom", () => {
+  it("accepts a group room the owner made", () => {
+    expect(isGroupRoom("group-7f3c")).toBe(true);
+    expect(isGroupRoom("group-purchase-team")).toBe(true);
+  });
+
+  it("refuses the shop room, private chats and made-up names", () => {
+    expect(isGroupRoom("main")).toBe(false);
+    expect(isGroupRoom("dm-4-9")).toBe(false);
+    expect(isGroupRoom("group-")).toBe(false);
+    expect(isGroupRoom("group-BAD")).toBe(false);
+    expect(isGroupRoom("secret")).toBe(false);
   });
 });
 

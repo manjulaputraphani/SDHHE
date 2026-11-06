@@ -155,6 +155,15 @@ export default function TeamChat({ user }: Props) {
   /** The owner renames the group (Phase 14) — from the ⋮ menu (Phase 2). */
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState("");
+  /** The owner makes groups (Phase 14): the list button, the header menu. */
+  const [showNewGroup, setShowNewGroup] = useState(false);
+  const [groupTitle, setGroupTitle] = useState("");
+  /** The people ticked for a new group (the owner is always part of it). */
+  const [groupPicks, setGroupPicks] = useState<number[]>([]);
+  const [showAddMembers, setShowAddMembers] = useState(false);
+  const [showRemoveMember, setShowRemoveMember] = useState(false);
+  /** The members of the open group — the popup and the owner's menu. */
+  const [groupMembers, setGroupMembers] = useState<ChatMember[]>([]);
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -224,6 +233,21 @@ export default function TeamChat({ user }: Props) {
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
+
+  /** The members of the open group (the shop room keeps the whole team). */
+  const loadGroupMembers = useCallback(async (target: string) => {
+    try {
+      setGroupMembers((await api.chatGroupMembers(target)).members);
+    } catch {
+      // Not (or no longer) a member — the list of rooms is the source.
+      setGroupMembers([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (room !== SHARED_ROOM) void loadGroupMembers(room);
+    else setGroupMembers([]);
+  }, [room, loadGroupMembers]);
 
   /** The history and the receipts of the open conversation. */
   const load = useCallback(async () => {
@@ -298,11 +322,28 @@ export default function TeamChat({ user }: Props) {
         );
         socketRef.current = socket;
         socket.onopen = () => setConnected(true);
-        socket.onclose = () => {
+        socket.onclose = (event) => {
           // A socket that was closed because the screen went away must not
           // mark the room as offline (React mounts the effect twice in dev).
           if (closed) return;
           setConnected(false);
+          // Code 1008: the owner removed this member (or archived the group)
+          // while they were in the room — no reconnect, back to the list.
+          if (event.code === 1008) {
+            showToast(
+              event.reason === "archived"
+                ? "This group was archived"
+                : "You were removed from this group",
+              "info",
+              4000,
+            );
+            void loadConversations();
+            if (room !== SHARED_ROOM) {
+              setRoom(SHARED_ROOM);
+              setMobileView("list");
+            }
+            return;
+          }
           window.setTimeout(() => void open(), 5000);
         };
         socket.onerror = () => {
@@ -356,6 +397,11 @@ export default function TeamChat({ user }: Props) {
             void loadConversations();
             void load();
           }
+          if (frame.type === "members") {
+            // The owner added or removed somebody — reload the lists.
+            void loadConversations();
+            void loadGroupMembers(room);
+          }
           if (frame.type === "typing" && frame.name) {
             setTyping(frame.name);
             if (typingTimer.current) window.clearTimeout(typingTimer.current);
@@ -384,7 +430,7 @@ export default function TeamChat({ user }: Props) {
       closed = true;
       socket?.close();
     };
-  }, [token, room, scrollToBottom, loadConversations]);
+  }, [token, room, scrollToBottom, loadConversations, loadGroupMembers]);
 
   /** Is the reader at the bottom of the room? (the jump button depends on it) */
   const onScroll = useCallback(() => {
@@ -420,6 +466,76 @@ export default function TeamChat({ user }: Props) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [newName, room, loadConversations]);
+
+  /** Create a group with the people the owner ticked (the owner is always in). */
+  async function createGroup() {
+    const title = groupTitle.trim();
+    if (!title) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { conversation } = await api.createChatGroup(title, groupPicks);
+      setShowNewGroup(false);
+      setGroupTitle("");
+      setGroupPicks([]);
+      await loadConversations();
+      await openRoom(conversation.room);
+      showToast(`Group "${conversation.title ?? title}" created`, "success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Add one member to the open group (the owner only). */
+  async function addToGroup(member: ChatMember) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addChatGroupMember(room, member.id);
+      await loadGroupMembers(room);
+      showToast(`${member.name} joined the group`, "success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Remove one member from the open group (the owner only). */
+  async function removeFromGroup(member: ChatMember) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.removeChatGroupMember(room, member.id);
+      await loadGroupMembers(room);
+      showToast(`${member.name} left the group`, "success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Retire the open group — it leaves every list (the owner only). */
+  async function archiveGroup() {
+    setMenuOpen(false);
+    setBusy(true);
+    setError(null);
+    try {
+      await api.archiveChatGroup(room);
+      setShowRemoveMember(false);
+      setShowAddMembers(false);
+      showToast("Group archived", "success");
+      await loadConversations();
+      await openRoom(SHARED_ROOM);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   /** Tell the others that I am typing. */
   const sendTyping = useCallback(() => {
@@ -558,7 +674,7 @@ export default function TeamChat({ user }: Props) {
   function exportConversation() {
     setMenuOpen(false);
     const active = conversations.find((c) => c.room === room);
-    const name = active?.kind === "direct" ? active.other?.name ?? room : "Shop room";
+    const name = active ? conversationName(active) : room;
     const text = conversationText(room, name, messages);
     const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -596,6 +712,26 @@ export default function TeamChat({ user }: Props) {
   const pending = receipts.filter((r) => r.status === "pending");
   const receiptById = new Map(receipts.map((r) => [r.id, r]));
   const activeConversation = conversations.find((c) => c.room === room);
+  /** The owner may make groups — and this open room is one they made. */
+  const isOwnerGroup =
+    user?.role === "owner" &&
+    activeConversation?.kind === "group" &&
+    room !== SHARED_ROOM;
+  /** The people of the open room: the group roster, or the whole team. */
+  const roster = useMemo(
+    () => (activeConversation?.kind === "group" && room !== SHARED_ROOM ? groupMembers : members),
+    [activeConversation, room, groupMembers, members],
+  );
+  /** The candidate list of the owner's menu (not in the group yet). */
+  const groupOutsiders = useMemo(
+    () => members.filter((member) => !groupMembers.some((entry) => entry.id === member.id)),
+    [members, groupMembers],
+  );
+  /** The people the owner may remove from a group (no owner of the shop). */
+  const groupRemovable = useMemo(
+    () => groupMembers.filter((member) => member.role !== "owner" && member.id !== user?.id),
+    [groupMembers, user?.id],
+  );
   // The people whose ticks count: the other member of a private chat, or
   // everybody else in the shop room.
   /** How many of the team are online (a heartbeat in the last minute). */
@@ -706,9 +842,16 @@ export default function TeamChat({ user }: Props) {
         >
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ink">Chats</h2>
-            <button className="btn-mini" onClick={() => setShowNewChat(true)}>
-              New chat
-            </button>
+            <div className="flex items-center gap-1.5">
+              {user?.role === "owner" && (
+                <button className="btn-mini" onClick={() => setShowNewGroup(true)}>
+                  New group
+                </button>
+              )}
+              <button className="btn-mini" onClick={() => setShowNewChat(true)}>
+                New chat
+              </button>
+            </div>
           </div>
           <div className="relative">
             <IconSearch
@@ -865,7 +1008,9 @@ export default function TeamChat({ user }: Props) {
                           ?.lastSeenAt,
                         new Date(nowTick),
                       )} · Private — only you and ${activeConversation.other?.name ?? "them"} can read it`
-                    : `${members.length + 1} members · ${onlineCount} online`}
+                    : activeConversation?.kind === "group" && room !== SHARED_ROOM
+                      ? `${roster.length} members · ${presence.length || onlineCount} online`
+                      : `${members.length + 1} members · ${onlineCount} online`}
               </p>
             </div>
             <button
@@ -929,6 +1074,38 @@ export default function TeamChat({ user }: Props) {
                       Rename
                     </button>
                   )}
+                  {isOwnerGroup && (
+                    <>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-2"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setShowAddMembers(true);
+                        }}
+                      >
+                        Add members
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-2"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setShowRemoveMember(true);
+                        }}
+                      >
+                        Remove member
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-error-ink transition-colors hover:bg-surface-2"
+                        onClick={() => void archiveGroup()}
+                        disabled={busy}
+                      >
+                        Archive group
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-2"
@@ -963,7 +1140,7 @@ export default function TeamChat({ user }: Props) {
                   onClick={() => setShowMembers(false)}
                 />
                 <div className="absolute left-3 right-3 top-14 z-20 max-h-64 space-y-1 overflow-y-auto rounded-xl border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-3 sm:w-56">
-                {members.map((member) => (
+                {roster.map((member) => (
                   <p key={member.id} className="flex items-center gap-2 text-xs text-ink">
                     <span
                       aria-hidden="true"
@@ -1481,6 +1658,112 @@ export default function TeamChat({ user }: Props) {
                 </button>
               ))}
               {members.length === 0 && <p className="text-sm text-muted">Nobody else to chat with.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNewGroup && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/60 p-4">
+          <div className="card w-full max-w-md space-y-3 p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-ink">New group</h2>
+              <button className="btn-mini" onClick={() => setShowNewGroup(false)}>
+                Close
+              </button>
+            </div>
+            <input
+              className="input h-9"
+              placeholder="Group name (e.g. Purchase team)"
+              aria-label="Group name"
+              value={groupTitle}
+              onChange={(event) => setGroupTitle(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void createGroup();
+              }}
+            />
+            <div className="space-y-1">
+              <p className="text-xs text-muted">Pick the members — you are part of the group too.</p>
+              <div className="flex flex-wrap gap-2">
+                {members.map((member) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    className={`btn-mini ${groupPicks.includes(member.id) ? "bg-accent-soft text-accent-ink font-semibold" : ""}`}
+                    aria-pressed={groupPicks.includes(member.id)}
+                    onClick={() =>
+                      setGroupPicks((prev) =>
+                        prev.includes(member.id)
+                          ? prev.filter((id) => id !== member.id)
+                          : [...prev, member.id],
+                      )
+                    }
+                  >
+                    {groupPicks.includes(member.id) ? "✓ " : ""}
+                    {member.name}
+                  </button>
+                ))}
+                {members.length === 0 && <p className="text-sm text-muted">Nobody to add yet.</p>}
+              </div>
+            </div>
+            <button className="btn w-full" disabled={busy || !groupTitle.trim()} onClick={() => void createGroup()}>
+              Create group
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showAddMembers && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/60 p-4">
+          <div className="card w-full max-w-md space-y-2 p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-ink">Add members to {roomName}</h2>
+              <button className="btn-mini" onClick={() => setShowAddMembers(false)}>
+                Done
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {groupOutsiders.map((member) => (
+                <button
+                  key={member.id}
+                  className="btn-mini"
+                  disabled={busy}
+                  onClick={() => void addToGroup(member)}
+                >
+                  + {member.name}
+                </button>
+              ))}
+              {groupOutsiders.length === 0 && (
+                <p className="text-sm text-muted">Everybody is already in this group.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRemoveMember && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/60 p-4">
+          <div className="card w-full max-w-md space-y-2 p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-ink">Remove a member</h2>
+              <button className="btn-mini" onClick={() => setShowRemoveMember(false)}>
+                Done
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {groupRemovable.map((member) => (
+                <button
+                  key={member.id}
+                  className="btn-mini"
+                  disabled={busy}
+                  onClick={() => void removeFromGroup(member)}
+                >
+                  {member.name}
+                </button>
+              ))}
+              {groupRemovable.length === 0 && (
+                <p className="text-sm text-muted">There is nobody to remove.</p>
+              )}
             </div>
           </div>
         </div>

@@ -48,6 +48,28 @@ export class ChatRoom extends DurableObject<Env> {
       return new Response("ok");
     }
 
+    // The Worker removed a member from the group — or archived the room —
+    // so their socket is closed at once (close code 1008, "removed").
+    if (url.pathname.endsWith("/kick") && request.method === "POST") {
+      const { userId, reason } = (await request.json().catch(() => ({}))) as {
+        userId?: number;
+        reason?: string;
+      };
+      let kicked = 0;
+      for (const socket of this.ctx.getWebSockets()) {
+        const attachment = socket.deserializeAttachment() as ChatUser | null;
+        if (userId === undefined || attachment?.id === userId) {
+          try {
+            socket.close(1008, reason ?? "removed");
+            kicked += 1;
+          } catch {
+            // The socket was already gone.
+          }
+        }
+      }
+      return Response.json({ kicked });
+    }
+
     if (url.pathname.endsWith("/presence")) {
       return Response.json({ users: this.onlineUsers() });
     }

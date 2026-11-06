@@ -80,6 +80,12 @@ describe("conversationName", () => {
     expect(conversationName({ room: "main", kind: "group", title: "   " })).toBe("Shop room");
   });
 
+  it("falls back to the room name for a group the owner made", () => {
+    expect(conversationName({ room: "group-purchase", kind: "group", title: null })).toBe(
+      "group-purchase",
+    );
+  });
+
   it("names a private chat after the other member", () => {
     expect(
       conversationName({ room: "dm-1-4", kind: "direct", other: { name: "RAJU" } }),

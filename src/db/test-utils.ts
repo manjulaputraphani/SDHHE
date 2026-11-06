@@ -26,6 +26,9 @@ const OUR_TABLES = [
   "opening_balance",
   "supplier_payments",
   "chat_messages",
+  "chat_conversations",
+  "chat_conversation_members",
+  "chat_message_states",
   "receipt_requests",
 ] as const;
 

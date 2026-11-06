@@ -7,7 +7,7 @@ import { neon } from "@neondatabase/serverless";
 import { argon2id } from "@noble/hashes/argon2.js";
 import { normalizePhone, validatePassword } from "../../src/logic/auth";
 import { getDb, withTransaction, type Db } from "../../src/db/client";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { listItems } from "../../src/db/items";
 import { getSaleBill, listSaleBills } from "../../src/db/billing";
 import { askAssistant, type ChatTurn } from "../../src/ai/chat";
@@ -55,12 +55,17 @@ import {
 updateMessage,
 } from "../../src/db/chat";
 import {
+  addConversationMember,
+  archiveConversation,
+  createGroupConversation,
   ensureDirectConversation,
   ensureGroupConversation,
   isMember,
   listChatMembers,
+  listConversationMembers,
   listConversations,
   markRead,
+  removeConversationMember,
   renameConversation,
   SHARED_ROOM,
   unreadCount,
@@ -103,8 +108,8 @@ import {
   updateAnnouncement,
   completedTours,
 } from "../../src/db/notifications";
-import { chatAuditLine, isSharedRoom, membersOf } from "../../src/logic/chatPrivacy";
-import { chatMessages } from "../../src/db/schema";
+import { chatAuditLine, isGroupRoom, isSharedRoom, membersOf } from "../../src/logic/chatPrivacy";
+import { appUsers, chatMessages } from "../../src/db/schema";
 import { socketTransport } from "./smtpSocket";
 
 /** The Durable Object that holds the Team Chat room (Phase 12). */
@@ -257,6 +262,14 @@ function routePermission(
   if (pathname === "/api/chat/conversations") return { module: "chat", action: read ? "view" : "create" };
   if (pathname === "/api/chat/members") return { module: "chat", action: "view" };
   if (pathname === "/api/chat/read") return { module: "chat", action: "create" };
+
+  // Chat groups (Phase 14): the owner makes groups and picks the members
+  // (the routes below check the owner role themselves, like the rename).
+  if (pathname === "/api/chat/groups") return { module: "chat", action: read ? "view" : "create" };
+  if (pathname === "/api/chat/groups/members") {
+    return { module: "chat", action: read ? "view" : method === "DELETE" ? "delete" : "create" };
+  }
+  if (pathname === "/api/chat/groups/archive") return { module: "chat", action: "delete" };
 
   return null;
 }
@@ -486,10 +499,20 @@ async function chatRoomMember(db: Db, room: string, userId: number): Promise<boo
     const added = await ensureGroupConversation(db, userId);
     return added !== null;
   }
-  // A private chat must look like a private chat — anything else is refused
-  // before the database is even asked.
-  if (!membersOf(room)) return false;
+  // A private chat must look like a private chat, a group like a group —
+  // anything else is refused before the database is even asked.
+  if (!membersOf(room) && !isGroupRoom(room)) return false;
   return isMember(db, room, userId);
+}
+
+/** The name of a member (for the system messages of a group). */
+async function memberName(db: Db, userId: number): Promise<string> {
+  const [row] = await db
+    .select({ name: appUsers.name })
+    .from(appUsers)
+    .where(eq(appUsers.id, userId))
+    .limit(1);
+  return row?.name ?? "a member";
 }
 
 /**
@@ -504,7 +527,8 @@ async function logFirstDirectMessage(
   session: Session,
   message: { id: number },
 ): Promise<void> {
-  if (isSharedRoom(room)) return;
+  // The shop room and an owner-made group are not private chats.
+  if (isSharedRoom(room) || isGroupRoom(room)) return;
   const [row] = await db
     .select({ total: sql<number>`count(*)::int`.mapWith(Number) })
     .from(chatMessages)
@@ -571,6 +595,30 @@ async function broadcastToChat(env: Env, frame: ChatFrame, room: string = SHARED
     });
   } catch (err) {
     console.error("chat: broadcast failed:", err);
+  }
+}
+
+/**
+ * Close the socket of one member (or of everybody) in a room.
+ *
+ * The Worker removed the member from a group — or archived it — so the
+ * Durable Object closes the sockets at once (close code 1008).
+ */
+async function kickFromChat(
+  env: Env,
+  room: string,
+  options: { userId?: number; reason?: string } = {},
+): Promise<void> {
+  const stub = chatRoomStub(env, room);
+  if (!stub) return;
+  try {
+    await stub.fetch("https://chat.internal/kick", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(options),
+    });
+  } catch (err) {
+    console.error("chat: kick failed:", err);
   }
 }
 
@@ -1426,7 +1474,7 @@ const handler = {
       }
 
       // ---- W3b writes (session actor threaded per request) ----
-      const body = (["POST", "PUT"].includes(request.method)
+      const body = (["POST", "PUT", "DELETE"].includes(request.method)
         ? await request.json().catch(() => ({}))
         : {}) as Record<string, unknown>;
 
@@ -1463,6 +1511,179 @@ const handler = {
           entity: "chat",
         });
         return json({ ok: true, room, title: renamed, message: system });
+      }
+
+      // ---- Chat groups (Phase 14): the owner makes groups and picks the members ----
+      if (url.pathname === "/api/chat/groups" && request.method === "POST") {
+        // Making a group is an owner job (the admin), like the rename.
+        if (session.role !== "owner") {
+          return json({ error: "Owner only" }, { status: 403 });
+        }
+        const title = String(body.title ?? "");
+        const memberIds = (Array.isArray(body.memberIds) ? body.memberIds : [])
+          .map(Number)
+          .filter((id) => Number.isInteger(id) && id > 0);
+        // The owner is always part of the group they make.
+        const group = await asActor(actor, () =>
+          createGroupConversation(db, {
+            room: `group-${crypto.randomUUID()}`,
+            title,
+            memberIds: [session.uid, ...memberIds],
+          }),
+        );
+        if (!group) {
+          return json({ error: "Give the group a name and pick its members" }, { status: 400 });
+        }
+        const system = await asActor(actor, () =>
+          insertMessage(db, {
+            room: group.room,
+            userId: session.uid,
+            author: session.name,
+            role: session.role,
+            kind: "system",
+            body: `${session.name} created the group "${group.title ?? group.room}"`,
+          }),
+        );
+        await broadcastToChat(env, { type: "message", message: system }, group.room);
+        await broadcastToChat(env, { type: "members", room: group.room }, group.room);
+        await logActivity(db, {
+          event: "chat.group.create",
+          summary: `Chat group "${group.title ?? group.room}" created`,
+          entity: "chat",
+        });
+        return json({ conversation: group, message: system }, { status: 201 });
+      }
+
+      if (url.pathname === "/api/chat/groups/members" && request.method === "GET") {
+        const room = url.searchParams.get("room") ?? SHARED_ROOM;
+        if (!(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        // The shop room shows the whole team; a group shows its own members.
+        const list =
+          room === SHARED_ROOM
+            ? (await listChatMembers(db)).map((member) => ({ ...member, lastSeenAt: null }))
+            : await listConversationMembers(db, room);
+        return json({ members: list });
+      }
+
+      if (url.pathname === "/api/chat/groups/members" && request.method === "POST") {
+        if (session.role !== "owner") {
+          return json({ error: "Owner only" }, { status: 403 });
+        }
+        const room = String(body.room ?? "");
+        const userId = Number(body.userId);
+        if (!isGroupRoom(room) || !Number.isInteger(userId) || userId <= 0) {
+          return json({ error: "Which group and which member?" }, { status: 400 });
+        }
+        if (!(await isMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        const added = await asActor(actor, () => addConversationMember(db, room, userId));
+        if (!added) {
+          return json({ error: "That member could not be added" }, { status: 404 });
+        }
+        const target = await memberName(db, userId);
+        const system = await asActor(actor, () =>
+          insertMessage(db, {
+            room,
+            userId: session.uid,
+            author: session.name,
+            role: session.role,
+            kind: "system",
+            body: `${session.name} added ${target}`,
+          }),
+        );
+        await broadcastToChat(env, { type: "message", message: system }, room);
+        await broadcastToChat(env, { type: "members", room }, room);
+        await logActivity(db, {
+          event: "chat.group.member",
+          summary: `Chat: a member was added to the group ${room}`,
+          entity: "chat",
+        });
+        return json({ ok: true, message: system });
+      }
+
+      if (url.pathname === "/api/chat/groups/members" && request.method === "DELETE") {
+        if (session.role !== "owner") {
+          return json({ error: "Owner only" }, { status: 403 });
+        }
+        const room = String(body.room ?? "");
+        const userId = Number(body.userId);
+        if (!isGroupRoom(room) || !Number.isInteger(userId) || userId <= 0) {
+          return json({ error: "Which group and which member?" }, { status: 400 });
+        }
+        if (!(await isMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        const target = await db
+          .select({ name: appUsers.name, role: appUsers.role })
+          .from(appUsers)
+          .where(eq(appUsers.id, userId))
+          .limit(1);
+        if (target[0]?.role === "owner" || userId === session.uid) {
+          return json(
+            { error: "The owner of the shop cannot be removed from a group" },
+            { status: 400 },
+          );
+        }
+        const removed = await asActor(actor, () => removeConversationMember(db, room, userId));
+        if (!removed) {
+          return json({ error: "That member is not in this group" }, { status: 404 });
+        }
+        const system = await asActor(actor, () =>
+          insertMessage(db, {
+            room,
+            userId: session.uid,
+            author: session.name,
+            role: session.role,
+            kind: "system",
+            body: `${session.name} removed ${target[0]?.name ?? "a member"}`,
+          }),
+        );
+        await broadcastToChat(env, { type: "message", message: system }, room);
+        // The removed member loses access at once: their socket is closed.
+        await kickFromChat(env, room, { userId, reason: "removed" });
+        await broadcastToChat(env, { type: "members", room }, room);
+        await logActivity(db, {
+          event: "chat.group.member",
+          summary: `Chat: a member was removed from the group ${room}`,
+          entity: "chat",
+        });
+        return json({ ok: true, message: system });
+      }
+
+      if (url.pathname === "/api/chat/groups/archive" && request.method === "POST") {
+        if (session.role !== "owner") {
+          return json({ error: "Owner only" }, { status: 403 });
+        }
+        const room = String(body.room ?? "");
+        if (!isGroupRoom(room)) {
+          return json({ error: "The shop room cannot be archived" }, { status: 400 });
+        }
+        const archived = await asActor(actor, () => archiveConversation(db, room));
+        if (!archived) {
+          return json({ error: "That group could not be archived" }, { status: 404 });
+        }
+        const system = await asActor(actor, () =>
+          insertMessage(db, {
+            room,
+            userId: session.uid,
+            author: session.name,
+            role: session.role,
+            kind: "system",
+            body: `${session.name} archived the group`,
+          }),
+        );
+        await broadcastToChat(env, { type: "message", message: system }, room);
+        // Everybody leaves the retired room at once.
+        await kickFromChat(env, room, { reason: "archived" });
+        await logActivity(db, {
+          event: "chat.group.archive",
+          summary: `Chat group ${room} archived`,
+          entity: "chat",
+        });
+        return json({ ok: true, message: system });
       }
 
       // ---- The notification system (Phase 15) ----
@@ -1767,9 +1988,10 @@ const handler = {
       if (decisionMatch && request.method === "POST") {
         const id = Number(decisionMatch[1]);
         // A receipt in a private chat can only be decided by the two people
-        // who are in that conversation.
+        // who are in that conversation. In the shop room or a group the
+        // approver (owner / CA) may decide it without being a member (T-14.2).
         const receiptRoomName = await receiptRoom(db, id);
-        if (receiptRoomName && !(await isMember(db, receiptRoomName, session.uid))) {
+        if (receiptRoomName && membersOf(receiptRoomName) && !(await isMember(db, receiptRoomName, session.uid))) {
           return json({ error: "Not allowed: chat view" }, { status: 403 });
         }
         let receipt: Awaited<ReturnType<typeof decideReceipt>>;

@@ -652,6 +652,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ messageId }),
     }),
+
+  // ---- Chat groups (Phase 14) — owner only, the header menu ----
+  createChatGroup: (title: string, memberIds: number[]) =>
+    request<{ conversation: ChatConversation }>("/api/chat/groups", {
+      method: "POST",
+      body: JSON.stringify({ title, memberIds }),
+    }),
+  chatGroupMembers: (room: string) =>
+    request<{ members: ChatMember[] }>(
+      `/api/chat/groups/members?room=${encodeURIComponent(room)}`,
+    ),
+  addChatGroupMember: (room: string, userId: number) =>
+    request<{ ok: boolean }>("/api/chat/groups/members", {
+      method: "POST",
+      body: JSON.stringify({ room, userId }),
+    }),
+  removeChatGroupMember: (room: string, userId: number) =>
+    request<{ ok: boolean }>("/api/chat/groups/members", {
+      method: "DELETE",
+      body: JSON.stringify({ room, userId }),
+    }),
+  archiveChatGroup: (room: string) =>
+    request<{ ok: boolean }>("/api/chat/groups/archive", {
+      method: "POST",
+      body: JSON.stringify({ room }),
+    }),
 };
 
 /** Upload a receipt file (multipart — the JSON helper cannot be used here). */

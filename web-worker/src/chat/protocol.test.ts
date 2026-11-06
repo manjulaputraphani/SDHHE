@@ -61,6 +61,12 @@ describe("isChatFrame", () => {
     expect(isChatFrame({ type: "error" })).toBe(true);
     expect(isChatFrame({ type: "admin" })).toBe(false);
   });
+
+  it("knows the membership frame of a group (Phase 14)", () => {
+    const frame = { type: "members", room: "group-buy" } as const;
+    expect(isChatFrame(frame)).toBe(true);
+    expect(parseFrame(encodeFrame(frame))).toEqual(frame);
+  });
 });
 
 describe("errorFrame", () => {

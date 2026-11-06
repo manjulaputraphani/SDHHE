@@ -123,3 +123,14 @@
    · ntfy stays as the fallback, so a member without the browser permission still gets the phone push
    · a private chat never pushes (the channel is shared and the text is private)
 - 2026-11-07 · **Chat groups** — Added group chat functionality alongside team chat; owners can create groups, members see only their groups; permission model distinguishes team vs group chats.
+- 2026-11-07 · **Group management is owner-only** (`session.role === "owner"`, exactly like the rename route) instead of the planned new
+   `chat.manage` permission — adding a 6th action to the roles matrix would ripple through every module's screen for one feature; CA can be given group
+   rights later by swapping the role check for `allowed(permissions, "chat", "edit")` in the five group routes (BUILD_PLAN T-14.2 deviation, noted there).
+- 2026-11-07 · **Groups reuse the Phase 13 tables** (`chat_conversations` kind `group` + `chat_conversation_members`) instead of the planned
+   `chat_rooms` / `chat_room_members` — no migration was needed for membership; the only schema change is `chat_conversations.archived_at`
+   (drizzle/0014). A group is archived (soft-deleted), never hard-deleted: its messages and members stay, but `isMember` / the room lists /
+   unread counts all filter `archived_at is null`, so a retired group is unreadable everywhere at once.
+- 2026-11-07 · **Removing a member kicks their socket at once** — the Worker calls a new `POST /kick` endpoint on the room's Durable Object, which
+   closes that member's sockets with close code **1008** (reason `removed` / `archived`); the web client treats 1008 as "leave this room, no
+   reconnect", shows a toast and falls back to the shop room. Membership changes are broadcast to the room as a `members` frame so open clients
+   reload their lists; a system message ("Phani added Ravi") is written into the room history as well.
