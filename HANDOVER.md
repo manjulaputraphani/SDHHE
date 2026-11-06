@@ -4,53 +4,45 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE version `d4ca5a43-641c-4821-b191-3dd71e8e98c7` (2026-11-07, deployed from HEAD `d36f56c`)**
-— chat groups (T-14.1/14.2/14.3) AND message editing (owner's `a15e523`) are both in this build.
-DB verified in the migrated state BEFORE deploying: `chat_messages.edited_at` NOT NULL default now()
-(drizzle/0013 + owner's 0014_edit_at_not_null, 0 null rows) and
-`chat_conversations.archived_at` nullable (my drizzle/**0015**_chat_group_archive — renamed from
-0014 to fix the number collision with the owner's 0014). R2 binding (`sdhhe-receipts`) included.
-Message editing: `edited_at` defaults to now(), `toMessage` shows "edited" only when
-edited_at > created_at (owner's design — unedited messages have edited_at == created_at).
-Live app: https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl gets a 302 to
-sdhhe.cloudflareaccess.com; verify by signing in). Desktop = Tauri app in `src/` (untouched).
+**LIVE version `e6966118-24d8-4590-8782-9caa4fee31ec` (2026-11-07) — Phase 15 AI polish +
+message editing + always-Dashboard + 12h AM/PM times.** DB migrations applied BEFORE the deploy and
+verified: `chat_conversations.ai_polish` (0016) + `chat_messages.ai_polished` (0017).
+Live app: https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl 302s to
+sdhhe.cloudflareaccess.com; verify inside the app). Desktop = Tauri app in `src/` (untouched).
 
-## Done (T-14 chat groups)
-- DB (`src/db/chatRooms.ts`): groups reuse the Phase 13 tables (`chat_conversations` kind `group` +
-  `chat_conversation_members`) — no new tables; only `archived_at` was added (drizzle/0015).
-  New: createGroupConversation, listConversationMembers, add/removeConversationMember,
-  archiveConversation. isMember / listConversations / unreadCount / rename all filter archived rooms,
-  so a retired group is unreadable everywhere (never hard-deleted).
-- Rules: `isGroupRoom()` (src/logic/chatPrivacy.ts) — room shape `group-…`; chatRoomMember in the
-  worker accepts group rooms; logFirstDirectMessage skips them.
-- Worker (web-worker/src/index.ts): POST /api/chat/groups (create + system message),
-  GET/POST/DELETE /api/chat/groups/members, POST /api/chat/groups/archive. Owner-only (role check,
-  like rename — T-14.2 deviation, see DECISIONS). Receipt decisions: membership only enforced for
-  direct chats, so owner/CA can approve a group receipt without being a member.
-- DO (web-worker/src/chat/do.ts): new POST /kick closes one member (or all) with code 1008.
-  Protocol: new `members` frame (reload lists). Body parsing now includes DELETE.
-- Web UI (TeamChat.tsx): owner "New group" button + dialog (name + tick members); ⋮ menu gains
-  Add members / Remove member / Archive (group rooms only, never the shop room); members popup
-  shows the group roster; socket close 1008 → toast + back to the list. api.ts: 5 new calls.
-- Tests: chatPrivacy/chatView/protocol unit tests, 6 group int tests (skip without
-  DATABASE_URL_TEST; resetAll now also truncates the chat conversation tables), 5 new e2e in
-  team-chat.spec.ts. 470 unit green, 39/39 e2e-web green, tsc clean (root/web/worker).
+## What is in this deploy
+- **AI polish (T-15.1–15.4)**: owner switches it per group (header menu → "AI polish messages");
+  everyone sees the "✨ AI polish on" chip. In those rooms Send/Enter opens a preview card
+  ("✨ Suggested") — [Send suggested] [Send original] [Edit], Esc cancels; failure = "AI not
+  available — send original?"; sent messages carry `ai_polished` → bubble shows ✨. Worker:
+  POST /api/chat/polish (Ollama Cloud, key stays in the Worker; skip <15 chars/emoji-only; 8 s
+  timeout → {polished:null}; 30/user/h; numbers guard falls back to the original).
+- **Message editing finished** (was half-committed — no route, no UI): PATCH /api/chat/messages/:id
+  (author-only), `update` frame live-swaps the text; tap your own text bubble to edit; "edited"
+  mark (edited_at > created_at). PATCH bodies now parsed in the worker.
+- **Always Dashboard**: a cold open lands on the Dashboard even from /team-chat (the URL settles
+  to /); push-notification links to /team-chat now open the app on the Dashboard.
+- **12-hour times**: formatChatTime → "09:42 AM" / "03:05 PM" (browser-local) in bubbles + list.
+- Tests: 486 unit (2 int-suites skip without DATABASE_URL_TEST), 45/45 e2e-web, tsc clean
+  root/web/worker. e2e mocks cover the new routes (groups/polish, chat/polish, PATCH message).
 
 ## Owner steps that are still open
-1. ~~Apply migrations + deploy~~ DONE 2026-11-07 (see Current state). In the app: Team Chat →
-   "New group" to try the feature; check that receipts from groups can be approved in Expenses.
+1. Try it signed in: Team Chat → ⋮ menu → "AI polish messages — on", then type a draft in the
+   shop room; tap one of your own bubbles to edit it.
 2. Desktop chat → Worker blocked by Cloudflare Access until a service token exists.
 3. Desktop 1-hour auto-logout (owner has not answered). 4. Roasting screen missing in desktop.
 
-## Next task (BUILD_PLAN Phase 14)
-- **T-14.4 UI polish**: initials avatar for groups in the list, floating chat panel starts on the
-  group list, light+dark check. **T-14.5**: live two-user e2e (Ravi loses access live; receipt from
-  a group approved from Expenses) — needs the deployed worker.
+## Next task ideas (BUILD_PLAN)
+- T-14.4 leftovers: initials avatar for groups, floating chat panel group list.
+- T-14.5 live two-user e2e (needs the deployed worker; receipts-from-groups approval flow).
+- Optional: grant staff the Dashboard permission (Roles screen) so the default screen is the
+  dashboard for them too (roles without it still fall to their first allowed screen).
 
 ## Blockers
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
 
 ## Commands
-- Tests: `npx vitest run --reporter=dot` (470) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
-  `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (39, mocked worker)
-- Deploy (ask first): `cd web && npm run build && cd ../web-worker && ./node_modules/.bin/wrangler deploy`
+- Tests: `npx vitest run --reporter=dot` (486) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
+  `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (45, mocked worker)
+- Deploy (ask first): `cd web && npm run build && cd ../web-worker && npx wrangler deploy`
+  (apply any new drizzle/00NN_*.sql to the DB FIRST — the worker selects the new columns)
