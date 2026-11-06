@@ -534,7 +534,7 @@ export default function TeamChat({ user }: Props) {
               const name =
                 conversation.kind === "direct"
                   ? conversation.other?.name ?? conversation.room
-                  : "Shop room";
+                  : conversation.title?.trim() || "Shop room";
               const active = conversation.room === room;
               return (
                 <button

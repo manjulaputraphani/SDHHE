@@ -43,8 +43,7 @@ import {
   receiptStatusTone,
 } from "../logic/chat";
 import { formatRupees } from "../logic/units";
-import { exportFileName } from "../logic/chatPrivacy";
-import { groupMessages, initials, messageTick, readCount } from "../logic/chatView";
+import { exportNameFor, groupMessages, initials, messageTick, readCount } from "../logic/chatView";
 
 type StoredToken = { token: string; expiresAt: number };
 
@@ -65,8 +64,7 @@ export default function TeamChat() {
   /** The owner renames the group (Phase 14). */
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState("");
-  /** The name of the open room (set the moment it is renamed). */
-  const [customTitle, setCustomTitle] = useState<string | null>(null);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [receipts, setReceipts] = useState<ReceiptRequest[]>([]);
   const [presence, setPresence] = useState<string[]>([]);
@@ -185,7 +183,6 @@ export default function TeamChat() {
             );
           }
           if (frame.type === "rename") {
-            setCustomTitle(frame.title ?? null);
             void load();
           }
           if (frame.type === "typing" && frame.name) {
@@ -251,7 +248,10 @@ export default function TeamChat() {
     if (!title || !workerUrl || !token) return;
     try {
       await renameChatConversation(workerUrl, token, room, title);
-      setCustomTitle(title);
+      // The list is the single source of the name — no second copy.
+      setConversations((prev) =>
+        prev.map((entry) => (entry.room === room ? { ...entry, title } : entry)),
+      );
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -304,7 +304,7 @@ export default function TeamChat() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = exportFileName(room);
+    link.download = exportNameFor(room, activeConversation?.title ?? null);
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -390,10 +390,9 @@ export default function TeamChat() {
 
   const activeConversation = conversations.find((c) => c.room === room);
   const roomName =
-    customTitle ??
-    (activeConversation?.kind === "direct"
+    activeConversation?.kind === "direct"
       ? activeConversation.other?.name ?? room
-      : activeConversation?.title?.trim() || "Shop room");
+      : activeConversation?.title?.trim() || "Shop room";
   // The people whose ticks count: the other member of a private chat, or
   // everybody else in the shop room.
   const otherMemberIds = useMemo(() => {
@@ -461,7 +460,7 @@ export default function TeamChat() {
               const name =
                 conversation.kind === "direct"
                   ? conversation.other?.name ?? conversation.room
-                  : "Shop room";
+                  : conversation.title?.trim() || "Shop room";
               const active = conversation.room === room;
               return (
                 <button
