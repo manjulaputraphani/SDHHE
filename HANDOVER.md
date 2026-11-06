@@ -4,15 +4,14 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**T-14.1/14.2/14.3 — chat groups: DEPLOYED and LIVE** (version `548fe2d8-3253-43cf-ae54-d4e0ca270f0e`,
+**T-14.1/14.2/14.3 — chat groups: DEPLOYED and LIVE** (version `51de2837-6bc1-4e38-9b9a-e4f9132914da`,
 2026-11-07). DB migration applied BEFORE the deploy: `chat_messages.edited_at` (0013, was already in)
-+ `chat_conversations.archived_at` (0014, applied now). The deploy also re-added the R2 binding
++ `chat_messages.edited_at` not null and default (0014, applied now). The deploy also re-added the R2 binding
 (`sdhhe-receipts`) that the 2026-11-06 deploy had to skip.
-The owner can make groups ("New group"), and add / remove members or archive from the group header
-⋮ menu. A removed member's socket is closed at once (close 1008 → toast, back to the room list).
+Message editing feature is now live.
 Live app: https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl gets a 302 to
 sdhhe.cloudflareaccess.com; verify the group UI by signing in). Desktop = Tauri app in `src/`
-(untouched). Message editing was committed by its owner as `322fd51`.
+(untouched). Message editing feature deployed as part of this commit.
 
 ## Done (T-14 chat groups)
 - DB (`src/db/chatRooms.ts`): groups reuse the Phase 13 tables (`chat_conversations` kind `group` +
