@@ -10,9 +10,12 @@
  */
 import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { neon } from "@neondatabase/serverless";
 import dotenv from "dotenv";
 
 dotenv.config({ path: "web-worker/.dev.vars" });
+dotenv.config();
+const sql = neon(process.env.DATABASE_URL);
 
 const BASE = "http://127.0.0.1:8787";
 const secret = process.env.SESSION_SECRET;
@@ -25,6 +28,10 @@ function b64url(bytes) {
   return Buffer.from(bytes).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// The session epoch must match the one in the database.
+const epochRows = await sql.query("select value from settings where key = 'session_epoch'");
+const epoch = Number(epochRows[0]?.value ?? 0);
+
 const session = {
   uid: 1,
   name: "B PHANI KUMAR",
@@ -32,6 +39,7 @@ const session = {
   exp: Date.now() + 60 * 60_000,
   until: null,
   lastActivity: Date.now(),
+  epoch,
 };
 const payload = b64url(Buffer.from(JSON.stringify(session)));
 const signature = b64url(createHmac("sha256", secret).update(payload).digest());

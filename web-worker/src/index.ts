@@ -263,6 +263,46 @@ function asActor<T>(actor: AuditActor, fn: () => Promise<T>): Promise<T> {
 
 let pendingSetCookie: string | null = null;
 
+/**
+ * The security headers of the app (Phase 15, "zero trust" hardening).
+ *
+ * The browser may only talk to us over HTTPS, never frame us, never sniff a
+ * content type, and only load our own scripts, styles and images.
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+  "X-XSS-Protection": "0",
+  "Content-Security-Policy": [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https:",
+    "connect-src 'self' wss:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join("; "),
+};
+
+function withSecurityHeaders(response: Response): Response {
+  // A WebSocket upgrade carries the socket — it must pass through untouched.
+  if (response.status === 101) return response;
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!headers.has(key)) headers.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function json(data: unknown, init: ResponseInit = {}): Response {
   const res = Response.json(data, init);
   if (pendingSetCookie) {
@@ -771,7 +811,7 @@ async function sqlQuery(env: Env, text: string, params: unknown[] = []) {
   return sql.query(text, params);
 }
 
-export default {
+const handler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
@@ -2088,5 +2128,11 @@ export default {
     }
 
     return json({ error: "Not found" }, { status: 404 });
+  },
+};
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    return withSecurityHeaders(await handler.fetch(request, env));
   },
 };

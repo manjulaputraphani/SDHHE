@@ -116,3 +116,9 @@
   can be swapped later
 - 2026-11-06 · The **read count is public**: everybody in the conversation sees how many of the others have
   read a message ("Read by 3"), while the **text** of a private chat stays private
+- 2026-11-06 · **R2 is live**: the bucket `sdhhe-receipts` was created and the binding is deployed
+  (`env.RECEIPTS`) · the receipt files are stored under `receipts/<date>/<id>.<ext>`, private — they are only
+  streamed through the Worker after the chat permission check; nothing is ever public
+- 2026-11-06 · The **security headers** (the "zero trust" hardening in code): HSTS, a strict CSP, no framing,
+  no sniffing, no camera/microphone/geolocation — on every response of the Worker (the API, the app and the
+  receipt files)

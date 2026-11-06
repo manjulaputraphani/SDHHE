@@ -34,6 +34,7 @@ function cookieFor(uid, name, role) {
     exp: Date.now() + 60 * 60_000,
     until: null,
     lastActivity: Date.now(),
+    epoch,
   };
   const payload = b64url(Buffer.from(JSON.stringify(session)));
   const signature = b64url(createHmac("sha256", secret).update(payload).digest());
