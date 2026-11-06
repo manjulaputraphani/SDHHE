@@ -8,6 +8,8 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     fs: { allow: [".."] },
-    proxy: { "/api": "http://127.0.0.1:8787" },
+    // The Team Chat socket lives under /api as well, so the dev proxy has to
+    // forward WebSocket upgrades too (ws: true).
+    proxy: { "/api": { target: "http://127.0.0.1:8787", ws: true } },
   },
 });

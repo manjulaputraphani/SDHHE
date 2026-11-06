@@ -45,6 +45,7 @@ import ItemThumb from "./components/ItemThumb";
 import ResponsiveTable from "./components/ResponsiveTable";
 import SalesChart from "./components/SalesChart";
 import RotationChart from "./components/RotationChart";
+import TeamChat from "./components/TeamChat";
 import {
   IconActivity,
   IconBanknote,
@@ -87,11 +88,11 @@ import {
   IconUserX,
 } from "./components/icons";
 
-type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "roasting" | "stock" | "expenses" | "suppliers" | "activity" | "team" | "settings";
+type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "roasting" | "stock" | "expenses" | "suppliers" | "activity" | "team-chat" | "team" | "settings";
 
-/** Views that share another module's permission (Roasting uses Stock). */
+/** Views that share another module's permission (Roasting uses Stock, Team Chat uses Chat). */
 const viewModule = (view: View): ModuleKey =>
-  view === "roasting" ? "stock" : (view as ModuleKey);
+  view === "roasting" ? "stock" : view === "team-chat" ? "chat" : (view as ModuleKey);
 
 type PurchaseRow = {
   id: number;
@@ -252,7 +253,12 @@ const ACTIVITY_PAGE = 20;
 export default function App() {
   const [checking, setChecking] = useState(true);
   const [user, setUser] = useState<User | null>(null);
-  const [view, setView] = useState<View>("dashboard");
+  // /team-chat opens the chat straight away (the URL is the source of truth).
+  const [view, setView] = useState<View>(() =>
+    typeof window !== "undefined" && window.location.pathname === "/team-chat"
+      ? "team-chat"
+      : "dashboard",
+  );
   const [bills, setBills] = useState<BillRow[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
@@ -593,6 +599,31 @@ export default function App() {
     const first = MODULES.find((moduleKey) => allowed(user.permissions, moduleKey, "view"));
     if (first) setView(first as View);
   }, [user, view]);
+
+  /**
+   * The Team Chat has its own URL (/team-chat) so it can be shared or opened
+   * directly. The other screens keep their tab in the app state.
+   */
+  useEffect(() => {
+    if (view === "team-chat") {
+      if (window.location.pathname !== "/team-chat") {
+        window.history.pushState({ view: "team-chat" }, "", "/team-chat");
+      }
+      return;
+    }
+    if (window.location.pathname === "/team-chat") {
+      window.history.pushState({ view }, "", "/");
+    }
+  }, [view]);
+
+  /** Back / forward between the chat and the rest of the app. */
+  useEffect(() => {
+    const onPop = () => {
+      setView(window.location.pathname === "/team-chat" ? "team-chat" : "dashboard");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   function addBillLine() {
     const item = items.find((i) => i.id === draft.itemId);
@@ -1471,6 +1502,10 @@ export default function App() {
     {
       heading: "Contacts",
       links: [{ key: "customers", label: "Customers", icon: <IconTeam size={16} /> }],
+    },
+    {
+      heading: "Team",
+      links: [{ key: "team-chat", label: "Team Chat", icon: <IconUsers size={16} />, module: "chat" }],
     },
     {
       heading: "Money",
@@ -3950,8 +3985,9 @@ export default function App() {
           </section>
         )}
 
-        {view === "activity" && (() => {
-          const actors = [...new Set(activity.map((row) => row.actor))].sort();
+        {view === "team-chat" && can("chat", "view") && <TeamChat user={user} />}
+
+        {view === "activity" && (() => {          const actors = [...new Set(activity.map((row) => row.actor))].sort();
           const shown = activity.filter((row) => !activityFilter || row.actor === activityFilter);
           const days = shown.reduce<Record<string, ActivityRow[]>>((acc, row) => {
             const day = new Date(row.at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });

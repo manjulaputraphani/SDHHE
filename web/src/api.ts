@@ -2,6 +2,56 @@ import type { Role, RolePermissions } from "../../src/logic/permissions";
 
 export type User = { id: number; name: string; role: Role; permissions: RolePermissions };
 
+// ---- Team Chat (Phase 12) ----
+export type ChatMessage = {
+  id: number;
+  room: string;
+  userId: number | null;
+  author: string;
+  role: string;
+  kind: "text" | "receipt" | "system";
+  body: string;
+  receiptId: number | null;
+  createdAt: string;
+};
+
+export type ChatReceipt = {
+  id: number;
+  submittedBy: number | null;
+  submitterName: string;
+  title: string;
+  amountPaise: number;
+  note: string | null;
+  r2Key: string;
+  filename: string;
+  mime: string;
+  sizeBytes: number;
+  status: "pending" | "approved" | "rejected";
+  decidedBy: number | null;
+  deciderName: string | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  messageId: number | null;
+  createdAt: string;
+};
+
+/** What the upload endpoint gives back (the file itself lives in R2). */
+export type ChatReceiptFile = {
+  r2Key: string;
+  filename: string;
+  mime: string;
+  sizeBytes: number;
+};
+
+/** A receipt as it is posted into the room (the file details + the details). */
+export type ChatReceiptInput = ChatReceiptFile & {
+  title: string;
+  amountPaise: number;
+  note?: string;
+};
+
+export type ChatUser = { id: number; name: string; role: string };
+
 export type Item = {
   id: number;
   name: string;
@@ -422,7 +472,49 @@ export const api = {
   costingMethod: () => request<{ method: "WAC" | "FIFO" }>("/api/settings/costing"),
   setCostingMethod: (method: "WAC" | "FIFO") =>
     request<{ ok: boolean; method: string }>("/api/settings/costing", { method: "POST", body: JSON.stringify({ method }) }),
+
+  // ---- Team Chat (Phase 12) ----
+  chatToken: () => request<{ token: string; expiresAt: number; user: User }>("/api/chat/token"),
+  chatMessages: () => request<{ messages: ChatMessage[] }>("/api/chat/messages"),
+  sendChatMessage: (body: { kind: "text" | "receipt"; body: string; receipt?: ChatReceiptInput }) =>
+    request<{ message: ChatMessage; receipt?: ChatReceipt }>("/api/chat/messages", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  chatReceipts: (status?: "pending" | "approved" | "rejected") =>
+    request<{ receipts: ChatReceipt[]; pending: number }>(
+      `/api/chat/receipts${status ? `?status=${status}` : ""}`,
+    ),
+  decideChatReceipt: (id: number, decision: "approve" | "reject", note?: string) =>
+    request<{ receipt: ChatReceipt; message: ChatMessage }>(`/api/chat/receipts/${id}/decision`, {
+      method: "POST",
+      body: JSON.stringify({ decision, note }),
+    }),
 };
+
+/** Upload a receipt file (multipart — the JSON helper cannot be used here). */
+export async function uploadChatReceipt(file: File): Promise<ChatReceiptFile> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/chat/receipts", { method: "POST", credentials: "include", body: form });
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("sdhhe:unauthorized"));
+    }
+    throw new Error("Session expired — please sign in again");
+  }
+  const data = (await res.json().catch(() => ({}))) as { file?: ChatReceiptFile; error?: string };
+  if (!res.ok || !data.file) throw new Error(data.error ?? `Upload failed (${res.status})`);
+  return data.file;
+}
+
+/** The URL that shows a stored receipt (the key travels base64url in one segment). */
+export function chatReceiptUrl(r2Key: string): string {
+  let text = "";
+  for (const byte of new TextEncoder().encode(r2Key)) text += String.fromCharCode(byte);
+  const encoded = btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `/api/chat/receipts/${encoded}`;
+}
 
 export const money = (paise: number): string =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(paise / 100);
