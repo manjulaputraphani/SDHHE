@@ -17,3 +17,12 @@ run_worker_first = true
 [[r2_buckets]]
 binding = "RECEIPTS"
 bucket_name = "sdhhe-receipts"
+
+# The Team Chat room (Phase 12) — one Durable Object for the whole shop.
+[[durable_objects.bindings]]
+name = "CHAT_ROOM"
+class_name = "ChatRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoom"]

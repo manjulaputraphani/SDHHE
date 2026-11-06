@@ -37,6 +37,12 @@ import {
   uploadReceipt,
   type R2BucketLike,
 } from "./receipts";
+import { chatRoomStub } from "./chat/do";
+import type { ChatFrame } from "./chat/protocol";
+import { chatTokenExpiry, signChatToken, verifyChatToken } from "../../src/logic/chatToken";
+
+/** The Durable Object that holds the Team Chat room (Phase 12). */
+export { ChatRoom } from "./chat/do";
 import {
   DEFAULT_ROLE_PERMISSIONS,
   MODULES,
@@ -57,6 +63,8 @@ export interface Env {
   MAIL_FROM?: string;
   /** Receipt files (Phase 12) — R2 bucket `sdhhe-receipts`. */
   RECEIPTS?: R2BucketLike;
+  /** The Team Chat room (Phase 12) — Durable Object. */
+  CHAT_ROOM?: DurableObjectNamespace;
   ASSETS?: { fetch: typeof fetch };
 }
 
@@ -272,6 +280,46 @@ function hashPasswordPhc(password: string): string {
 function sessionCookie(token: string, url: URL): string {
   const secure = url.protocol === "https:" ? "; Secure" : "";
   return `${COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_HOURS * 3600}${secure}`;
+}
+
+/** Push a frame into the chat room — the Durable Object broadcasts it. */
+async function broadcastToChat(env: Env, frame: ChatFrame): Promise<void> {
+  const stub = chatRoomStub(env);
+  if (!stub) return;
+  try {
+    await stub.fetch("https://chat.internal/broadcast", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(frame),
+    });
+  } catch (err) {
+    console.error("chat: broadcast failed:", err);
+  }
+}
+
+/**
+ * The signed-in member of a Team Chat request.
+ *
+ * The web app sends its session cookie; the desktop app sends a short-lived
+ * chat token (bearer) because it has no cookie.
+ */
+async function chatActor(request: Request, env: Env): Promise<Session | null> {
+  const secret = env.SESSION_SECRET as string;
+  const session = await readSession(request, secret);
+  if (session) return session;
+  const header = request.headers.get("Authorization") ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!token) return null;
+  const payload = verifyChatToken(token, secret);
+  if (!payload) return null;
+  return {
+    uid: payload.uid,
+    name: payload.name,
+    role: payload.role,
+    exp: payload.exp * 1000,
+    until: null,
+    lastActivity: Date.now(),
+  };
 }
 
 function retryAfterMs(phone: string): number {
@@ -532,6 +580,19 @@ export default {
       return json({ ok: true, pending: true }, { status: 201 });
     }
 
+    // ---- Team Chat socket (Phase 12) ----
+    // The Durable Object does the authentication itself (it checks the chat
+    // token and the `chat:view` permission), so the upgrade is handed over
+    // before the cookie-only session check below.
+    if (url.pathname === "/api/chat/ws" && request.method === "GET") {
+      const stub = chatRoomStub(env);
+      if (!stub) return json({ error: "Chat is not configured" }, { status: 503 });
+      if ((request.headers.get("Upgrade") ?? "").toLowerCase() !== "websocket") {
+        return json({ error: "Expected a WebSocket connection" }, { status: 426 });
+      }
+      return stub.fetch(request);
+    }
+
     // ---- W3 read API (session required) ----
     const session = await readSession(request, env.SESSION_SECRET);
     if (!session) return json({ error: "Not signed in" }, { status: 401 });
@@ -769,6 +830,26 @@ export default {
       }
 
       // ---- Team Chat (Phase 12): receipt files ----
+      // The web app exchanges its session for a chat token (the socket needs
+      // one); the desktop app gets its token with phone + password.
+      if (url.pathname === "/api/chat/token" && request.method === "GET") {
+        const actor = await chatActor(request, env);
+        if (!actor) return json({ error: "Not signed in" }, { status: 401 });
+        if (!allowed(permissions, "chat", "view")) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        const exp = chatTokenExpiry();
+        const token = signChatToken(
+          { uid: actor.uid, name: actor.name, role: actor.role, exp },
+          env.SESSION_SECRET as string,
+        );
+        return json({
+          token,
+          expiresAt: exp * 1000,
+          user: { id: actor.uid, name: actor.name, role: actor.role },
+        });
+      }
+
       // These two live ABOVE the generic `body` reader below: a multipart upload
       // must not be read as JSON first.
       if (url.pathname === "/api/chat/receipts" && request.method === "POST") {
@@ -819,9 +900,9 @@ export default {
       }
 
       // ---- W3b writes (session actor threaded per request) ----
-      const body = ["POST", "PUT"].includes(request.method)
+      const body = (["POST", "PUT"].includes(request.method)
         ? await request.json().catch(() => ({}))
-        : {};
+        : {}) as Record<string, unknown>;
 
       if (url.pathname === "/api/ai/chat" && request.method === "POST") {
         if (!env.OLLAMA_API_KEY) {
@@ -975,7 +1056,9 @@ export default {
       }
 
       if (url.pathname === "/api/shop" && request.method === "PUT") {
-        await asActor(actor, () => saveShopDetails(db, body));
+        await asActor(actor, () =>
+          saveShopDetails(db, body as Parameters<typeof saveShopDetails>[1]),
+        );
         return json({ ok: true });
       }
 
