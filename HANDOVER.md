@@ -114,8 +114,9 @@ Only `web/src/components/TeamChat.tsx` was rewritten (+ a few lines in `web/src/
   filled circular send (grey when empty), **Enter sends / Shift+Enter newline**.
 - Kept: Phase 1 (rename single source, presence, read avatars, ticks), socket + reconnect, receipts/R2, Web Push
   toggle, jump-to-bottom. **463 unit tests, tsc clean (app/web/worker), Playwright 19/19** (rename now in the ⋮
-  menu; new: list search, Enter-to-send). `cd web && npm run build` OK. **Not deployed yet** — owner deploys with
-  `cd web-worker && npx wrangler deploy` after `cd web && npm run build`.
+  menu; new: list search, Enter-to-send). **Deployed 2026-11-06 as version `8a90b8ac-3d38-48e9-bfbc-b9609d1d9f2d`**
+  (web bundle `index-BeNmjmb0.js` + `index-DJHhlia2.css`, 100 % traffic). Behind Cloudflare Access, so plain
+  `curl` gets 302/401 — expected; verify in the browser at https://sdhhe-api.blvphani.workers.dev/team-chat.
 **Only `web/src/components/TeamChat.tsx` (+ a few lines in `web/src/styles.css`). No new dependency.**
 The user's spec (verbatim intent):
 - **Palette**: keep the existing tokens (they already match: warm cream `--c-bg`, white cards `--c-surface`,
