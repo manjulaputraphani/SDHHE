@@ -324,17 +324,33 @@ export async function linkReceiptMessage(
 /** Receipts, newest first. `status` filters (e.g. only "pending"). */
 export async function listReceipts(
   db: Db,
-  options: { status?: ReceiptStatus; limit?: number } = {},
+  options: { status?: ReceiptStatus; limit?: number; room?: string } = {},
 ): Promise<ReceiptRequest[]> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
-  const where = options.status ? eq(receiptRequests.status, options.status) : undefined;
+  const filters = [
+    options.status ? eq(receiptRequests.status, options.status) : undefined,
+    options.room
+      ? sql`${receiptRequests.messageId} in (select ${chatMessages.id} from ${chatMessages} where ${chatMessages.room} = ${options.room})`
+      : undefined,
+  ].filter(Boolean) as ReturnType<typeof eq>[];
   const rows = (await db
     .select()
     .from(receiptRequests)
-    .where(where)
+    .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(desc(receiptRequests.id))
     .limit(limit)) as ReceiptRow[];
   return rows.map(toReceipt);
+}
+
+/** The room a receipt belongs to (the room of the message that shows it). */
+export async function receiptRoom(db: Db, receiptId: number): Promise<string | null> {
+  const [row] = await db
+    .select({ room: chatMessages.room })
+    .from(receiptRequests)
+    .innerJoin(chatMessages, eq(chatMessages.id, receiptRequests.messageId))
+    .where(eq(receiptRequests.id, receiptId))
+    .limit(1);
+  return row?.room ?? null;
 }
 
 /** One receipt by id. */

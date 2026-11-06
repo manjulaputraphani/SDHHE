@@ -297,11 +297,18 @@ Reconciliation with the interim work of 2026-10-30:
   isMember, listConversations with the unread count, markRead, unreadCount, listChatMembers) + 8 unit tests
   and an int test (skips without `DATABASE_URL_TEST`). The unread count is the messages of the OTHER member
   after `last_read_message_id`.
-- [ ] **T-13.2 Room-scoped API** — `GET /api/chat/conversations`, `GET /api/chat/members` (who may be
+- [x] **T-13.2 Room-scoped API** — `GET /api/chat/conversations`, `GET /api/chat/members` (who may be
   chatted with), `GET/POST /api/chat/messages?room=…`, `POST /api/chat/read`, `POST /api/chat/conversations`
   (find or create a direct chat) — every room route checks that the caller is a member of that room (403).
   Acceptance: 403 for a room you are not in, 401 without a session, a direct chat appears in the list of
   both members, the unread count falls to 0 after reading.
+  (2026-11-06: `GET /api/chat/conversations` (the list with the unread counts), `POST /api/chat/conversations`
+  (find or create a private chat), `GET /api/chat/members` (who may be chatted with — open to every member,
+  not only the owner), `POST /api/chat/read` (mark as read) and the room-scoped `GET/POST /api/chat/messages`
+  (`?room=`). Every room route runs through `chatRoomMember()`: everybody is in the shop room (the row is
+  added on the spot), a private chat only has its two members → 403 for everybody else. A receipt in a
+  private chat can only be decided by the two people in that conversation. `scripts/local-direct-chat-check.mjs`
+  — **10/10 green**.)
 - [ ] **T-13.3 One Durable Object per room** — the socket asks for a room (`?room=dm-1-4`), the Worker
   checks the membership before handing over the upgrade, the object only ever holds the sockets of its room.
   Acceptance: a message in a direct chat reaches the two members only, the shared room is unaffected.

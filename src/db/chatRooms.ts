@@ -49,7 +49,10 @@ export function roomTitleFor(room: string, other: ChatMember | null): string {
 }
 
 /** Make sure the shop room exists and that this member is in it. */
-export async function ensureGroupConversation(db: Db | TxDb): Promise<ChatConversation> {
+export async function ensureGroupConversation(
+  db: Db | TxDb,
+  userId?: number,
+): Promise<ChatConversation> {
   const [conversation] = await db
     .insert(chatConversations)
     .values({ room: SHARED_ROOM, kind: "group", title: "Shop room" })
@@ -63,6 +66,14 @@ export async function ensureGroupConversation(db: Db | TxDb): Promise<ChatConver
       .where(eq(chatConversations.room, SHARED_ROOM))
       .limit(1))[0];
   if (!row) throw new Error("The shop room could not be created");
+  if (userId) {
+    await db
+      .insert(chatConversationMembers)
+      .values({ conversationId: row.id, userId })
+      .onConflictDoNothing({
+        target: [chatConversationMembers.conversationId, chatConversationMembers.userId],
+      });
+  }
   return {
     id: row.id,
     room: row.room,
@@ -146,7 +157,7 @@ export async function isMember(
  * by recent activity, with the unread count of each.
  */
 export async function listConversations(db: Db, userId: number): Promise<ChatConversation[]> {
-  await ensureGroupConversation(db);
+  await ensureGroupConversation(db, userId);
   const rows = await db.execute(sql`
     select c.id,
            c.room,

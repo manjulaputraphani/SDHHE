@@ -6,7 +6,7 @@
 import { neon } from "@neondatabase/serverless";
 import { argon2id } from "@noble/hashes/argon2.js";
 import { normalizePhone, validatePassword } from "../../src/logic/auth";
-import { getDb, withTransaction } from "../../src/db/client";
+import { getDb, withTransaction, type Db } from "../../src/db/client";
 import { sql } from "drizzle-orm";
 import { listItems } from "../../src/db/items";
 import { getSaleBill, listSaleBills } from "../../src/db/billing";
@@ -49,8 +49,19 @@ import {
   listReceipts,
   parseMessageInput,
   pendingReceiptCount,
+  receiptRoom,
   type ReceiptRequest,
 } from "../../src/db/chat";
+import {
+  ensureDirectConversation,
+  ensureGroupConversation,
+  isMember,
+  listChatMembers,
+  listConversations,
+  markRead,
+  SHARED_ROOM,
+  unreadCount,
+} from "../../src/db/chatRooms";
 import {
   buildDecisionMail,
   buildPushText,
@@ -178,6 +189,10 @@ function routePermission(
   if (pathname === "/api/chat/receipts") return { module: "chat", action: read ? "view" : "create" };
   if (/^\/api\/chat\/receipts\/[A-Za-z0-9_-]+$/.test(pathname)) return { module: "chat", action: "view" };
   if (/^\/api\/chat\/receipts\/\d+\/decision$/.test(pathname)) return { module: "chat", action: "edit" };
+  // Direct chat (Phase 13): conversations, the member list, read markers.
+  if (pathname === "/api/chat/conversations") return { module: "chat", action: read ? "view" : "create" };
+  if (pathname === "/api/chat/members") return { module: "chat", action: "view" };
+  if (pathname === "/api/chat/read") return { module: "chat", action: "create" };
 
   return null;
 }
@@ -354,8 +369,23 @@ async function chatMailRecipients(env: Env): Promise<string[]> {
     .filter((entry) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(entry));
 }
 
-/** Push a frame into the chat room — the Durable Object broadcasts it. */async function broadcastToChat(env: Env, frame: ChatFrame): Promise<void> {
-  const stub = chatRoomStub(env);
+/**
+ * Is this member allowed in that room?
+ *
+ * Everybody is in the shop room (the row is added on the spot); a private
+ * chat only has its two members.
+ */
+async function chatRoomMember(db: Db, room: string, userId: number): Promise<boolean> {
+  if (room === SHARED_ROOM) {
+    await ensureGroupConversation(db, userId);
+    return true;
+  }
+  return isMember(db, room, userId);
+}
+
+/** Push a frame into a chat room — the Durable Object broadcasts it. */
+async function broadcastToChat(env: Env, frame: ChatFrame, room: string = SHARED_ROOM): Promise<void> {
+  const stub = chatRoomStub(env, room);
   if (!stub) return;
   try {
     await stub.fetch("https://chat.internal/broadcast", {
@@ -732,15 +762,24 @@ export default {
       return json({ ok: true, pending: true }, { status: 201 });
     }
 
-    // ---- Team Chat socket (Phase 12) ----
+    // ---- Team Chat socket (Phase 12/13) ----
     // The Durable Object does the authentication itself (it checks the chat
     // token and the `chat:view` permission), so the upgrade is handed over
-    // before the cookie-only session check below.
+    // before the cookie-only session check below. The room decides which
+    // Durable Object holds the socket — one object per conversation.
     if (url.pathname === "/api/chat/ws" && request.method === "GET") {
-      const stub = chatRoomStub(env);
-      if (!stub) return json({ error: "Chat is not configured" }, { status: 503 });
       if ((request.headers.get("Upgrade") ?? "").toLowerCase() !== "websocket") {
         return json({ error: "Expected a WebSocket connection" }, { status: 426 });
+      }
+      const room = url.searchParams.get("room") ?? SHARED_ROOM;
+      const stub = chatRoomStub(env, room);
+      if (!stub) return json({ error: "Chat is not configured" }, { status: 503 });
+      // Only a member of the conversation may open its socket.
+      const member = await chatActor(request, env);
+      if (!member) return json({ error: "Not signed in" }, { status: 401 });
+      const db = getDb(env.DATABASE_URL as string);
+      if (!(await chatRoomMember(db, room, member.uid))) {
+        return json({ error: "Not allowed: chat view" }, { status: 403 });
       }
       return stub.fetch(request);
     }
@@ -1058,10 +1097,24 @@ export default {
         });
       }
 
+      // ---- Team Chat (Phase 13): conversations ----
+      if (url.pathname === "/api/chat/conversations" && request.method === "GET") {
+        return json({ conversations: await listConversations(db, session.uid) });
+      }
+
+      if (url.pathname === "/api/chat/members" && request.method === "GET") {
+        const members = (await listChatMembers(db)).filter((member) => member.id !== session.uid);
+        return json({ members });
+      }
+
       // ---- Team Chat (Phase 12): messages and approvals ----
       if (url.pathname === "/api/chat/messages" && request.method === "GET") {
         const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 500);
-        return json({ messages: await listMessages(db, { limit }) });
+        const room = url.searchParams.get("room") ?? SHARED_ROOM;
+        if (!(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        return json({ messages: await listMessages(db, { room, limit }) });
       }
 
       if (url.pathname === "/api/chat/receipts" && request.method === "GET") {
@@ -1071,8 +1124,12 @@ export default {
             ? rawStatus
             : undefined;
         const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 200);
+        const room = url.searchParams.get("room") ?? undefined;
+        if (room && !(await isMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
         return json({
-          receipts: await listReceipts(db, { status, limit }),
+          receipts: await listReceipts(db, { status, limit, room }),
           pending: await pendingReceiptCount(db),
         });
       }
@@ -1082,8 +1139,39 @@ export default {
         ? await request.json().catch(() => ({}))
         : {}) as Record<string, unknown>;
 
+      // ---- Team Chat (Phase 13): conversations (writes) ----
+      if (url.pathname === "/api/chat/conversations" && request.method === "POST") {
+        const otherId = Number(body.userId);
+        if (!Number.isInteger(otherId) || otherId <= 0) {
+          return json({ error: "Choose a person to chat with" }, { status: 400 });
+        }
+        if (otherId === session.uid) {
+          return json({ error: "You cannot start a chat with yourself" }, { status: 400 });
+        }
+        const conversation = await ensureDirectConversation(db, session.uid, otherId);
+        if (!conversation) {
+          return json({ error: "That member is not available" }, { status: 404 });
+        }
+        return json({ conversation });
+      }
+
+      if (url.pathname === "/api/chat/read" && request.method === "POST") {
+        const room = String(body.room ?? "");
+        if (!room) return json({ error: "Which conversation?" }, { status: 400 });
+        if (!(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        const messageId = Number(body.messageId ?? 0);
+        await markRead(db, room, session.uid, Number.isInteger(messageId) ? messageId : undefined);
+        return json({ ok: true, unread: await unreadCount(db, session.uid) });
+      }
+
       // ---- Team Chat (Phase 12): send a message, decide a receipt ----
       if (url.pathname === "/api/chat/messages" && request.method === "POST") {
+        const room = String(body.room ?? SHARED_ROOM);
+        if (!(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
         let input: ReturnType<typeof parseMessageInput>;
         try {
           input = parseMessageInput(body);
@@ -1094,6 +1182,7 @@ export default {
         if (input.kind === "text") {
           const message = await asActor(actor, () =>
             insertMessage(db, {
+              room,
               userId: session.uid,
               author: session.name,
               role: session.role,
@@ -1101,7 +1190,8 @@ export default {
               body: input.body,
             }),
           );
-          await broadcastToChat(env, { type: "message", message });
+          await broadcastToChat(env, { type: "message", message }, room);
+          await markRead(db, room, session.uid, message.id);
           return json({ message });
         }
 
@@ -1115,6 +1205,7 @@ export default {
         );
         const message = await asActor(actor, () =>
           insertMessage(db, {
+            room,
             userId: session.uid,
             author: session.name,
             role: session.role,
@@ -1124,7 +1215,8 @@ export default {
           }),
         );
         await asActor(actor, () => linkReceiptMessage(db, receipt.id, message.id));
-        await broadcastToChat(env, { type: "receipt", receipt, message });
+        await broadcastToChat(env, { type: "receipt", receipt, message }, room);
+        await markRead(db, room, session.uid, message.id);
         await notifyReceipt(env, receipt, session.name);
         return json({ message, receipt });
       }
@@ -1132,6 +1224,12 @@ export default {
       const decisionMatch = url.pathname.match(/^\/api\/chat\/receipts\/(\d+)\/decision$/);
       if (decisionMatch && request.method === "POST") {
         const id = Number(decisionMatch[1]);
+        // A receipt in a private chat can only be decided by the two people
+        // who are in that conversation.
+        const receiptRoomName = await receiptRoom(db, id);
+        if (receiptRoomName && !(await isMember(db, receiptRoomName, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
         let receipt: Awaited<ReturnType<typeof decideReceipt>>;
         try {
           receipt = await asActor(actor, () =>
@@ -1145,8 +1243,10 @@ export default {
           const status = /not found/i.test(message) ? 404 : 400;
           return json({ error: message }, { status });
         }
+        const room = receiptRoomName ?? SHARED_ROOM;
         const system = await asActor(actor, () =>
           insertMessage(db, {
+            room,
             userId: session.uid,
             author: session.name,
             role: session.role,
@@ -1154,7 +1254,7 @@ export default {
             body: `${session.name} ${receipt.status === "approved" ? "approved" : "rejected"} receipt #${receipt.id} — ${receipt.title}`,
           }),
         );
-        await broadcastToChat(env, { type: "receipt", receipt, message: system });
+        await broadcastToChat(env, { type: "receipt", receipt, message: system }, room);
         await notifyReceipt(env, receipt, session.name);
         return json({ receipt, message: system });
       }

@@ -28,6 +28,11 @@ import type { Env } from "../index";
 const ROOM_NAME = "main";
 
 export class ChatRoom extends DurableObject<Env> {
+  /** The room this object holds (the name of the Durable Object). */
+  private get room(): string {
+    return this.ctx.id.name ?? ROOM_NAME;
+  }
+
   /** The socket that asked to be left alone (no auto response). */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -148,6 +153,6 @@ export class ChatRoom extends DurableObject<Env> {
 }
 
 /** The room every member of the shop shares. */
-export function chatRoomStub(env: Env): DurableObjectStub | null {
-  return env.CHAT_ROOM ? env.CHAT_ROOM.getByName(ROOM_NAME) : null;
+export function chatRoomStub(env: Env, room: string = "main"): DurableObjectStub | null {
+  return env.CHAT_ROOM ? env.CHAT_ROOM.getByName(room) : null;
 }
