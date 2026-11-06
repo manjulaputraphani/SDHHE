@@ -318,11 +318,20 @@ Reconciliation with the interim work of 2026-10-30:
   Authorization header, and the desktop app has no cookie) — that was a real bug the direct-chat check found.
   `scripts/local-direct-chat-check.mjs` — **13/13 green**, including "the message reaches the private room"
   and "the message does not reach the shop room" (two sockets, two rooms, one browser).)
-- [ ] **T-13.4 Web conversations** — conversation list (shared room + direct chats, unread badges, last
+- [x] **T-13.4 Web conversations** — conversation list (shared room + direct chats, unread badges, last
   message), a room switcher, "start a chat" from the member list, mark-as-read, export of a conversation.
   Acceptance: web `tsc` clean, the screen switches rooms, the badge updates, a direct chat works.
-- [ ] **T-13.5 Desktop conversations** — the same list and switcher in `src/pages/TeamChat.tsx`.
+  (2026-11-06: `web/src/components/TeamChat.tsx` grew a left column with the conversations (the shop room +
+  the private chats with their unread badge), a **New chat** button that opens the member list, the room name in
+  the header (with a "Private" badge), the privacy note ("only you and X can read it") and **Export this chat**
+  (a text file of the conversation). The socket is bound to the open room and a message marks the room as read.
+  Playwright: 2 new tests (the conversation list with the unread count, a private chat from the member list) —
+  **7/7 green**.
+- [x] **T-13.5 Desktop conversations** — the same list and switcher in `src/pages/TeamChat.tsx`.
   Acceptance: tsc clean, the desktop switches rooms and shows the unread badge.
+  (2026-11-06: `src/lib/chatClient.ts` grew the room-scoped calls (conversations, members, start, read, export
+  text) and `src/pages/TeamChat.tsx` the same conversation list, room switcher, New chat and Export as the web
+  screen. The desktop test covers the list and the switch to a private chat.
 - [ ] **T-13.6 Privacy + export** — a direct chat is private (only its two members read it); the activity log
   records that a direct chat happened (who, when, how many messages) but never the text; every member can
   export their own conversation history as a text file.

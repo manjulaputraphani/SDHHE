@@ -98,17 +98,93 @@ export async function chatLogin(
   return { token: data.token, expiresAt: data.expiresAt ?? 0 };
 }
 
+/** A conversation of the chat (Phase 13). */
+export type ChatConversation = {
+  id: number;
+  room: string;
+  kind: "group" | "direct";
+  other: { id: number; name: string; role: string } | null;
+  unread: number;
+  lastMessageAt: string | null;
+};
+
+/** A member of the shop (who may be chatted with). */
+export type ChatMember = { id: number; name: string; role: string };
+
 /** The room history, oldest first. */
-export async function chatMessages(workerUrl: string, token: string): Promise<ChatMessage[]> {
-  const data = await request<{ messages: ChatMessage[] }>(workerUrl, token, "/api/chat/messages");
+export async function chatMessages(
+  workerUrl: string,
+  token: string,
+  room: string = "main",
+): Promise<ChatMessage[]> {
+  const data = await request<{ messages: ChatMessage[] }>(
+    workerUrl,
+    token,
+    `/api/chat/messages?room=${encodeURIComponent(room)}`,
+  );
   return data.messages;
+}
+
+/** Every conversation of the member (the shop room + the private chats). */
+export async function chatConversations(
+  workerUrl: string,
+  token: string,
+): Promise<ChatConversation[]> {
+  const data = await request<{ conversations: ChatConversation[] }>(
+    workerUrl,
+    token,
+    "/api/chat/conversations",
+  );
+  return data.conversations;
+}
+
+/** Who may be chatted with. */
+export async function chatMembers(workerUrl: string, token: string): Promise<ChatMember[]> {
+  const data = await request<{ members: ChatMember[] }>(workerUrl, token, "/api/chat/members");
+  return data.members;
+}
+
+/** Find or create the private chat with a member. */
+export async function startChatConversation(
+  workerUrl: string,
+  token: string,
+  userId: number,
+): Promise<ChatConversation> {
+  const data = await request<{ conversation: ChatConversation }>(
+    workerUrl,
+    token,
+    "/api/chat/conversations",
+    { method: "POST", body: JSON.stringify({ userId }) },
+  );
+  return data.conversation;
+}
+
+/** Mark a conversation as read. */
+export async function markChatRead(
+  workerUrl: string,
+  token: string,
+  room: string,
+  messageId?: number,
+): Promise<number> {
+  const data = await request<{ ok: boolean; unread: number }>(
+    workerUrl,
+    token,
+    "/api/chat/read",
+    { method: "POST", body: JSON.stringify({ room, messageId }) },
+  );
+  return data.unread;
 }
 
 /** Send a message (or a receipt) into the room. */
 export async function chatSend(
   workerUrl: string,
   token: string,
-  body: { kind: "text" | "receipt"; body: string; receipt?: ChatReceiptFile & { title: string; amountPaise: number; note?: string } },
+  body: {
+    kind: "text" | "receipt";
+    body: string;
+    room?: string;
+    receipt?: ChatReceiptFile & { title: string; amountPaise: number; note?: string };
+  },
 ): Promise<{ message: ChatMessage; receipt?: ReceiptRequest }> {
   return request(workerUrl, token, "/api/chat/messages", {
     method: "POST",
@@ -120,8 +196,13 @@ export async function chatSend(
 export async function chatReceipts(
   workerUrl: string,
   token: string,
+  room?: string,
 ): Promise<{ receipts: ReceiptRequest[]; pending: number }> {
-  return request(workerUrl, token, "/api/chat/receipts");
+  return request(
+    workerUrl,
+    token,
+    `/api/chat/receipts${room ? `?room=${encodeURIComponent(room)}` : ""}`,
+  );
 }
 
 /** Approve or reject a receipt. */
@@ -158,14 +239,17 @@ export async function chatUpload(
   return data.file;
 }
 
-/** Open the live room. */
+/** Open the live room of a conversation. */
 export function openChatSocket(
   workerUrl: string,
   token: string,
   onFrame: (frame: ChatFrame) => void,
   onClose: () => void,
+  room: string = "main",
 ): WebSocket {
-  const socket = new WebSocket(chatSocketUrl(workerUrl, token));
+  const socket = new WebSocket(
+    `${chatSocketUrl(workerUrl, token)}&room=${encodeURIComponent(room)}`,
+  );
   socket.onmessage = (event) => {
     try {
       onFrame(JSON.parse(String(event.data)) as ChatFrame);
@@ -175,4 +259,17 @@ export function openChatSocket(
   };
   socket.onclose = () => onClose();
   return socket;
+}
+
+/** The text of a conversation, for the export button. */
+export function conversationText(
+  room: string,
+  title: string,
+  messages: { author: string; body: string; createdAt: string }[],
+): string {
+  const lines = [`Team Chat — ${title}`, `Room: ${room}`, ""];
+  for (const message of messages) {
+    lines.push(`[${message.createdAt}] ${message.author}: ${message.body}`);
+  }
+  return lines.join("\n");
 }

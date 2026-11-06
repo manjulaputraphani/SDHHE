@@ -5,7 +5,7 @@ import TeamChat from "./TeamChat";
 import { DbProvider } from "../lib/db-context";
 import { getChatWorkerUrl } from "../db/settings";
 import { getSecret } from "../lib/secrets";
-import { chatMessages, chatReceipts, chatSend } from "../lib/chatClient";
+import { chatConversations, chatMessages, chatReceipts, chatSend } from "../lib/chatClient";
 
 vi.mock("../db/permissions", () => ({
   getCurrentPermissions: vi.fn(() => ({ chat: { view: true, create: true, edit: true, delete: false, export: false } })),
@@ -35,6 +35,13 @@ vi.mock("../lib/chatClient", () => ({
   chatSend: vi.fn(),
   chatDecide: vi.fn(),
   chatUpload: vi.fn(),
+  chatConversations: vi.fn(async () => [
+    { id: 1, room: "main", kind: "group", other: null, unread: 0, lastMessageAt: null },
+  ]),
+  chatMembers: vi.fn(async () => []),
+  startChatConversation: vi.fn(),
+  markChatRead: vi.fn(async () => 0),
+  conversationText: vi.fn(() => "Team Chat"),
   chatReceiptUrl: vi.fn(() => "https://worker.dev/api/chat/receipts/key"),
   normaliseWorkerUrl: vi.fn((url: string) => url),
   openChatSocket: vi.fn(() => ({ close: vi.fn(), onopen: null, onclose: null, onerror: null, onmessage: null })),
@@ -114,5 +121,39 @@ describe("Team Chat screen (desktop)", () => {
 
     await screen.findByText("Kal 6 baje");
     expect(chatSend).toHaveBeenCalled();
+  });
+
+  it("lists the conversations and switches to a private chat", async () => {
+    vi.mocked(getChatWorkerUrl).mockResolvedValue("https://worker.dev");
+    vi.mocked(getSecret).mockResolvedValue(JSON.stringify({ token: "t", expiresAt: Date.now() + 60_000 }));
+    vi.mocked(chatConversations).mockResolvedValue([
+      { id: 1, room: "main", kind: "group", other: null, unread: 0, lastMessageAt: null },
+      {
+        id: 2,
+        room: "dm-1-4",
+        kind: "direct",
+        other: { id: 4, name: "RAJU", role: "staff" },
+        unread: 2,
+        lastMessageAt: null,
+      },
+    ] as never);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Chats" });
+    await waitFor(() => {
+      expect(screen.getAllByText("Shop room").length).toBeGreaterThan(0);
+    });
+    // The private chat shows its unread count.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /RAJU/ }).textContent).toContain("2");
+    });
+    const privateChat = screen.getByRole("button", { name: /RAJU/ });
+
+    await user.click(privateChat);
+    await waitFor(() => {
+      expect(chatMessages).toHaveBeenCalledWith("https://worker.dev", "t", "dm-1-4");
+    });
   });
 });

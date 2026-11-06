@@ -1,9 +1,12 @@
 /**
- * Team Chat — the web screen (Phase 12).
+ * Team Chat — the web screen (Phase 12 + 13).
  *
  * The room is a Cloudflare Durable Object: the history is loaded once over
  * REST and everything after that arrives over the WebSocket. Receipts are
  * attached to a message and wait for an approval (owner / CA).
+ *
+ * The left column holds the conversations: the shop room (everybody) and the
+ * private chats, with the unread count of each.
  *
  * Colours: only the tokens from src/App.css (the web app has the same
  * palette). The layout follows docs/chat-in-app-preview.html.
@@ -13,6 +16,8 @@ import {
   api,
   chatReceiptUrl,
   uploadChatReceipt,
+  type ChatConversation,
+  type ChatMember,
   type ChatMessage,
   type ChatReceipt,
   type ChatUser,
@@ -35,7 +40,26 @@ const BADGE_CLASS: Record<string, string> = {
   bad: "bg-error-soft text-error-ink",
 };
 
+const SHARED_ROOM = "main";
+
+/** The text of a conversation, for the export button. */
+export function conversationText(
+  room: string,
+  title: string,
+  messages: ChatMessage[],
+): string {
+  const lines = [`Team Chat — ${title}`, `Room: ${room}`, ""];
+  for (const message of messages) {
+    const time = new Date(message.createdAt).toLocaleString("en-IN");
+    lines.push(`[${time}] ${message.author}: ${message.body}`);
+  }
+  return lines.join("\n");
+}
+
 export default function TeamChat({ user }: Props) {
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [members, setMembers] = useState<ChatMember[]>([]);
+  const [room, setRoom] = useState<string>(SHARED_ROOM);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [receipts, setReceipts] = useState<ChatReceipt[]>([]);
   const [presence, setPresence] = useState<ChatUser[]>([]);
@@ -46,6 +70,7 @@ export default function TeamChat({ user }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showReceiptForm, setShowReceiptForm] = useState(false);
+  const [showNewChat, setShowNewChat] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
@@ -60,19 +85,39 @@ export default function TeamChat({ user }: Props) {
     bottomRef.current?.scrollIntoView?.({ block: "end" });
   }, []);
 
-  /** The history and the receipts waiting for a decision. */
+  /** The conversations and the people who may be chatted with. */
+  const loadConversations = useCallback(async () => {
+    try {
+      const [list, people] = await Promise.all([api.chatConversations(), api.chatMembers()]);
+      setConversations(list.conversations);
+      setMembers(people.members);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadConversations();
+  }, [loadConversations]);
+
+  /** The history and the receipts of the open conversation. */
   const load = useCallback(async () => {
     try {
-      const [history, pending] = await Promise.all([api.chatMessages(), api.chatReceipts()]);
+      const [history, pending] = await Promise.all([
+        api.chatMessages(room),
+        api.chatReceipts(undefined, room),
+      ]);
       setMessages(history.messages);
       setReceipts(pending.receipts);
       scrollToBottom();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [scrollToBottom]);
+  }, [room, scrollToBottom]);
 
   useEffect(() => {
+    setMessages([]);
+    setReceipts([]);
     void load();
   }, [load]);
 
@@ -110,7 +155,7 @@ export default function TeamChat({ user }: Props) {
         if (closed) return;
         const scheme = window.location.protocol === "https:" ? "wss" : "ws";
         socket = new WebSocket(
-          `${scheme}://${window.location.host}/api/chat/ws?token=${encodeURIComponent(chatToken)}`,
+          `${scheme}://${window.location.host}/api/chat/ws?room=${encodeURIComponent(room)}&token=${encodeURIComponent(chatToken)}`,
         );
         socket.onopen = () => setConnected(true);
         socket.onclose = () => {
@@ -141,6 +186,7 @@ export default function TeamChat({ user }: Props) {
               prev.some((m) => m.id === frame.message!.id) ? prev : [...prev, frame.message!],
             );
             scrollToBottom();
+            void api.markChatRead(room, frame.message.id).then(() => void loadConversations());
           }
           if (frame.type === "receipt" && frame.receipt && frame.message) {
             setMessages((prev) =>
@@ -165,7 +211,34 @@ export default function TeamChat({ user }: Props) {
       closed = true;
       socket?.close();
     };
-  }, [token, scrollToBottom]);
+  }, [token, room, scrollToBottom, loadConversations]);
+
+  /** Open a conversation and mark it as read. */
+  async function openRoom(next: string) {
+    setRoom(next);
+    setError(null);
+    try {
+      await api.markChatRead(next);
+      await loadConversations();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function startChat(member: ChatMember) {
+    setBusy(true);
+    setError(null);
+    try {
+      const { conversation } = await api.startChatConversation(member.id);
+      await loadConversations();
+      setShowNewChat(false);
+      await openRoom(conversation.room);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
@@ -176,7 +249,7 @@ export default function TeamChat({ user }: Props) {
     setNotice(null);
     try {
       // The message is shown right away (the socket would send it again).
-      const { message } = await api.sendChatMessage({ kind: "text", body: text });
+      const { message } = await api.sendChatMessage({ kind: "text", body: text, room });
       setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       setDraft("");
       scrollToBottom();
@@ -206,6 +279,7 @@ export default function TeamChat({ user }: Props) {
       const { message, receipt } = await api.sendChatMessage({
         kind: "receipt",
         body: title.trim(),
+        room,
         receipt: {
           ...stored,
           title: title.trim(),
@@ -244,8 +318,24 @@ export default function TeamChat({ user }: Props) {
     }
   }
 
+  /** Save the conversation as a text file. */
+  function exportConversation() {
+    const active = conversations.find((c) => c.room === room);
+    const name = active?.kind === "direct" ? active.other?.name ?? room : "Shop room";
+    const text = conversationText(room, name, messages);
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `chat-${room.replace(/[^a-z0-9-]/gi, "-")}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const pending = receipts.filter((r) => r.status === "pending");
   const receiptById = new Map(receipts.map((r) => [r.id, r]));
+  const activeConversation = conversations.find((c) => c.room === room);
+  const roomName = activeConversation?.kind === "direct" ? activeConversation.other?.name ?? room : "Shop room";
   let lastDay = "";
 
   return (
@@ -271,12 +361,63 @@ export default function TeamChat({ user }: Props) {
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
+        {/* ---------------- conversations ---------------- */}
+        <aside className="card space-y-2 p-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink">Chats</h2>
+            <button className="btn-mini" onClick={() => setShowNewChat(true)}>
+              New chat
+            </button>
+          </div>
+          <div className="space-y-1">
+            {conversations.map((conversation) => {
+              const name =
+                conversation.kind === "direct"
+                  ? conversation.other?.name ?? conversation.room
+                  : "Shop room";
+              const active = conversation.room === room;
+              return (
+                <button
+                  key={conversation.room}
+                  onClick={() => void openRoom(conversation.room)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm ${
+                    active
+                      ? "bg-surface-3 font-medium text-ink"
+                      : "text-muted hover:bg-surface-2"
+                  }`}
+                >
+                  <span className="truncate">{name}</span>
+                  {conversation.unread > 0 && (
+                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] text-accent-ink">
+                      {conversation.unread}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {activeConversation?.kind === "direct" && (
+            <p className="px-1 text-[11px] text-muted">
+              A private chat — only you and {activeConversation.other?.name} can read it.
+            </p>
+          )}
+          <button className="btn-mini w-full justify-center" onClick={exportConversation}>
+            Export this chat
+          </button>
+        </aside>
+
         {/* ---------------- the room ---------------- */}
         <div className="card flex min-h-[420px] flex-col overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
+            <h2 className="text-sm font-semibold text-ink">{roomName}</h2>
+            {activeConversation?.kind === "direct" && (
+              <span className="badge badge-warn">Private</span>
+            )}
+          </div>
           <div className="max-h-[52vh] flex-1 space-y-3 overflow-y-auto bg-bg p-4">
             {messages.length === 0 && (
-              <p className="text-sm text-muted">No messages yet — say hello to the team.</p>
+              <p className="text-sm text-muted">No messages yet — say hello.</p>
             )}
             {messages.map((message) => {
               const day = formatChatDayLabel(message.createdAt);
@@ -361,7 +502,7 @@ export default function TeamChat({ user }: Props) {
             </button>
             <input
               className="input flex-1"
-              placeholder="Message the team…"
+              placeholder="Message…"
               value={draft}
               onChange={(e) => setDraft(e.currentTarget.value)}
               disabled={busy}
@@ -482,6 +623,30 @@ export default function TeamChat({ user }: Props) {
           )}
         </aside>
       </div>
+
+      {showNewChat && (
+        <div className="card space-y-2 p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink">Start a private chat</h2>
+            <button className="btn-mini" onClick={() => setShowNewChat(false)}>
+              Close
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {members.map((member) => (
+              <button
+                key={member.id}
+                className="btn-mini"
+                disabled={busy}
+                onClick={() => void startChat(member)}
+              >
+                {member.name}
+              </button>
+            ))}
+            {members.length === 0 && <p className="text-sm text-muted">Nobody else to chat with.</p>}
+          </div>
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="rounded-lg bg-error-soft px-3 py-2 text-sm text-error-ink">

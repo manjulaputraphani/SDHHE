@@ -79,6 +79,27 @@ const DECIDED_RECEIPT = {
   decidedAt: "2026-11-06T08:02:00.000Z",
 };
 
+const CONVERSATIONS = [
+  {
+    id: 1,
+    room: "main",
+    kind: "group" as const,
+    other: null,
+    unread: 0,
+    lastMessageAt: "2026-11-06T09:43:00.000Z",
+  },
+  {
+    id: 2,
+    room: "dm-1-4",
+    kind: "direct" as const,
+    other: { id: 4, name: "RAJU", role: "staff" },
+    unread: 2,
+    lastMessageAt: "2026-11-06T09:40:00.000Z",
+  },
+];
+
+const MEMBERS = [{ id: 4, name: "RAJU", role: "staff" }];
+
 /** Mock the whole chat API of the worker. */
 async function mockChat(
   page: Page,
@@ -145,10 +166,22 @@ async function mockChat(
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({ json: { user: member } }),
   );
+  await page.route("**/api/chat/conversations**", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({ json: { conversation: CONVERSATIONS[1] } });
+    }
+    return route.fulfill({ json: { conversations: CONVERSATIONS } });
+  });
+  await page.route("**/api/chat/members**", (route) =>
+    route.fulfill({ json: { members: MEMBERS } }),
+  );
+  await page.route("**/api/chat/read**", (route) =>
+    route.fulfill({ json: { ok: true, unread: 0 } }),
+  );
   await page.route("**/api/chat/token", (route) =>
     route.fulfill({ json: { token: "test-token", expiresAt: Date.now() + 3_600_000, user: member } }),
   );
-  await page.route("**/api/chat/messages", async (route) => {
+  await page.route("**/api/chat/messages**", async (route) => {
     if (route.request().method() === "POST") {
       const body = JSON.parse(route.request().postData() ?? "{}") as { body?: string };
       await route.fulfill({
@@ -209,7 +242,7 @@ test.describe("Team Chat", () => {
 
     await expect(page.getByRole("heading", { name: "Team Chat" })).toBeVisible();
     await expect(page.getByText("Baki stock ki kya rate badha?")).toBeVisible();
-    await expect(page.getByPlaceholder("Message the team…")).toBeVisible();
+    await expect(page.getByPlaceholder("Message…")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Receipt approvals" })).toBeVisible();
     await expect(page.getByText("Transport bill").first()).toBeVisible();
     await expect(page.getByText("₹450.00").first()).toBeVisible();
@@ -250,8 +283,32 @@ test.describe("Team Chat", () => {
     await mockChat(page, OWNER);
     await page.goto("/team-chat");
 
-    await page.getByPlaceholder("Message the team…").fill("Kal subah 6 baje khula hai");
+    await page.getByPlaceholder("Message…").fill("Kal subah 6 baje khula hai");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByText("Kal subah 6 baje khula hai")).toBeVisible();
+  });
+
+  test("lists the conversations with their unread count", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await page.goto("/team-chat");
+
+    await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Shop room/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /RAJU/ })).toBeVisible();
+    // The private chat carries its unread count.
+    await expect(page.getByRole("button", { name: /RAJU/ }).getByText("2")).toBeVisible();
+  });
+
+  test("opens a private chat from the member list", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await page.goto("/team-chat");
+
+    await page.getByRole("button", { name: "New chat" }).click();
+    await expect(page.getByRole("heading", { name: "Start a private chat" })).toBeVisible();
+    await page.getByRole("button", { name: "RAJU", exact: true }).click();
+
+    // The private chat is marked as such.
+    await expect(page.getByText("Private")).toBeVisible();
+    await expect(page.getByText(/only you and RAJU can read it/)).toBeVisible();
   });
 });

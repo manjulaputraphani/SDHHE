@@ -52,6 +52,19 @@ export type ChatReceiptInput = ChatReceiptFile & {
 
 export type ChatUser = { id: number; name: string; role: string };
 
+/** A conversation of the chat (Phase 13). */
+export type ChatConversation = {
+  id: number;
+  room: string;
+  kind: "group" | "direct";
+  other: ChatUser | null;
+  unread: number;
+  lastMessageAt: string | null;
+};
+
+/** A member of the shop (who may be chatted with). */
+export type ChatMember = { id: number; name: string; role: string };
+
 export type Item = {
   id: number;
   name: string;
@@ -475,20 +488,37 @@ export const api = {
 
   // ---- Team Chat (Phase 12) ----
   chatToken: () => request<{ token: string; expiresAt: number; user: User }>("/api/chat/token"),
-  chatMessages: () => request<{ messages: ChatMessage[] }>("/api/chat/messages"),
-  sendChatMessage: (body: { kind: "text" | "receipt"; body: string; receipt?: ChatReceiptInput }) =>
+  chatMessages: (room?: string) =>
+    request<{ messages: ChatMessage[] }>(
+      `/api/chat/messages${room ? `?room=${encodeURIComponent(room)}` : ""}`,
+    ),
+  sendChatMessage: (body: { kind: "text" | "receipt"; body: string; room?: string; receipt?: ChatReceiptInput }) =>
     request<{ message: ChatMessage; receipt?: ChatReceipt }>("/api/chat/messages", {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  chatReceipts: (status?: "pending" | "approved" | "rejected") =>
+  chatReceipts: (status?: "pending" | "approved" | "rejected", room?: string) =>
     request<{ receipts: ChatReceipt[]; pending: number }>(
-      `/api/chat/receipts${status ? `?status=${status}` : ""}`,
+      `/api/chat/receipts${status || room ? `?${status ? `status=${status}` : ""}${status && room ? "&" : ""}${room ? `room=${encodeURIComponent(room)}` : ""}` : ""}`,
     ),
   decideChatReceipt: (id: number, decision: "approve" | "reject", note?: string) =>
     request<{ receipt: ChatReceipt; message: ChatMessage }>(`/api/chat/receipts/${id}/decision`, {
       method: "POST",
       body: JSON.stringify({ decision, note }),
+    }),
+
+  // ---- Direct chat (Phase 13) ----
+  chatConversations: () => request<{ conversations: ChatConversation[] }>("/api/chat/conversations"),
+  chatMembers: () => request<{ members: ChatMember[] }>("/api/chat/members"),
+  startChatConversation: (userId: number) =>
+    request<{ conversation: ChatConversation }>("/api/chat/conversations", {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+  markChatRead: (room: string, messageId?: number) =>
+    request<{ ok: boolean; unread: number }>("/api/chat/read", {
+      method: "POST",
+      body: JSON.stringify({ room, messageId }),
     }),
 };
 
