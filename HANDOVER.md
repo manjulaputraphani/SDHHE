@@ -1,11 +1,12 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-07 by OpenCode
-Tool: OpenCode
+Last updated: 2026-11-07 by Claude Code
+Tool: Claude Code
 
 ## Current state
-**LIVE version `f3459367-b9a1-40ee-8496-543f525f4b57` (2026-11-07) — mobile & PWA polish on top of
-AI polish + message editing + always-Dashboard + 12h AM/PM times.** The web edition is now an
+**LIVE version `1081f422-69d7-42a6-9898-154d686ce569` (2026-11-07) = commit `e736463`: T-16.1 line breaks
+(bubble `pre-wrap`, web + desktop) on top of mobile & PWA polish, AI polish, message editing.** Deployed
+from a clean worktree — the uncommitted T-16.2 work in `web/src/components/TeamChat.tsx` is NOT live. The web edition is now an
 installable PWA with default-on message notifications. Live app:
 https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl 302s to
 sdhhe.cloudflareaccess.com; verify inside the app, ideally on the phone).
