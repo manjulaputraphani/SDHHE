@@ -398,7 +398,7 @@ export const chatMessages = pgTable(
     /** Set when the message shows a receipt (see receiptRequests.id). */
     receiptId: integer("receipt_id"),
     /** Set when the author edited the text (Phase 17 — message editing). */
-    editedAt: timestamp("edited_at", { withTimezone: true }),
+    editedAt: timestamp("edited_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("chat_messages_kind_valid", sql`${t.kind} in ('text','receipt','system')`)],

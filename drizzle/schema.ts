@@ -58,21 +58,6 @@ export const settings = pgTable("settings", {
 	value: text().notNull(),
 });
 
-export const chatMessages = pgTable("chat_messages", {
-	id: serial().primaryKey().notNull(),
-	room: text().notNull().default('main'),
-	userId: integer("user_id"),
-	author: text().notNull(),
-	role: text().notNull().default('staff'),
-	kind: text().notNull().default('text'),
-	body: text().notNull().default(''),
-	receiptId: integer("receipt_id"),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	editedAt: timestamp("edited_at", { withTimezone: true, mode: 'string' }),
-}, (table) => [
-	index("chat_messages_room_id_idx").on(table.room, table.id),
-	check("chat_messages_kind_valid", sql`kind = ANY (ARRAY['text'::text, 'receipt'::text, 'system'::text])`),
-]);
 
 export const stockMovements = pgTable("stock_movements", {
 	id: serial().primaryKey().notNull(),

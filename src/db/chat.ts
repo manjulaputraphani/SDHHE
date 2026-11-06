@@ -204,7 +204,7 @@ type MessageRow = {
   body: string;
   receiptId: number | null;
   createdAt: Date;
-  editedAt: Date | null;
+  editedAt: Date;
 };
 
 type ReceiptRow = {
@@ -239,7 +239,7 @@ export function toMessage(row: MessageRow): ChatMessage {
     body: row.body,
     receiptId: row.receiptId,
     createdAt: row.createdAt.toISOString(),
-    editedAt: row.editedAt ? row.editedAt.toISOString() : undefined,
+    editedAt: row.editedAt.getTime() > row.createdAt.getTime() ? row.editedAt.toISOString() : undefined,
   };
 }
 
