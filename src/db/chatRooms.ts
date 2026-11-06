@@ -216,14 +216,23 @@ export async function markRead(
   `);
 }
 
-/** How many unread messages does this member have in total? */
+/**
+ * How many unread messages does this member have in total?
+ *
+ * NOTE: the hand-written fragment below must use the **qualified column
+ * names** (`${chatConversations.room}`), not the aliases `c` / `cm` — those
+ * only exist in the raw query of `listConversations`. The query builder
+ * generates `from "chat_conversations" inner join "chat_conversation_members"`
+ * without any alias, so an alias here would fail with
+ * "missing FROM-clause entry for table c".
+ */
 export async function unreadCount(db: Db, userId: number): Promise<number> {
   const [row] = await db
     .select({
       total: sql<number>`coalesce(sum(
         (select count(*) from chat_messages m
-         where m.room = c.room
-           and m.id > coalesce(cm.last_read_message_id, 0)
+         where m.room = ${chatConversations.room}
+           and m.id > coalesce(${chatConversationMembers.lastReadMessageId}, 0)
            and (m.user_id is null or m.user_id <> ${userId})
         )), 0)::int`.mapWith(Number),
     })

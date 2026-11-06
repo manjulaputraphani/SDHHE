@@ -155,17 +155,30 @@ try {
     check("the other member sees the chat with an unread message", theirJson.conversations?.length > 0, `unread ${theirRoom?.unread}`);
 
     // 9. Reading clears the unread count.
-    await fetch(`${BASE}/api/chat/read`, {
+    const read = await fetch(`${BASE}/api/chat/read`, {
       method: "POST",
       headers: { cookie: cookieFor(other.id, other.name, other.role), "content-type": "application/json" },
       body: JSON.stringify({ room, messageId: sentJson.message?.id }),
     });
+    const readJson = await read.json().catch(() => ({}));
+    // The STATUS matters: the mark-as-read call used to fail with a 500 while
+    // the badge still looked right (that number comes from another query).
+    check("the mark-as-read call answers 200", read.status === 200, `status ${read.status}`);
+    check("the mark-as-read call returns the unread count", typeof readJson.unread === "number", JSON.stringify(readJson));
     const afterRead = await fetch(`${BASE}/api/chat/conversations`, {
       headers: { cookie: cookieFor(other.id, other.name, other.role) },
     });
     const afterJson = await afterRead.json();
     const afterRoom = afterJson.conversations?.find((c) => c.room === room);
     check("reading clears the unread count", afterRoom?.unread === 0, `unread ${afterRoom?.unread}`);
+
+    // 9b. The read call also works for the shared room (the shop room).
+    const shopRead = await fetch(`${BASE}/api/chat/read`, {
+      method: "POST",
+      headers: { cookie: ownerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ room: "main" }),
+    });
+    check("the shop room can be marked as read too", shopRead.status === 200, `status ${shopRead.status}`);
 
     // 10. The rooms are separate: a message in one does not reach the other.
     const { chromium } = await import("@playwright/test");

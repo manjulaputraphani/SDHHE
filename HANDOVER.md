@@ -5,7 +5,7 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat) and Phase 13 (Direct chat) are code-complete AND deployed.**
-Live worker version `8323fdfb-7e47-4003-a9e7-10d0e720077a` (2026-11-06 11:14) — web bundle `index-C5y3EWZo.js`.
+Live worker version `63e9d95f-542e-4812-be10-72743246dc72` (2026-11-06 11:18) — web bundle `index-C5y3EWZo.js`.
 Live: https://sdhhe-api.blvphani.workers.dev/team-chat (shop room + private chats).
 **The live build has NO R2 binding** (R2 is not enabled on the account) → attaching a receipt file answers
 503 "Receipt storage is not configured"; everything else works.
@@ -25,6 +25,12 @@ Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 r
 - The **sign-on rule**: the web signs out after an hour of inactivity and the chat follows it (the web chat
   token lives 1 h, refreshed every 30 min; an expired token is refused at the door; an open socket is closed
   when its token runs out). The desktop token lives 12 h (the desktop session has no timeout).
+
+## Fixed after the first direct-chat deploy
+`unreadCount()` used the aliases `c` / `cm` inside a hand-written SQL fragment, but Drizzle's query builder
+generates the FROM clause **without** them → Postgres refused it → `POST /api/chat/read` answered 500 (the
+unread badge still looked right, it comes from another query). Fixed with the qualified columns + a comment;
+the local check now asserts the **status** of the read calls. Deployed as `63e9d95f`.
 
 ## Owner steps that are still open
 1. **Enable R2** (dashboard) — `npx wrangler r2 bucket list` still says "Please enable R2 through the Cloudflare
