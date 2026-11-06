@@ -97,6 +97,31 @@ To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `
 5. Optional: the deployed `SESSION_SECRET` is NOT the one in `web-worker/.dev.vars`, so the local check scripts
    cannot sign in to the live worker — copy the deployed value into `.dev.vars` if that is wanted.
 
+## Phase 2 — the chat redesign (READY TO START, next session)
+**Only `web/src/components/TeamChat.tsx` (+ a few lines in `web/src/styles.css`). No new dependency.**
+The user's spec (verbatim intent):
+- **Palette**: keep the existing tokens (they already match: warm cream `--c-bg`, white cards `--c-surface`,
+  coffee brown `--c-primary` #6f4e37 as the accent, soft beige `--c-surface-2` for incoming bubbles, brown
+  `--c-primary` for outgoing, dark mode charcoal `--c-bg` + caramel `--c-accent`). **Do not add new colours.**
+- **Typography**: Inter for the UI (already), the serif only on the page title (`page-title` class ✓).
+- **Layout**: the panels fill the viewport height (no empty space below): chat list **300px**, centre
+  flexible, approvals **340px and collapsible**. The room card is `flex flex-col` with the message list
+  `flex-1 overflow-y-auto` and a `max-h` (remove the current `max-h-[52vh]`).
+- **Chat list rows**: avatar + presence dot, name, one-line truncated last-message preview, time, unread
+  badge, **bold when unread**; a **search bar** at the top of the list.
+- **Chat header**: avatar/group icon, name, the status line (already done in Phase 1), and on the right
+  **search**, **members**, **⋮ menu** (Rename, Export chat, Mute, Pin chat).
+- **Messages**: rounded 16px bubbles with a tail on the grouped last bubble, sender name + avatar on incoming
+  group messages, grouping, **time on hover**, date separators ("Today", "Yesterday", "Mon, 3 Nov").
+- **Composer**: one rounded bar with a paperclip, an emoji button, an **auto-growing** textarea, a filled
+  **circular send button** (grey only when empty), **Enter to send / Shift+Enter for a new line**.
+- Soft shadows, 1px borders, 150–200 ms transitions, **skeleton loaders** while loading, friendly empty states.
+- **Responsive**: on mobile the list is the screen; tapping a chat opens it full-screen with a back arrow; the
+  approvals become a tab. (Use the existing `md:`/`lg:` breakpoints + a `mobileView` state.)
+**Keep**: the Phase 1 behaviour (rename single source, presence, read avatars, two ticks), the socket, the
+receipts, the Web Push toggle. Then: `cd web && npm run build` → `cd web-worker && npx wrangler deploy`,
+Playwright (`npm run test:e2e:web`) must stay green, and update this handover + BUILD_PLAN.
+
 ## Next tasks
 0. **Access service token for the desktop app** (owner creates it in Zero Trust → Access → Service Auth).
 1. **Desktop 1-hour auto-logout** — the desktop app still only locks via *Lock now* (the web signs out on its
