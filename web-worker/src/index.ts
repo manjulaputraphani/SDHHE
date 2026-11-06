@@ -440,6 +440,27 @@ async function chatTokenSession(request: Request, env: Env): Promise<Session | n
   };
 }
 
+/**
+ * The member behind a chat token in the address (?token=…).
+ *
+ * A WebSocket cannot carry an Authorization header, so the socket carries the
+ * token in the address — the desktop app has no cookie at all.
+ */
+function chatQueryTokenSession(url: URL, env: Env): Session | null {
+  const token = url.searchParams.get("token") ?? "";
+  if (!token) return null;
+  const payload = verifyChatToken(token, env.SESSION_SECRET as string);
+  if (!payload) return null;
+  return {
+    uid: payload.uid,
+    name: payload.name,
+    role: payload.role,
+    exp: payload.exp * 1000,
+    until: null,
+    lastActivity: Date.now(),
+  };
+}
+
 function retryAfterMs(phone: string): number {
   const entry = attempts.get(phone);
   if (!entry) return 0;
@@ -775,7 +796,7 @@ export default {
       const stub = chatRoomStub(env, room);
       if (!stub) return json({ error: "Chat is not configured" }, { status: 503 });
       // Only a member of the conversation may open its socket.
-      const member = await chatActor(request, env);
+      const member = (await chatActor(request, env)) ?? chatQueryTokenSession(url, env);
       if (!member) return json({ error: "Not signed in" }, { status: 401 });
       const db = getDb(env.DATABASE_URL as string);
       if (!(await chatRoomMember(db, room, member.uid))) {

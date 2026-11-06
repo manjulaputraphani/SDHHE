@@ -145,6 +145,60 @@ try {
     const afterJson = await afterRead.json();
     const afterRoom = afterJson.conversations?.find((c) => c.room === room);
     check("reading clears the unread count", afterRoom?.unread === 0, `unread ${afterRoom?.unread}`);
+
+    // 10. The rooms are separate: a message in one does not reach the other.
+    const { chromium } = await import("@playwright/test");
+    const browser = await chromium.launch();
+    const page = await browser.newPage();
+    const chatToken = (
+      await (
+        await fetch(`${BASE}/api/chat/token`, { headers: { cookie: ownerCookie } })
+      ).json()
+    ).token;
+
+    const opened = await page.evaluate(
+      async ([token, dmRoom]) => {
+        window.__frames = { dm: [], shop: [] };
+        const open = (room, bucket) =>
+          new Promise((resolve) => {
+            const socket = new WebSocket(
+              `ws://127.0.0.1:8787/api/chat/ws?room=${encodeURIComponent(room)}&token=${token}`,
+            );
+            socket.onmessage = (event) => {
+              const frame = JSON.parse(String(event.data));
+              if (frame.type === "message") bucket.push(frame.message?.body ?? "");
+            };
+            socket.onopen = () => resolve(true);
+            socket.onerror = () => resolve(false);
+            setTimeout(() => resolve(false), 8000);
+          });
+        const dm = await open(dmRoom, window.__frames.dm);
+        const shop = await open("main", window.__frames.shop);
+        return { dm, shop };
+      },
+      [chatToken, room],
+    );
+    check("both room sockets open", opened.dm && opened.shop, JSON.stringify(opened));
+
+    await fetch(`${BASE}/api/chat/messages`, {
+      method: "POST",
+      headers: { cookie: ownerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ kind: "text", body: "only for the private chat", room }),
+    });
+    await page.waitForTimeout(1500);
+    const frames = await page.evaluate(() => window.__frames);
+    await browser.close();
+
+    check(
+      "the message reaches the private room",
+      frames.dm.includes("only for the private chat"),
+      frames.dm.join("|"),
+    );
+    check(
+      "the message does not reach the shop room",
+      !frames.shop.includes("only for the private chat"),
+      frames.shop.join("|"),
+    );
   }
 } finally {
   await sql.query("delete from chat_messages where body = 'private hello'");

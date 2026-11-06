@@ -309,9 +309,15 @@ Reconciliation with the interim work of 2026-10-30:
   added on the spot), a private chat only has its two members → 403 for everybody else. A receipt in a
   private chat can only be decided by the two people in that conversation. `scripts/local-direct-chat-check.mjs`
   — **10/10 green**.)
-- [ ] **T-13.3 One Durable Object per room** — the socket asks for a room (`?room=dm-1-4`), the Worker
+- [x] **T-13.3 One Durable Object per room** — the socket asks for a room (`?room=dm-1-4`), the Worker
   checks the membership before handing over the upgrade, the object only ever holds the sockets of its room.
   Acceptance: a message in a direct chat reaches the two members only, the shared room is unaffected.
+  (2026-11-06: one Durable Object **per conversation** — `chatRoomStub(env, room)` → `getByName(room)`, so the
+  object only ever holds the sockets of its own room; the Worker checks the membership before handing over
+  the upgrade. The socket now also takes the identity from `?token=` (a WebSocket cannot carry an
+  Authorization header, and the desktop app has no cookie) — that was a real bug the direct-chat check found.
+  `scripts/local-direct-chat-check.mjs` — **13/13 green**, including "the message reaches the private room"
+  and "the message does not reach the shop room" (two sockets, two rooms, one browser).)
 - [ ] **T-13.4 Web conversations** — conversation list (shared room + direct chats, unread badges, last
   message), a room switcher, "start a chat" from the member list, mark-as-read, export of a conversation.
   Acceptance: web `tsc` clean, the screen switches rooms, the badge updates, a direct chat works.
