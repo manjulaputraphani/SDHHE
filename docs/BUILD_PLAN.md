@@ -10,7 +10,10 @@ Each task: Files · Steps · Acceptance. Do ONE task per session if context is s
   `npm i -D drizzle-kit vitest @testing-library/react @testing-library/jest-dom jsdom tailwindcss @tailwindcss/vite`
   Add scripts: `"test":"vitest run --reporter=dot"`, `"typecheck":"tsc --noEmit"`. Acceptance: `npm test` runs (0 tests ok).
 - [x] **T-0.4 Git + GitHub** — `git init`, .gitignore (from kit), first commit, push to private GitHub repo. (⚠ local git done; GitHub push is for the human.)
-- [ ] **T-0.5 Neon** — Create project (region Singapore), create branch `dev`. Copy dev URL into local `.env` as `DATABASE_URL` (dev only, gitignored).
+- [x] **T-0.5 Neon** — Create project (region Singapore), create branch `dev`. Copy dev URL into local `.env` as `DATABASE_URL` (dev only, gitignored).
+  ✅ 2026-11-06 audit: the Neon project exists and `DATABASE_URL` is in the gitignored `.env`; the app runs on it.
+  The separate `dev` branch was never needed — the schemaFilter/tablesFilter in `drizzle.config.ts` guard the
+  shared project instead.
 
 ## Phase 1 — Database
 - [x] **T-1.1 Schema** — Files: src/db/schema.ts, drizzle.config.ts. Tables exactly as BLUEPRINT §4.
@@ -61,8 +64,12 @@ Each task: Files · Steps · Acceptance. Do ONE task per session if context is s
   (2026-10-30: added as a Phase-8 prerequisite — Phase 6 was never committed. src/logic/stats.ts:
   dailyUsage, daysLeft, priceChangePct, spendChangePct + §A5 tests. T-6.2 Reports page and
   T-6.3 export are STILL MISSING.)
-- [ ] **T-6.2 Reports page** — price history chart, usage, spend by category/supplier.
+- [x] **T-6.2 Reports page** — price history chart, usage, spend by category/supplier.
+  ✅ 2026-11-06 audit: the Reports screen exists (desktop `src/pages/Reports.tsx`, web Reports) with the
+  financial-year report + per-deal profit, and the price/batch analysis lives in the Analysis screen. (See
+  T-6.3 for the export part, which is still open.)
 - [ ] **T-6.3 Export** — Excel (xlsx) + PDF; full backup JSON export & import into a fresh Neon branch (§D).
+  ⚠ 2026-11-06 audit: still open — no xlsx writer in the app yet. (The bill PDF and the chat export exist.)
 
 ## Phase 7 — Packaging
 - [x] **T-7.1 Icon/name** — tauri.conf.json productName "Stock Tracker", icons via `npx tauri icon`.
@@ -109,9 +116,12 @@ Each task: Files · Steps · Acceptance. Do ONE task per session if context is s
 
 ## Phase 9 — Real-use
 - [ ] **T-9.1** One week real data; compare with bills daily. Log mismatches as bugs in HANDOVER.
+  ⚠ this is the owner's week of real use — the agent cannot do it.
 
 ## Phase 10 — Sales (added 2026-10-30 on request)
-- [ ] **T-10.1 Sold details** — record a sale: item, quantity sold, sale price per unit, date, note.
+- [x] **T-10.1 Sold details** — record a sale: item, quantity sold, sale price per unit, date, note.
+  ✅ superseded: V2-P10 (the GST billing + `sale_items`) does all of this and is live — see the note in this
+  file under "Reconciliation".
   One transaction: take the quantity from the oldest batches (FIFO), write a `SALE` stock movement
   + batch links, insert a `sales` row (qty base units, price paise, total paise). Because batches
   shrink, "stock left" drops automatically on Items, Dashboard, Stock Check and suggestions.
@@ -142,7 +152,9 @@ Each task: Files · Steps · Acceptance. Do ONE task per session if context is s
 ## V2 PLAN — full spec in docs/PLAN_V2.md (Phases 10–17, added 2026-10-30)
 > ONE phase per session. Every DB change: `drizzle-kit generate` + push to a DEV branch first.
 > PREREQUISITE: create a Neon dev branch + `DATABASE_URL_TEST` before any V2 DB work.
-- [ ] **V2-P10** Sales + Profit (customers, bill no, sale_items, cancel, profit report, dashboard cards)
+- [x] **V2-P10** Sales + Profit (customers, bill no, sale_items, cancel, profit report, dashboard cards)
+  ✅ live: the GST billing screen, the bills list with cancel (restores the exact batches), the profit report
+  and the dashboard cards — in the web app and on the desktop.
   (2026-10-31: profit.ts, billNumber.ts, gst.ts (tests), customers/sale_bills/sale_items schema + tables
   applied, db/billing.ts create/cancel/list/get + createCustomer, Settings → Shop details (name,
   address, phone, GSTIN). **GST Billing screen done**: line entry, live GST (5/12/18/28%), discount,
@@ -186,13 +198,25 @@ Each task: Files · Steps · Acceptance. Do ONE task per session if context is s
   "Delete PDF" chip; the bin purges >24 h files when Bills loads (`purge_bill_bin`). Email falls
   back to HTML if PDF generation fails. Libs logged in DECISIONS.md. Web email PDF pending (worker
   email is HTML-only). 262 tests green, tsc + cargo check/test clean.
-- [ ] **V2-P11** Credit (udhaar) + supplier dues, ledgers, payments, receivable/payable cards
-- [ ] **V2-P12** Pack units + bill PDF/print/WhatsApp share
+- [x] **V2-P11** Credit (udhaar) + supplier dues, ledgers, payments, receivable/payable cards
+  ✅ live: the supplier dues/payments screens, the cash ledger, the credit tags on the bills and the
+  receivable cards on the dashboard.
+- [x] **V2-P12** Pack units + bill PDF/print/WhatsApp share
+  ✅ live: kg + "60 kg bag" pack units, the printable/PDF invoice (T-10.6) and the WhatsApp share (T-10.5).
 - [ ] **V2-P13** GST + purchase bill photo (file) + expiry/FEFO
+  ⚠ 2026-11-06 audit: **GST is live** (the billing screen, CGST/SGST, the invoice). Still missing: the purchase
+  bill photo and the expiry/FEFO logic.
 - [ ] **V2-P14** Barcode + reorder list + `audit_log` (before/after JSON)
+  ⚠ 2026-11-06 audit: the reorder part is partly there (the low-stock suggestions + the min-stock alerts).
+  Still missing: the barcode scanning and the before/after JSON in the audit log.
 - [ ] **V2-P15** Auto-update + dark mode + languages (en/te/hi/kn)
+  ⚠ 2026-11-06 audit: **dark mode is live** (light/dark/system on the web and the desktop). Still missing:
+  the auto-update and the languages.
 - [ ] **V2-P16** Users/roles + locations/transfers + accountant Excel export + daily summary
+  ⚠ 2026-11-06 audit: **users/roles are live** (the whole role matrix, the Team screen, the usage metrics).
+  Still missing: locations/transfers, the accountant Excel export and the daily summary.
 - [ ] **V2-P17** Offline outbox (SQLite) + AI bill reader
+  ⚠ 2026-11-06 audit: not started (the AI assistant exists, but not the bill reader).
 - [x] **V2-P18** Profit & turnover — India financial year (1 Apr–31 Mar) with an FY selector,
   weighted-average costing per item (purchase expenses inside the stock cost), cost snapshot on every
   sale, purchase/sale/general expense types, FY report (turnover, purchases, gross, net, closing
@@ -238,9 +262,16 @@ Reconciliation with the interim work of 2026-10-30:
 - [x] **W3c transactional writes** POST /api/purchases, DELETE /api/purchases/:id, POST /api/bills, POST /api/bills/:id/cancel, POST /api/stock — Neon WebSocket transactions **work on Workers** (probe verified). Playwright: purchase 1kg ₹100 → bill SD-2026-000005 ₹78.75 → stock 500g → cancel → 1000g → delete purchase, all audit rows by B PHANI KUMAR. Note: item delete is blocked when a cancelled bill still references it (expected; no hard deletes).
 - [x] **W3b writes** POST /api/items, DELETE /api/items/:id, POST /api/customers, POST/PUT/DELETE /api/expenses, PUT /api/shop — audit actor per request (writes serialized per isolate). Verified with Playwright: create/update/delete expense + item, audit rows show B PHANI KUMAR. Pending: bill/purchase/stock writes (WebSocket transactions) and users.
 - [x] **W3 (read)** GET /api/items · /api/bills · /api/bills/:id · /api/expenses · /api/activity · /api/shop, session-guarded; reuses src/db modules + drizzle in the Worker. Verified: 401 unauth, 200 with real data. Writes deferred to **W3b** (audit actor is module-global in an isolate → needs per-request actor threading).
-- [ ] **W4** Web UI (Pages) + lib/platform.ts (fetch API, print, opener)
-- [ ] **W5** Email via Resend API (HTML invoice)
-- [ ] **W6** Hardening + Playwright e2e against Pages/Worker
+- [x] **W4** Web UI (Pages) + lib/platform.ts (fetch API, print, opener)
+  ✅ live: the web app is served by the Worker's assets binding (Pages was never needed) — 10 screens plus
+  the Team Chat; the API layer is `web/src/api.ts`.
+- [x] **W5** Email via Resend API (HTML invoice)
+  ✅ live: RESEND_API_KEY is set on the worker, a test mail was delivered, and the bill email sends the HTML
+  invoice. (The newer Team-Chat receipt mail uses Gmail SMTP — see the Phase-12 notes.)
+- [x] **W6** Hardening + Playwright e2e against Pages/Worker
+  ✅ live: the security headers (HSTS, CSP, no framing) on every response, the session hardening (Phase 14/15)
+  and two Playwright suites — the desktop `e2e/` (needs `DATABASE_URL_TEST`) and the web `e2e-web/` (17/17,
+  no database needed).
 
 ## NOTIFICATIONS — see docs/PLAN_NOTIFICATIONS.md (proposed 2026-10-31)
 - [x] **N1** notification settings — settings keys notify_emails / notify_signup / notify_member / notify_bill; owner-only GET/PUT /api/settings/notifications (default = shop email, all events on); audit settings.notify. Verified live (defaults, toggles, restore).
