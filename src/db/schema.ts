@@ -357,6 +357,70 @@ export const roastings = pgTable("roastings", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Team Chat (Phase 12) — one row per message in the shop room.
+ *
+ * The live room itself is a Cloudflare Durable Object; these rows are the
+ * durable history that every client loads when it opens the room.
+ */
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: serial("id").primaryKey(),
+    /** Room name — one shared room for the shop ("main"). */
+    room: text("room").notNull().default("main"),
+    userId: integer("user_id").references(() => appUsers.id),
+    author: text("author").notNull(),
+    role: text("role").notNull().default("staff"),
+    /** 'text' (a message) | 'receipt' (a receipt for approval) | 'system' (the app) */
+    kind: text("kind").notNull().default("text"),
+    body: text("body").notNull().default(""),
+    /** Set when the message shows a receipt (see receiptRequests.id). */
+    receiptId: integer("receipt_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("chat_messages_kind_valid", sql`${t.kind} in ('text','receipt','system')`)],
+);
+
+/**
+ * A receipt waiting for (or carrying) an approval decision.
+ *
+ * The file itself lives in Cloudflare R2 — only the key is stored here.
+ */
+export const receiptRequests = pgTable(
+  "receipt_requests",
+  {
+    id: serial("id").primaryKey(),
+    submittedBy: integer("submitted_by").references(() => appUsers.id),
+    submitterName: text("submitter_name").notNull(),
+    title: text("title").notNull(),
+    /** Money in paise — never a float. */
+    amountPaise: integer("amount_paise").notNull(),
+    note: text("note"),
+    /** R2 object key, e.g. "receipts/2026-11-06/12.jpg". */
+    r2Key: text("r2_key").notNull(),
+    filename: text("filename").notNull(),
+    mime: text("mime").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    /** 'pending' | 'approved' | 'rejected' */
+    status: text("status").notNull().default("pending"),
+    decidedBy: integer("decided_by").references(() => appUsers.id),
+    deciderName: text("decider_name"),
+    decisionNote: text("decision_note"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** The chat message that shows this receipt. */
+    messageId: integer("message_id").references(() => chatMessages.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "receipt_requests_status_valid",
+      sql`${t.status} in ('pending','approved','rejected')`,
+    ),
+    check("receipt_requests_amount_positive", sql`${t.amountPaise} > 0`),
+  ],
+);
+
 /** Cash / bank ledger — every money movement in or out of the business. */
 export const cashLedger = pgTable("cash_ledger", {
   id: serial("id").primaryKey(),

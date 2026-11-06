@@ -38,6 +38,8 @@ export default defineConfig({
     "public.opening_balance",
     "public.supplier_payments",
     "public.roastings",
+    "public.chat_messages",
+    "public.receipt_requests",
   ],
   dbCredentials: { url },
 });

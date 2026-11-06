@@ -25,6 +25,8 @@ const OUR_TABLES = [
   "cash_ledger",
   "opening_balance",
   "supplier_payments",
+  "chat_messages",
+  "receipt_requests",
 ] as const;
 
 function rowsOf<T>(result: unknown): T[] {
