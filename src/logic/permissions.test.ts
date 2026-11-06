@@ -56,4 +56,17 @@ describe("role permission defaults", () => {
     expect(allowed(null, "dashboard", "view")).toBe(false);
     expect(allowed(undefined, "items", "view")).toBe(false);
   });
+
+  it("Team Chat: staff may talk and submit a receipt, CA and Owner may approve", () => {
+    expect(allowed(DEFAULT_ROLE_PERMISSIONS.staff, "chat", "view")).toBe(true);
+    expect(allowed(DEFAULT_ROLE_PERMISSIONS.staff, "chat", "create")).toBe(true);
+    expect(allowed(DEFAULT_ROLE_PERMISSIONS.staff, "chat", "edit")).toBe(false);
+
+    expect(allowed(DEFAULT_ROLE_PERMISSIONS.ca, "chat", "view")).toBe(true);
+    expect(allowed(DEFAULT_ROLE_PERMISSIONS.ca, "chat", "create")).toBe(true);
+    expect(allowed(DEFAULT_ROLE_PERMISSIONS.ca, "chat", "edit")).toBe(true);
+    expect(allowed(DEFAULT_ROLE_PERMISSIONS.ca, "chat", "delete")).toBe(false);
+
+    expect(allowed(DEFAULT_ROLE_PERMISSIONS.owner, "chat", "edit")).toBe(true);
+  });
 });

@@ -4,9 +4,18 @@ import {
   MAX_MESSAGE_CHARS,
   MAX_RECEIPT_BYTES,
   RECEIPT_MIME_TYPES,
+  canApproveReceipts,
+  canDecideReceipt,
+  chatMessagePreview,
+  formatChatDayLabel,
+  formatChatTime,
   isReceiptMimeAllowed,
+  pendingBadgeLabel,
   receiptFileExtension,
+  receiptStatusLabel,
+  receiptStatusTone,
 } from "./chat";
+import { DEFAULT_ROLE_PERMISSIONS } from "./permissions";
 
 describe("chat limits", () => {
   it("uses one room for the whole shop", () => {
@@ -56,5 +65,80 @@ describe("receiptFileExtension", () => {
 
   it("falls back to bin for an unknown type", () => {
     expect(receiptFileExtension("application/octet-stream")).toBe("bin");
+  });
+});
+
+describe("receipt status", () => {
+  it("labels every status", () => {
+    expect(receiptStatusLabel("pending")).toBe("Pending approval");
+    expect(receiptStatusLabel("approved")).toBe("Approved");
+    expect(receiptStatusLabel("rejected")).toBe("Rejected");
+  });
+
+  it("uses the app badge tones", () => {
+    expect(receiptStatusTone("pending")).toBe("warn");
+    expect(receiptStatusTone("approved")).toBe("ok");
+    expect(receiptStatusTone("rejected")).toBe("bad");
+  });
+
+  it("only a pending receipt can still be decided", () => {
+    expect(canDecideReceipt("pending")).toBe(true);
+    expect(canDecideReceipt("approved")).toBe(false);
+    expect(canDecideReceipt("rejected")).toBe(false);
+  });
+});
+
+describe("canApproveReceipts", () => {
+  it("needs the chat:edit permission", () => {
+    expect(canApproveReceipts(DEFAULT_ROLE_PERMISSIONS.owner)).toBe(true);
+    expect(canApproveReceipts(DEFAULT_ROLE_PERMISSIONS.ca)).toBe(true);
+    expect(canApproveReceipts(DEFAULT_ROLE_PERMISSIONS.staff)).toBe(false);
+  });
+
+  it("is safe without permissions", () => {
+    expect(canApproveReceipts(null)).toBe(false);
+    expect(canApproveReceipts(undefined)).toBe(false);
+  });
+});
+
+describe("pendingBadgeLabel", () => {
+  it("shows the number of receipts waiting", () => {
+    expect(pendingBadgeLabel(3)).toBe("3");
+  });
+
+  it("shows nothing when there is nothing to approve", () => {
+    expect(pendingBadgeLabel(0)).toBe("");
+  });
+});
+
+describe("chat message preview", () => {
+  it("shows the author and the text", () => {
+    expect(chatMessagePreview({ author: "ANITA", body: "Baki stock?" })).toBe("ANITA: Baki stock?");
+  });
+
+  it("keeps it on one line", () => {
+    expect(chatMessagePreview({ author: "ANITA", body: "one\ntwo" })).toBe("ANITA: one two");
+  });
+
+  it("says when there is no text", () => {
+    expect(chatMessagePreview({ author: "ANITA", body: "" })).toBe("ANITA sent a receipt");
+  });
+});
+
+describe("chat time", () => {
+  it("shows the clock time", () => {
+    const at = new Date(2026, 0, 2, 9, 42);
+    expect(formatChatTime(at.toISOString())).toBe("09:42");
+  });
+
+  it("labels today and yesterday", () => {
+    const now = new Date(2026, 0, 2, 12, 0);
+    expect(formatChatDayLabel(new Date(2026, 0, 2, 9, 0).toISOString(), now)).toBe("Today");
+    expect(formatChatDayLabel(new Date(2026, 0, 1, 9, 0).toISOString(), now)).toBe("Yesterday");
+  });
+
+  it("shows the date for older days", () => {
+    const now = new Date(2026, 0, 20, 12, 0);
+    expect(formatChatDayLabel(new Date(2026, 0, 2, 9, 0).toISOString(), now)).toBe("2 Jan");
   });
 });

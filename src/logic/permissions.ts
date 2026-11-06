@@ -22,6 +22,7 @@ export const MODULES = [
   "investments",
   "reports",
   "activity",
+  "chat",
   "team",
   "settings",
 ] as const;
@@ -46,6 +47,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   investments: "Investments",
   reports: "Reports",
   activity: "Activity",
+  chat: "Team Chat",
   team: "Team",
   settings: "Settings",
 };
@@ -95,6 +97,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
     items: ["view"],
     customers: ["view"],
     stock: ["view"],
+    /** CA may also approve or reject a receipt in the Team Chat. */
+    chat: ["view", "create", "edit"],
   }),
   staff: build({
     billing: ["view", "create"],
@@ -105,6 +109,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
     customers: ["view", "create"],
     bills: ["view"],
     items: ["view"],
+    /** Staff may talk in the chat and submit a receipt, but not approve one. */
+    chat: ["view", "create"],
   }),
 };
 
