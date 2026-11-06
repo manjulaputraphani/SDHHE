@@ -345,5 +345,5 @@ Reconciliation with the interim work of 2026-10-30:
   text file (the shared file name helper is used by both). `scripts/local-direct-chat-check.mjs` — **16/16
   green**, including "a stranger cannot read the private chat" (403), "a made-up room is refused" (403) and
   "the activity log holds no message text".
-- [ ] **T-13.7 Tests + deploy** — unit tests for the new logic, Playwright for the conversation list and a
+- [x] **T-13.7 Tests + deploy** — unit tests for the new logic, Playwright for the conversation list and a
   direct chat, the migration applied to Neon, the worker deployed, the handover updated.
