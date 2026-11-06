@@ -111,6 +111,7 @@ import {
   completedTours,
 } from "../../src/db/notifications";
 import { chatAuditLine, isGroupRoom, isSharedRoom, membersOf } from "../../src/logic/chatPrivacy";
+import { keptAllNumbers, POLISH_SYSTEM_PROMPT, polishSkipReason } from "../../src/logic/aiPolish";
 import { appUsers, chatMessages } from "../../src/db/schema";
 import { socketTransport } from "./smtpSocket";
 
@@ -280,6 +281,21 @@ function routePermission(
 }
 
 const attempts = new Map<string, { count: number; resetAt: number }>();
+
+// AI polish (Phase 15): 30 suggestions per member per hour, per isolate.
+const polishHits = new Map<number, { count: number; resetAt: number }>();
+
+function polishAllowed(userId: number): boolean {
+  const now = Date.now();
+  const entry = polishHits.get(userId);
+  if (!entry || entry.resetAt <= now) {
+    polishHits.set(userId, { count: 1, resetAt: now + 60 * 60_000 });
+    return true;
+  }
+  if (entry.count >= 30) return false;
+  entry.count += 1;
+  return true;
+}
 
 // Writes in one isolate are serialized so the audit actor cannot leak between requests.
 let writeQueue: Promise<unknown> = Promise.resolve();
@@ -1711,6 +1727,54 @@ const handler = {
           entity: "chat",
         });
         return json({ ok: true, room, aiPolish: enabled });
+      }
+
+      // ---- AI polish (Phase 15, T-15.2): suggest a professional version ----
+      if (url.pathname === "/api/chat/polish" && request.method === "POST") {
+        const room = String(body.room ?? "");
+        const text = String(body.text ?? "");
+        if (!room || !text.trim()) {
+          return json({ error: "Which room and what text?" }, { status: 400 });
+        }
+        // A member may only ask for a suggestion in a room they are in.
+        if (!(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        if (!(await polishEnabled(db, room))) {
+          return json({ error: "AI polish is off in this room" }, { status: 403 });
+        }
+        // Tiny and emoji-only texts go out as they are — no AI call.
+        const skip = polishSkipReason(text);
+        if (skip) return json({ polished: text, skipped: skip });
+        if (!polishAllowed(session.uid)) {
+          return json({ error: "Too many polish requests — try again in a while" }, { status: 429 });
+        }
+        if (!env.OLLAMA_API_KEY) {
+          return json({ polished: null });
+        }
+        // One non-streaming round-trip; the caller waits at most 8 s (the
+        // plan's timeout). The losing request is discarded, never stored.
+        const config = { mode: "cloud" as const, apiKey: env.OLLAMA_API_KEY, model: "glm-5.3-flash:cloud" };
+        const reply = await Promise.race([
+          chat(
+            config,
+            [
+              { role: "system", content: POLISH_SYSTEM_PROMPT },
+              { role: "user", content: text },
+            ],
+            undefined,
+            globalThis.fetch,
+          ),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+        ]);
+        if (!reply || !reply.content.trim()) {
+          return json({ polished: null });
+        }
+        const polished = reply.content.trim();
+        // Amounts are the heart of a trade message — a rewrite that drops a
+        // number never goes out; the original stands.
+        const kept = keptAllNumbers(text, polished);
+        return json({ polished: kept ? polished : text, keptOriginal: !kept });
       }
 
       // ---- The notification system (Phase 15) ----
