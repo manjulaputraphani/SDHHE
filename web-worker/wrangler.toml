@@ -14,6 +14,8 @@ run_worker_first = true
 
 # Receipt files (Phase 12) — the paperwork never goes into Postgres.
 # Create the bucket once: `npx wrangler r2 bucket create sdhhe-receipts`
+# (The deploy on 2026-11-06 went out WITHOUT this binding, because R2 is not
+#  enabled on the account yet. Re-run `wrangler deploy` once R2 is on.)
 [[r2_buckets]]
 binding = "RECEIPTS"
 bucket_name = "sdhhe-receipts"
@@ -25,4 +27,4 @@ class_name = "ChatRoom"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["ChatRoom"]
+new_sqlite_classes = ["ChatRoom"]
