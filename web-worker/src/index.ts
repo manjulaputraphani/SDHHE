@@ -70,6 +70,8 @@ import {
   type MailSender,
 } from "./chatMail";
 import { pushNtfy, sendMail } from "./mailer";
+import { chatAuditLine, isSharedRoom, membersOf } from "../../src/logic/chatPrivacy";
+import { chatMessages } from "../../src/db/schema";
 import { socketTransport } from "./smtpSocket";
 
 /** The Durable Object that holds the Team Chat room (Phase 12). */
@@ -380,7 +382,42 @@ async function chatRoomMember(db: Db, room: string, userId: number): Promise<boo
     await ensureGroupConversation(db, userId);
     return true;
   }
+  // A private chat must look like a private chat — anything else is refused
+  // before the database is even asked.
+  if (!membersOf(room)) return false;
   return isMember(db, room, userId);
+}
+
+/**
+ * Note a private chat in the activity log — WITHOUT what was written in it.
+ *
+ * The owner can see that a direct chat happened (who with, when); the text
+ * of a private chat never reaches the log.
+ */
+async function logFirstDirectMessage(
+  db: Db,
+  room: string,
+  session: Session,
+  message: { id: number },
+): Promise<void> {
+  if (isSharedRoom(room)) return;
+  const [row] = await db
+    .select({ total: sql<number>`count(*)::int`.mapWith(Number) })
+    .from(chatMessages)
+    .where(sql`${chatMessages.room} = ${room}`);
+  if ((row?.total ?? 0) !== 1) return; // only the first message of the chat
+  await logActivity(db, {
+    event: "chat.direct",
+    summary: chatAuditLine({
+      room,
+      author: session.name,
+      authorId: session.uid,
+      messageCount: 1,
+      at: new Date().toISOString(),
+    }),
+    entity: "chat",
+    entityId: message.id,
+  });
 }
 
 /** Push a frame into a chat room — the Durable Object broadcasts it. */
@@ -1211,6 +1248,7 @@ export default {
               body: input.body,
             }),
           );
+          await logFirstDirectMessage(db, room, session, message);
           await broadcastToChat(env, { type: "message", message }, room);
           await markRead(db, room, session.uid, message.id);
           return json({ message });

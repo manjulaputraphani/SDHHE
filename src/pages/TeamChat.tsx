@@ -42,6 +42,7 @@ import {
   receiptStatusTone,
 } from "../logic/chat";
 import { formatRupees } from "../logic/units";
+import { exportFileName } from "../logic/chatPrivacy";
 
 type StoredToken = { token: string; expiresAt: number };
 
@@ -214,7 +215,7 @@ export default function TeamChat() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `chat-${room.replace(/[^a-z0-9-]/gi, "-")}.txt`;
+    link.download = exportFileName(room);
     link.click();
     URL.revokeObjectURL(url);
   }

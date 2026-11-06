@@ -31,6 +31,7 @@ import {
   receiptStatusTone,
 } from "../../../src/logic/chat";
 import { formatRupees } from "../../../src/logic/units";
+import { exportFileName } from "../../../src/logic/chatPrivacy";
 
 type Props = { user: User | null };
 
@@ -327,7 +328,7 @@ export default function TeamChat({ user }: Props) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `chat-${room.replace(/[^a-z0-9-]/gi, "-")}.txt`;
+    link.download = exportFileName(room);
     link.click();
     URL.revokeObjectURL(url);
   }

@@ -332,10 +332,18 @@ Reconciliation with the interim work of 2026-10-30:
   (2026-11-06: `src/lib/chatClient.ts` grew the room-scoped calls (conversations, members, start, read, export
   text) and `src/pages/TeamChat.tsx` the same conversation list, room switcher, New chat and Export as the web
   screen. The desktop test covers the list and the switch to a private chat.
-- [ ] **T-13.6 Privacy + export** — a direct chat is private (only its two members read it); the activity log
+- [x] **T-13.6 Privacy + export** — a direct chat is private (only its two members read it); the activity log
   records that a direct chat happened (who, when, how many messages) but never the text; every member can
   export their own conversation history as a text file.
   Acceptance: the owner cannot read a direct chat, the activity log has no message text, the export has
   every message of the conversation.
+  (2026-11-06: `src/logic/chatPrivacy.ts` (the pure rules: `isSharedRoom`, `membersOf`, `canReadRoom`,
+  `canStartDirectChat`, `chatAuditLine`, `exportFileName`) + 10 unit tests. The Worker refuses a room name
+  that is not a chat room at all (403) and every private-chat route still asks the database. The **activity log
+  notes that a private chat happened** — "B PHANI KUMAR had a private chat (1 message(s) with member #4)" —
+  but **never the text**; the message text is not in the log. Both screens can export their conversation as a
+  text file (the shared file name helper is used by both). `scripts/local-direct-chat-check.mjs` — **16/16
+  green**, including "a stranger cannot read the private chat" (403), "a made-up room is refused" (403) and
+  "the activity log holds no message text".
 - [ ] **T-13.7 Tests + deploy** — unit tests for the new logic, Playwright for the conversation list and a
   direct chat, the migration applied to Neon, the worker deployed, the handover updated.

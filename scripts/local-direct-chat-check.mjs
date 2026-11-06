@@ -79,6 +79,10 @@ try {
   }
 
   if (room) {
+    // Start from a clean room (the check owns this conversation).
+    await sql.query("delete from chat_messages where room = $1", [room]);
+    await sql.query("delete from activity_log where event = 'chat.direct'");
+
     // 4. A message in the private room.
     const sent = await fetch(`${BASE}/api/chat/messages`, {
       method: "POST",
@@ -120,6 +124,23 @@ try {
       body: JSON.stringify({ kind: "text", body: "let me in", room }),
     });
     check("a stranger cannot write into the private chat", refusedSend.status === 403, `status ${refusedSend.status}`);
+
+    // 7b. A room that is not a chat room is refused outright.
+    const crafted = await fetch(`${BASE}/api/chat/messages?room=secrets`, {
+      headers: { cookie: ownerCookie },
+    });
+    check("a made-up room is refused", crafted.status === 403, `status ${crafted.status}`);
+
+    // 7c. The activity log notes that a private chat happened — but never the text.
+    const audit = await sql.query(
+      "select summary from activity_log where event = 'chat.direct' order by id desc limit 1",
+    );
+    check("the private chat is noted in the activity log", audit.length > 0, audit[0]?.summary ?? "");
+    check(
+      "the activity log holds no message text",
+      !(audit[0]?.summary ?? "").includes("private hello"),
+      audit[0]?.summary ?? "",
+    );
 
     // 8. The unread count of the other member.
     await sql.query(
@@ -202,6 +223,7 @@ try {
   }
 } finally {
   await sql.query("delete from chat_messages where body = 'private hello'");
+  await sql.query("delete from activity_log where event = 'chat.direct'");
   await sql.query("delete from chat_conversation_members");
   await sql.query("delete from chat_conversations");
   console.log("cleanup: test rows removed");
