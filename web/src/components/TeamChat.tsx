@@ -716,7 +716,7 @@ export default function TeamChat({ user }: Props) {
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
             />
             <input
-              className="input input-icon h-9 text-sm"
+              className="input input-icon h-9"
               placeholder="Search chats"
               aria-label="Search chats"
               value={listQuery}
@@ -840,7 +840,7 @@ export default function TeamChat({ user }: Props) {
                   }}
                 >
                   <input
-                    className="input h-8 min-w-0 flex-1 py-1 text-sm"
+                    className="input h-8 min-w-0 flex-1 py-1"
                     aria-label="Rename chat"
                     value={newName}
                     autoFocus
@@ -985,7 +985,7 @@ export default function TeamChat({ user }: Props) {
             <div className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2">
               <IconSearch size={14} className="shrink-0 text-muted" />
               <input
-                className="input h-8 flex-1 text-sm"
+                className="input h-8 flex-1"
                 placeholder="Search in this chat…"
                 aria-label="Search in this chat"
                 value={roomQuery}
@@ -1224,7 +1224,7 @@ export default function TeamChat({ user }: Props) {
             onSubmit={send}
             className="relative z-10 border-t border-line bg-surface px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
           >
-            <div className="flex items-end gap-1 rounded-full border border-line bg-surface-2 py-1 pl-1.5 pr-1 transition-colors focus-within:border-primary">
+            <div className="flex w-full items-end gap-2 rounded-[20px] border border-line bg-surface-2 px-2 py-2 transition-colors focus-within:border-primary">
               <button
                 type="button"
                 aria-label="Attach receipt"
@@ -1259,7 +1259,7 @@ export default function TeamChat({ user }: Props) {
               </details>
               <textarea
                 ref={composerRef}
-                className="chat-composer flex-1 px-1 py-2 text-sm"
+                className="chat-composer flex-1 px-3.5 py-2.5 text-sm"
                 rows={1}
                 placeholder="Message…"
                 aria-label="Message"

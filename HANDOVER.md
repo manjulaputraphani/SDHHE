@@ -64,6 +64,12 @@ Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 r
   T-13.7 tests + deploy. **433 unit tests, tsc clean (app/web/worker), Playwright 7/7.**
 - **Phase 12 — Team Chat** (committed, deployed): T-12.0…T-12.8 (tables, shared logic, R2 receipts,
   the Durable Object room, the worker API, the web screen, Gmail SMTP + ntfy, the desktop screen + Playwright).
+- **Composer fix (this session)**: web Team Chat message composer — replaced the `rounded-full` pill with a
+  fixed `rounded-[20px]` rounded rectangle, added `overflow-y: auto` + `max-height: 150px` so the textarea
+  auto-grows to ~6 lines then scrolls internally, normal `px-3.5 py-2.5` padding, `flex w-full items-end`
+  row ([attach][emoji][textarea][send]) with icons/send aligned to the bottom and never overlapping text.
+  Message list keeps `min-h-0 flex-1` so it shrinks as the composer grows. Enter sends, Shift+Enter new line,
+  send disabled on empty/whitespace. typecheck + build clean.
 
 ## Next tasks
 0. **Access service token for the desktop app** (owner creates it in Zero Trust → Access → Service Auth).
