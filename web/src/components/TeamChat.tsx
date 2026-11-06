@@ -39,6 +39,7 @@ export default function TeamChat({ user }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [receipts, setReceipts] = useState<ChatReceipt[]>([]);
   const [presence, setPresence] = useState<ChatUser[]>([]);
+  const [token, setToken] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -76,16 +77,41 @@ export default function TeamChat({ user }: Props) {
   }, [load]);
 
   // The live room: a chat token (the session exchanged for one) opens the socket.
+  // The token runs out with the sign-on (an hour of inactivity), so it is
+  // refreshed every half hour and the socket is opened again with the new one.
   useEffect(() => {
+    let stopped = false;
+
+    async function refresh() {
+      try {
+        const { token: fresh } = await api.chatToken();
+        if (!stopped) setToken(fresh);
+      } catch (err) {
+        if (!stopped) setError(err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30 * 60_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    const chatToken = token;
     let socket: WebSocket | null = null;
     let closed = false;
 
     async function open() {
       try {
-        const { token } = await api.chatToken();
         if (closed) return;
         const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-        socket = new WebSocket(`${scheme}://${window.location.host}/api/chat/ws?token=${encodeURIComponent(token)}`);
+        socket = new WebSocket(
+          `${scheme}://${window.location.host}/api/chat/ws?token=${encodeURIComponent(chatToken)}`,
+        );
         socket.onopen = () => setConnected(true);
         socket.onclose = () => {
           // A socket that was closed because the screen went away must not
@@ -139,7 +165,7 @@ export default function TeamChat({ user }: Props) {
       closed = true;
       socket?.close();
     };
-  }, [scrollToBottom]);
+  }, [token, scrollToBottom]);
 
   async function send(event: React.FormEvent) {
     event.preventDefault();

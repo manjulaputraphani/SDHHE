@@ -17,6 +17,7 @@ import { allowed } from "../../../src/logic/permissions";
 import { verifyChatToken } from "../../../src/logic/chatToken";
 import {
   encodeFrame,
+  isTokenExpired,
   presenceFrame,
   uniqueUsers,
   type ChatFrame,
@@ -89,7 +90,7 @@ export class ChatRoom extends DurableObject<Env> {
       return null;
     }
 
-    return { id: payload.uid, name: payload.name, role: payload.role };
+    return { id: payload.uid, name: payload.name, role: payload.role, exp: payload.exp };
   }
 
   /** Everybody who is in the room right now (one entry per member). */
@@ -106,6 +107,16 @@ export class ChatRoom extends DurableObject<Env> {
   private broadcast(frame: ChatFrame): void {
     const text = encodeFrame(frame);
     for (const socket of this.ctx.getWebSockets()) {
+      // The chat may not outlive the sign-on: an expired token closes the socket.
+      const attachment = socket.deserializeAttachment() as ChatUser | null;
+      if (isTokenExpired(attachment?.exp)) {
+        try {
+          socket.close(1000, "sign-on expired");
+        } catch {
+          // The socket was already gone.
+        }
+        continue;
+      }
       try {
         socket.send(text);
       } catch (err) {

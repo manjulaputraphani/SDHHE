@@ -11,6 +11,14 @@ import type { Role } from "./permissions";
 
 export const CHAT_TOKEN_TTL_SECONDS = 12 * 60 * 60;
 
+/**
+ * The token the **web app** gets.
+ *
+ * The web sign-on ends after an hour of inactivity, so its chat token must
+ * end with it — otherwise the chat would keep working after the logout.
+ */
+export const CHAT_SESSION_TOKEN_TTL_SECONDS = 60 * 60;
+
 export type ChatTokenPayload = {
   uid: number;
   name: string;
@@ -20,8 +28,8 @@ export type ChatTokenPayload = {
 };
 
 /** The expiry a fresh token gets (seconds since the epoch). */
-export function chatTokenExpiry(now: number = Date.now()): number {
-  return Math.floor(now / 1000) + CHAT_TOKEN_TTL_SECONDS;
+export function chatTokenExpiry(now: number = Date.now(), ttl: number = CHAT_TOKEN_TTL_SECONDS): number {
+  return Math.floor(now / 1000) + ttl;
 }
 
 function sign(data: string, secret: string): string {

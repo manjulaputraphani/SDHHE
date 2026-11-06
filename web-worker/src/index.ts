@@ -39,7 +39,7 @@ import {
 } from "./receipts";
 import { chatRoomStub } from "./chat/do";
 import type { ChatFrame } from "./chat/protocol";
-import { chatTokenExpiry, signChatToken, verifyChatToken } from "../../src/logic/chatToken";
+import { chatTokenExpiry, signChatToken, verifyChatToken, CHAT_SESSION_TOKEN_TTL_SECONDS } from "../../src/logic/chatToken";
 import {
   createReceipt,
   decideReceipt,
@@ -997,7 +997,7 @@ export default {
         if (!allowed(permissions, "chat", "view")) {
           return json({ error: "Not allowed: chat view" }, { status: 403 });
         }
-        const exp = chatTokenExpiry();
+        const exp = chatTokenExpiry(Date.now(), CHAT_SESSION_TOKEN_TTL_SECONDS);
         const token = signChatToken(
           { uid: actor.uid, name: actor.name, role: actor.role, exp },
           env.SESSION_SECRET as string,

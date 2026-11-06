@@ -4,6 +4,7 @@ import {
   errorFrame,
   isChatFrame,
   isChatUser,
+  isTokenExpired,
   parseFrame,
   presenceFrame,
   uniqueUsers,
@@ -71,5 +72,17 @@ describe("errorFrame", () => {
 describe("uniqueUsers", () => {
   it("keeps one entry per member", () => {
     expect(uniqueUsers([anita, raju, anita])).toEqual([anita, raju]);
+  });
+});
+
+describe("isTokenExpired", () => {
+  it("knows when the sign-on has run out", () => {
+    const now = 1_700_000_000_000;
+    expect(isTokenExpired(Math.floor(now / 1000) - 10, now)).toBe(true);
+    expect(isTokenExpired(Math.floor(now / 1000) + 600, now)).toBe(false);
+  });
+
+  it("keeps a socket without an expiry", () => {
+    expect(isTokenExpired(undefined)).toBe(false);
   });
 });

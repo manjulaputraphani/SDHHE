@@ -11,6 +11,8 @@ export type ChatUser = {
   id: number;
   name: string;
   role: string;
+  /** When the chat token of this member runs out (seconds since the epoch). */
+  exp?: number;
 };
 
 export type ChatFrame =
@@ -79,4 +81,16 @@ export function uniqueUsers(users: ChatUser[]): ChatUser[] {
   const seen = new Map<number, ChatUser>();
   for (const user of users) seen.set(user.id, user);
   return Array.from(seen.values());
+}
+
+/**
+ * Has the sign-on of this member run out?
+ *
+ * The chat must not outlive the login: a socket whose token has expired is
+ * closed, so an idle tab stops receiving messages when the member is signed
+ * out after an hour.
+ */
+export function isTokenExpired(exp: number | undefined, now: number = Date.now()): boolean {
+  if (typeof exp !== "number") return false;
+  return exp * 1000 <= now;
 }

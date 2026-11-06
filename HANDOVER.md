@@ -5,10 +5,14 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat + receipt approval) is code-complete AND deployed** — T-12.0 … T-12.8 done and committed.
-Live worker version `d006ac10-ae5d-4d13-a901-edb691e8e6ae` (2026-11-06) — the chat, the live room and the
+Live worker version `5b0b7b0d-2bea-4c7a-af29-5737e58eccc0` (2026-11-06) — the chat, the live room and the
 approvals are live at https://sdhhe-api.blvphani.workers.dev/team-chat.
 **The live build has NO R2 binding** (R2 is not enabled on the account) → attaching a receipt file answers
 503 "Receipt storage is not configured"; everything else works.
+**Sign-on rule**: the web signs out after an hour of inactivity (sliding window) — and the chat now
+follows it: the web chat token lives 1 h (refreshed every 30 min), an expired token is refused at the
+door and an open socket is closed when its token runs out. The desktop token lives 12 h (the desktop
+session has no timeout — it locks on request; see "Next tasks").
 Web LIVE: https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/`.
 Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
 Migrations applied to Neon: `0001`…`0006_team_chat.sql` (chat tables exist, 0 rows).
@@ -27,6 +31,12 @@ Migrations applied to Neon: `0001`…`0006_team_chat.sql` (chat tables exist, 0 
 - **T-12.1 tables** (committed `0dcdc27`) — `chat_messages`, `receipt_requests` in Neon.
 - **T-12.0 plan** (committed `d8b5a17`) — Phase 12 in `docs/BUILD_PLAN.md`, `docs/chat-in-app-preview.html`, decisions.
 - **Prompts** (committed `20db07e`) — `prompts/TEAM_CHAT_ALL.md` (spec), `prompts/SESSION_ALL.md`.
+
+## Next tasks
+1. **Owner question**: should the **desktop** app also sign out after an hour of inactivity? Today it only
+   locks when "Lock now" is pressed (the web signs out on its own). The desktop chat token lives 12 h
+   because of that.
+2. The Roasting screen is still missing in the desktop app (only the web has it).
 
 ## Owner steps that are still open
 1. **Enable R2** (dashboard) — `npx wrangler r2 bucket list` still says "Please enable R2 through the Cloudflare Dashboard" (code 10042). Then `cd web-worker && npx wrangler r2 bucket create sdhhe-receipts` and `npx wrangler deploy` again (the R2 binding is already in `web-worker/wrangler.toml`).

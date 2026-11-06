@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CHAT_SESSION_TOKEN_TTL_SECONDS,
   CHAT_TOKEN_TTL_SECONDS,
   chatTokenExpiry,
   signChatToken,
@@ -51,10 +52,18 @@ describe("signChatToken", () => {
 });
 
 describe("chatTokenExpiry", () => {
-  it("is twelve hours away", () => {
+  it("is twelve hours away for the desktop app", () => {
     expect(CHAT_TOKEN_TTL_SECONDS).toBe(12 * 60 * 60);
     const now = 1_700_000_000_000;
     expect(chatTokenExpiry(now)).toBe(Math.floor(now / 1000) + CHAT_TOKEN_TTL_SECONDS);
+  });
+
+  it("is one hour for the web app, so the chat ends with the sign-on", () => {
+    expect(CHAT_SESSION_TOKEN_TTL_SECONDS).toBe(60 * 60);
+    const now = 1_700_000_000_000;
+    expect(chatTokenExpiry(now, CHAT_SESSION_TOKEN_TTL_SECONDS)).toBe(
+      Math.floor(now / 1000) + 3600,
+    );
   });
 });
 
