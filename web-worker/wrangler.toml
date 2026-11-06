@@ -11,3 +11,9 @@ binding = "ASSETS"
 directory = "../web/dist"
 not_found_handling = "single-page-application"
 run_worker_first = true
+
+# Receipt files (Phase 12) — the paperwork never goes into Postgres.
+# Create the bucket once: `npx wrangler r2 bucket create sdhhe-receipts`
+[[r2_buckets]]
+binding = "RECEIPTS"
+bucket_name = "sdhhe-receipts"

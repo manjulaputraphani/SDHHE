@@ -32,6 +32,12 @@ import { getCostingMethod, setCostingMethod } from "../../src/db/costing";
 import { finYearOptions, finYearReport, dealProfits, batchLedger } from "../../src/db/reports";
 import { getRoleMatrix, loadPermissionsForRole, saveRolePermissions } from "../../src/db/permissions";
 import {
+  decodeReceiptKey,
+  readReceipt,
+  uploadReceipt,
+  type R2BucketLike,
+} from "./receipts";
+import {
   DEFAULT_ROLE_PERMISSIONS,
   MODULES,
   isModule,
@@ -49,6 +55,8 @@ export interface Env {
   RESEND_API_KEY?: string;
   OLLAMA_API_KEY?: string;
   MAIL_FROM?: string;
+  /** Receipt files (Phase 12) — R2 bucket `sdhhe-receipts`. */
+  RECEIPTS?: R2BucketLike;
   ASSETS?: { fetch: typeof fetch };
 }
 
@@ -127,6 +135,13 @@ function routePermission(
   if (pathname.startsWith("/api/settings/notifications")) return { module: "settings", action: read ? "view" : "edit" };
   if (pathname === "/api/shop") return read ? null : { module: "settings", action: "edit" };
   if (pathname === "/api/stats" || pathname.startsWith("/api/stats/")) return { module: "dashboard", action: "view" };
+
+  // ---- Team Chat (Phase 12) ----
+  if (pathname === "/api/chat/auth") return null; // the caller proves who they are
+  if (pathname === "/api/chat/messages") return { module: "chat", action: read ? "view" : "create" };
+  if (pathname === "/api/chat/receipts") return { module: "chat", action: read ? "view" : "create" };
+  if (/^\/api\/chat\/receipts\/[A-Za-z0-9_-]+$/.test(pathname)) return { module: "chat", action: "view" };
+  if (/^\/api\/chat\/receipts\/\d+\/decision$/.test(pathname)) return { module: "chat", action: "edit" };
 
   return null;
 }
@@ -751,6 +766,56 @@ export default {
         const id = Number(ledgerMatch[1]);
         if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid item id" }, { status: 400 });
         return json({ ledger: await batchLedger(db, id) });
+      }
+
+      // ---- Team Chat (Phase 12): receipt files ----
+      // These two live ABOVE the generic `body` reader below: a multipart upload
+      // must not be read as JSON first.
+      if (url.pathname === "/api/chat/receipts" && request.method === "POST") {
+        const bucket = env.RECEIPTS;
+        if (!bucket) {
+          return json({ error: "Receipt storage is not configured" }, { status: 503 });
+        }
+        const form = await request.formData().catch(() => null);
+        const entry = form?.get("file");
+        if (!entry || typeof entry === "string") {
+          return json({ error: "Attach the receipt file" }, { status: 400 });
+        }
+        const file = entry as File;
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const stored = await uploadReceipt(bucket, {
+            name: file.name,
+            type: file.type,
+            bytes,
+          });
+          return json({ file: stored });
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+        }
+      }
+
+      const receiptFileMatch = url.pathname.match(/^\/api\/chat\/receipts\/([A-Za-z0-9_-]+)$/);
+      if (receiptFileMatch && request.method === "GET") {
+        const bucket = env.RECEIPTS;
+        if (!bucket) {
+          return json({ error: "Receipt storage is not configured" }, { status: 503 });
+        }
+        let key: string;
+        try {
+          key = decodeReceiptKey(receiptFileMatch[1]!);
+        } catch {
+          return json({ error: "Invalid receipt key" }, { status: 400 });
+        }
+        const object = await readReceipt(bucket, key);
+        if (!object) return json({ error: "Receipt not found" }, { status: 404 });
+        return new Response(object.body, {
+          headers: {
+            "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
+            "content-length": String(object.size),
+            "cache-control": "private, max-age=300",
+          },
+        });
       }
 
       // ---- W3b writes (session actor threaded per request) ----
