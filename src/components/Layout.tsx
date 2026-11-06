@@ -40,6 +40,10 @@ const GROUPS: { heading: string; links: Link[] }[] = [
     ],
   },
   {
+    heading: "Team",
+    links: [{ to: "/team-chat", label: "Team Chat", module: "chat" }],
+  },
+  {
     heading: "System",
     links: [{ to: "/settings", label: "Settings", module: "settings" }],
   },

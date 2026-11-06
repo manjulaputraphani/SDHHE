@@ -27,8 +27,10 @@ import {
 import {
   DEFAULT_EMAIL,
   DEFAULT_SHOP,
+  getChatWorkerUrl,
   getEmailSettings,
   getShopDetails,
+  saveChatWorkerUrl,
   saveEmailSettings,
   saveShopDetails,
   type EmailSettings,
@@ -80,6 +82,9 @@ export default function Settings({
   const [shopStatus, setShopStatus] = useState<string | null>(null);
   const [costingMethod, setCostingMethodState] = useState<CostingMethod>("WAC");
   const [costingStatus, setCostingStatus] = useState<string | null>(null);
+  /** The Cloudflare Worker that holds the Team Chat (Phase 12). */
+  const [chatWorkerUrl, setChatWorkerUrl] = useState("");
+  const [chatWorkerStatus, setChatWorkerStatus] = useState<string | null>(null);
   const [openingBalance, setOpeningBalanceState] = useState<OpeningBalance | null>(null);
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingDate, setOpeningDate] = useState("");
@@ -227,6 +232,9 @@ export default function Settings({
     getEmailSettings(db)
       .then(setEmailCfg)
       .catch(() => setEmailCfg(DEFAULT_EMAIL));
+    getChatWorkerUrl(db)
+      .then(setChatWorkerUrl)
+      .catch(() => setChatWorkerUrl(""));
     getSecret(SECRET_KEYS.SMTP_PASSWORD)
       .then((value) => setEmailKeySaved(Boolean(value)))
       .catch(() => setEmailKeySaved(false));
@@ -772,6 +780,45 @@ export default function Settings({
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn-primary" onClick={() => void saveEmailCfg()}>Save email settings</button>
           <button type="button" className="btn-ghost" onClick={() => void sendTestEmail()}>Send test email</button>
+        </div>
+      </section>
+
+      <section className="space-y-3 card p-4">
+        <div>
+          <h2 className="text-sm font-medium">Team Chat</h2>
+          <p className="text-sm text-muted">
+            The chat runs on the Cloudflare Worker (live messages, receipt files, approvals). Paste its
+            address here, then sign out and sign in again so the app can get a chat token.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-64 flex-1 space-y-1">
+            <label className="label text-xs" htmlFor="chat-worker-url">
+              Worker address
+            </label>
+            <input
+              id="chat-worker-url"
+              type="url"
+              className="input text-sm"
+              placeholder="https://sdhhe-api.blvphani.workers.dev"
+              value={chatWorkerUrl}
+              onChange={(e) => setChatWorkerUrl(e.currentTarget.value)}
+            />
+          </div>
+          <button
+            type="button"
+            className="btn-primary text-sm"
+            onClick={() =>
+              void saveChatWorkerUrl(db, chatWorkerUrl).then(() =>
+                setChatWorkerStatus(
+                  chatWorkerUrl.trim() ? "Worker address saved — sign in again to connect" : "Worker address cleared",
+                ),
+              )
+            }
+          >
+            Save
+          </button>
+          {chatWorkerStatus && <span className="text-sm text-muted">{chatWorkerStatus}</span>}
         </div>
       </section>
 

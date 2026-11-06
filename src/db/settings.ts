@@ -1,4 +1,4 @@
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Db } from "./client";
 import { settings } from "./schema";
 import type { OllamaMode } from "../ai/ollama";
@@ -170,4 +170,33 @@ export async function saveEmailSettings(db: Db, email: EmailSettings): Promise<v
       .values({ key, value })
       .onConflictDoUpdate({ target: settings.key, set: { value } });
   }
+}
+
+/**
+ * The Team Chat worker address (Phase 12).
+ *
+ * The chat lives in the Cloudflare Worker (live room, receipt files, mail),
+ * so the desktop app needs to know where it is. It is an address, not a
+ * secret — the bearer token stays in the Keychain.
+ */
+const CHAT_WORKER_KEY = "chat_worker_url";
+
+export async function getChatWorkerUrl(db: Db): Promise<string> {
+  const rows = await db
+    .select({ key: settings.key, value: settings.value })
+    .from(settings)
+    .where(eq(settings.key, CHAT_WORKER_KEY));
+  return rows[0]?.value ?? "";
+}
+
+export async function saveChatWorkerUrl(db: Db, url: string): Promise<void> {
+  const value = url.trim().replace(/\/+$/, "");
+  if (!value) {
+    await db.delete(settings).where(eq(settings.key, CHAT_WORKER_KEY));
+    return;
+  }
+  await db
+    .insert(settings)
+    .values({ key: CHAT_WORKER_KEY, value })
+    .onConflictDoUpdate({ target: settings.key, set: { value } });
 }

@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "db:push": "drizzle-kit push",
     "test:db": "vitest run --reporter=dot --config vitest.db.config.ts src/db",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:web": "playwright test --config playwright.web.config.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",

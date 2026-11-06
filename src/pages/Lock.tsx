@@ -4,9 +4,11 @@ import { countUsers, createUser, findUserByPhone, setUserActive, type AppUser } 
 import { logActivity, setAuditActor } from "../db/activity";
 import { loadPermissionsForRole, setCurrentPermissions } from "../db/permissions";
 import { DEFAULT_ROLE_PERMISSIONS } from "../logic/permissions";
-import { deleteSecret, SECRET_KEYS, verifyPassword } from "../lib/secrets";
+import { deleteSecret, saveSecret, SECRET_KEYS, verifyPassword } from "../lib/secrets";
 import { normalizePhone } from "../logic/auth";
 import { startSession } from "../db/sessions";
+import { getChatWorkerUrl } from "../db/settings";
+import { chatLogin } from "../lib/chatClient";
 import CoffeeIcon from "../components/CoffeeIcon";
 import ThemeToggle from "../components/ThemeToggle";
 
@@ -148,10 +150,26 @@ export default function Lock({ url, onLogin }: Props) {
       }
       setAttempts(0);
       await finishLogin(user);
+      // The chat lives on the Cloudflare Worker — get a token for it while the
+      // password is still at hand. The chat is optional: a failure here must
+      // never stop the sign-in.
+      void connectChat(check.phone, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Ask the chat worker for a token and keep it in the Keychain. */
+  async function connectChat(memberPhone: string, memberPassword: string) {
+    try {
+      const workerUrl = await getChatWorkerUrl(db);
+      if (!workerUrl) return;
+      const { token, expiresAt } = await chatLogin(workerUrl, memberPhone, memberPassword);
+      await saveSecret(SECRET_KEYS.CHAT_TOKEN, JSON.stringify({ token, expiresAt }));
+    } catch {
+      // The member can sign in again later; the chat screen explains itself.
     }
   }
 

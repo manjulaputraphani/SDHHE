@@ -55,7 +55,8 @@ export default function TeamChat({ user }: Props) {
   const canApprove = canApproveReceipts(user?.permissions);
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    // jsdom has no scrollIntoView — the guard keeps the tests quiet.
+    bottomRef.current?.scrollIntoView?.({ block: "end" });
   }, []);
 
   /** The history and the receipts waiting for a decision. */
@@ -148,8 +149,11 @@ export default function TeamChat({ user }: Props) {
     setError(null);
     setNotice(null);
     try {
-      await api.sendChatMessage({ kind: "text", body: text });
+      // The message is shown right away (the socket would send it again).
+      const { message } = await api.sendChatMessage({ kind: "text", body: text });
+      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       setDraft("");
+      scrollToBottom();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -173,7 +177,7 @@ export default function TeamChat({ user }: Props) {
     setError(null);
     try {
       const stored = await uploadChatReceipt(file);
-      await api.sendChatMessage({
+      const { message, receipt } = await api.sendChatMessage({
         kind: "receipt",
         body: title.trim(),
         receipt: {
@@ -183,6 +187,10 @@ export default function TeamChat({ user }: Props) {
           note: note.trim() || undefined,
         },
       });
+      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+      if (receipt) {
+        setReceipts((prev) => [receipt, ...prev.filter((r) => r.id !== receipt.id)]);
+      }
       setFile(null);
       setTitle("");
       setAmount("");

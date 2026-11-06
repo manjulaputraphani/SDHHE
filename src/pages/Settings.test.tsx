@@ -35,6 +35,8 @@ vi.mock("../db/settings", () => ({
     bankBranch: "",
   })),
   saveShopDetails: vi.fn(async () => {}),
+  getChatWorkerUrl: vi.fn(async () => "https://sdhhe-api.blvphani.workers.dev"),
+  saveChatWorkerUrl: vi.fn(async () => {}),
 }));
 vi.mock("../lib/secrets", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/secrets")>();

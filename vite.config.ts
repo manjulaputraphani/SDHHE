@@ -36,6 +36,7 @@ export default defineConfig(() => ({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     // DB tests need a live database — run them with `npm run test:db`, never in the normal suite.
-    exclude: ["**/node_modules/**", "**/dist/**", "**/*.int.test.ts", "e2e/**"],
+    // The Playwright specs (desktop e2e/ and web e2e-web/) are not unit tests.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/*.int.test.ts", "e2e/**", "e2e-web/**"],
   },
 }));

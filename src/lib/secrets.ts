@@ -6,6 +6,8 @@ export const SECRET_KEYS = {
   PIN_HASH: "PIN_HASH",
   OLLAMA_API_KEY: "OLLAMA_API_KEY",
   SMTP_PASSWORD: "SMTP_PASSWORD",
+  /** The Team Chat bearer token (Phase 12) — fetched when the member signs in. */
+  CHAT_TOKEN: "CHAT_TOKEN",
 } as const;
 
 export type SecretKey = (typeof SECRET_KEYS)[keyof typeof SECRET_KEYS];
