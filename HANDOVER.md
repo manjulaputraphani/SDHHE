@@ -5,7 +5,7 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat) and Phase 13 (Direct chat) are code-complete AND deployed.**
-Live worker version `8fa63ad3-d5a8-4ce8-a377-e5e288ca857c` (2026-11-06 12:07) — web bundle `index-C3RLlt5k.js`.
+Live worker version `22af8463-5234-46c9-8d00-0faacbbe2de3` (2026-11-06 12:46) — web bundle `index-0zs2fwLa.js`.
 Live: https://sdhhe-api.blvphani.workers.dev/team-chat (shop room + private chats).
 **The live build has NO R2 binding** (R2 is not enabled on the account) → attaching a receipt file answers
 503 "Receipt storage is not configured"; everything else works.
@@ -15,6 +15,14 @@ Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
 Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 rows).
 
 ## Done
+- **Phase 15 — the in-app notification system** (committed, deployed `22af8463`): the 7 components (welcome
+  banner, onboarding checklist, announcement bar, toasts, "what's new" window, product tour, login alert) +
+  the sessions (30-minute idle logout, one device at a time, "sign out everybody", the login history, the
+  5-minute warning toast) + the public read counts in the chat. Migration `0009_notifications.sql` applied.
+  `src/db/notifications.ts` + the API in the worker + `web/src/components/notifications/*` +
+  `web/src/components/AnnouncementsAdmin.tsx`. Local checks: session **10/10**, notifications **18/18**;
+  Playwright (web) **17/17**; 445 unit tests. The product tour is **written from scratch — no new dependency**
+  (Driver.js/Shepherd.js need your OK).
 - **The sessions are fixed** (committed, deployed `8fa63ad3`): the chat screen's 30-minute token refresh was
   **sliding the one-hour idle window**, so the members sitting on the chat screen were never signed out — a
   background call now carries `X-Chat-Refresh: 1` and the Worker does not re-issue the cookie for it. The
