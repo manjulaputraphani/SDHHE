@@ -1,6 +1,6 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-06 by OpenCode
+Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
@@ -13,6 +13,7 @@ upload/download works. The Worker also sends the security headers (HSTS, CSP, no
 Web LIVE: https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/`.
 Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
 Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 rows).
+**Planning complete for Phase 14 — Chat groups**: Added T-14.0 to BUILD_PLAN.md and DECISIONS.md. Ready to implement T-14.1 Database.
 
 ## Done
 - **Chat Phase 1** (committed, deployed `eb23815a`): the rename is stored in ONE place
@@ -54,92 +55,6 @@ Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 r
   T-13.7 tests + deploy. **433 unit tests, tsc clean (app/web/worker), Playwright 7/7.**
 - **Phase 12 — Team Chat** (committed, deployed): T-12.0…T-12.8 (tables, shared logic, R2 receipts,
   the Durable Object room, the worker API, the web screen, Gmail SMTP + ntfy, the desktop screen + Playwright).
-- **CI** (green, run `42210397381`): the two flaky Settings tests are fixed (timeout 30 s + `waitFor` after the
-  click) and the workflow now typechecks the web app and the worker too.
-- The **sign-on rule**: the web signs out after an hour of inactivity and the chat follows it (the web chat
-  token lives 1 h, refreshed every 30 min; an expired token is refused at the door; an open socket is closed
-  when its token runs out). The desktop token lives 12 h (the desktop session has no timeout).
-
-## Fixed after the first direct-chat deploy
-`unreadCount()` used the aliases `c` / `cm` inside a hand-written SQL fragment, but Drizzle's query builder
-generates the FROM clause **without** them → Postgres refused it → `POST /api/chat/read` answered 500 (the
-unread badge still looked right, it comes from another query). Fixed with the qualified columns + a comment;
-the local check now asserts the **status** of the read calls. Deployed as `63e9d95f`.
-
-## GitHub Actions
-The `test` workflow (npm ci → typecheck → unit tests) is **green** on `main` (run `42210397381`, commit
-`7414b04`). Two flaky Settings tests were the cause of every failed run: "validates the new PIN format and
-match" hit Vitest's 5 s default (the Settings screen re-renders everything on every keystroke → 2.3–3.1 s
-locally, more on a loaded runner) and "owner sees members and can add one" asserted right after the click,
-before the async handler had run. Fixed: the assertions now wait (`waitFor`), and the timeout is 30 s
-(`testTimeout` in `vite.config.ts` + the describe block in `src/pages/Settings.test.tsx`). The workflow now also
-typechecks the **web app** and the **Cloudflare Worker** (they were never checked in CI).
-To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `scripts/gh-job-log.sh <job id>`.
-
-## Owner steps that are still open
-1. ~~Enable R2~~ ✅ **done** — the bucket `sdhhe-receipts` is created and the binding is live. Verify it in the
-   browser: Team Chat → Attach receipt → the photo appears in the room and in the approvals panel.
-2. ~~Zero Trust~~ ✅ **done 2026-11-06** — Cloudflare Access is LIVE on `sdhhe-api.blvphani.workers.dev`
-   (team `sdhhe.cloudflareaccess.com`, enabled from Worker → Settings → Domains & Routes → workers.dev).
-   Login methods: Cloudflare + **One-time PIN** (Cloudflare emails the code). Policy **Shop staff** (Emails,
-   24 h) is first on the app `sdhhe-api - Cloudflare Workers`; add staff in Access → Policies → Shop staff. Verified: `/`, `/api/health`, `/team-chat` → 302 to the Access login. A plain self-hosted
-   app with a "subdomain" did NOT work — workers.dev is not a zone; use the Worker toggle.
-   ⚠️ **Side effect**: everything that calls the Worker without a browser is now blocked by Access — the
-   desktop chat client (`src/lib/chatClient.ts`), the WebSocket, ntfy/cron callbacks and
-   `scripts/live-chat-check.mjs`. Fix = an Access **service token** (Service Auth policy) and send
-   `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers from the desktop app (secret in secure storage).
-3. **Set the mail secrets**: `cd web-worker && npx wrangler secret put SMTP_USER` · `SMTP_PASS` (a Gmail **App
-   Password** — only the owner can create it, and it must be typed into the terminal, never into the chat).
-   ✅ `NTFY_TOPIC` is already set (the push topic `sdhhe-team-683c7d880f68`).
-5. **Desktop**: Settings → Team Chat → paste `https://sdhhe-api.blvphani.workers.dev`, sign out, sign in again.
-6. **Role check**: Team → Roles & permissions → the new **Team Chat** module (staff view+create, CA
-   view+create+edit, owner all).
-5. Optional: the deployed `SESSION_SECRET` is NOT the one in `web-worker/.dev.vars`, so the local check scripts
-   cannot sign in to the live worker — copy the deployed value into `.dev.vars` if that is wanted.
-
-## Phase 2 — the chat redesign (DONE 2026-11-06, committed)
-Only `web/src/components/TeamChat.tsx` was rewritten (+ a few lines in `web/src/styles.css`, 9 new icons in
-`web/src/components/icons.tsx`, pure helpers in `src/logic/chatView.ts` + `chat.ts`). **No new dependency, no new colours.**
-- Layout fills the viewport: list 300px · centre flexible (the old `max-h-[52vh]` is gone) · approvals 340px and
-  collapsible (chevron; collapsed = 64px rail with the pending count). Mobile: list = screen, chat full-screen with
-  back arrow, approvals = tab (`mobileView`).
-- Chat list: search bar, avatar + presence dot, name, one-line `lastMessage` preview (new SQL subquery in
-  `listConversations` — no migration), list time (today "09:42" / "Yesterday" / "Tue, 3 Nov"), unread badge, bold
-  when unread, pinned chats first.
-- Header: avatar, name, status (typing/presence/members), right side: search-in-chat, members popup, ⋮ menu
-  (Rename → inline form, Export chat, Mute, Pin — backdrop/Escape closes).
-- Messages: 16px bubbles with tail on the grouped last, sender + avatar on incoming groups, **time on hover**,
-  date separators (Today / Yesterday / "Fri, 3 Nov"), skeletons while loading, friendly empty states.
-- Composer: one rounded bar — paperclip, emoji picker (8, no lib), auto-growing textarea (`field-sizing: content`),
-  filled circular send (grey when empty), **Enter sends / Shift+Enter newline**.
-- Kept: Phase 1 (rename single source, presence, read avatars, ticks), socket + reconnect, receipts/R2, Web Push
-  toggle, jump-to-bottom. **463 unit tests, tsc clean (app/web/worker), Playwright 19/19** (rename now in the ⋮
-  menu; new: list search, Enter-to-send). **Deployed 2026-11-06 as version `8a90b8ac-3d38-48e9-bfbc-b9609d1d9f2d`**
-  (web bundle `index-BeNmjmb0.js` + `index-DJHhlia2.css`, 100 % traffic). Behind Cloudflare Access, so plain
-  `curl` gets 302/401 — expected; verify in the browser at https://sdhhe-api.blvphani.workers.dev/team-chat.
-**Only `web/src/components/TeamChat.tsx` (+ a few lines in `web/src/styles.css`). No new dependency.**
-The user's spec (verbatim intent):
-- **Palette**: keep the existing tokens (they already match: warm cream `--c-bg`, white cards `--c-surface`,
-  coffee brown `--c-primary` #6f4e37 as the accent, soft beige `--c-surface-2` for incoming bubbles, brown
-  `--c-primary` for outgoing, dark mode charcoal `--c-bg` + caramel `--c-accent`). **Do not add new colours.**
-- **Typography**: Inter for the UI (already), the serif only on the page title (`page-title` class ✓).
-- **Layout**: the panels fill the viewport height (no empty space below): chat list **300px**, centre
-  flexible, approvals **340px and collapsible**. The room card is `flex flex-col` with the message list
-  `flex-1 overflow-y-auto` and a `max-h` (remove the current `max-h-[52vh]`).
-- **Chat list rows**: avatar + presence dot, name, one-line truncated last-message preview, time, unread
-  badge, **bold when unread**; a **search bar** at the top of the list.
-- **Chat header**: avatar/group icon, name, the status line (already done in Phase 1), and on the right
-  **search**, **members**, **⋮ menu** (Rename, Export chat, Mute, Pin chat).
-- **Messages**: rounded 16px bubbles with a tail on the grouped last bubble, sender name + avatar on incoming
-  group messages, grouping, **time on hover**, date separators ("Today", "Yesterday", "Mon, 3 Nov").
-- **Composer**: one rounded bar with a paperclip, an emoji button, an **auto-growing** textarea, a filled
-  **circular send button** (grey only when empty), **Enter to send / Shift+Enter for a new line**.
-- Soft shadows, 1px borders, 150–200 ms transitions, **skeleton loaders** while loading, friendly empty states.
-- **Responsive**: on mobile the list is the screen; tapping a chat opens it full-screen with a back arrow; the
-  approvals become a tab. (Use the existing `md:`/`lg:` breakpoints + a `mobileView` state.)
-**Keep**: the Phase 1 behaviour (rename single source, presence, read avatars, two ticks), the socket, the
-receipts, the Web Push toggle. Then: `cd web && npm run build` → `cd web-worker && npx wrangler deploy`,
-Playwright (`npm run test:e2e:web`) must stay green, and update this handover + BUILD_PLAN.
 
 ## Next tasks
 0. **Access service token for the desktop app** (owner creates it in Zero Trust → Access → Service Auth).
@@ -147,6 +62,7 @@ Playwright (`npm run test:e2e:web`) must stay green, and update this handover + 
    own). The owner has not answered yet.
 2. The Roasting screen is still missing in the desktop app (only the web has it).
 3. Audit the 16 stale unticked boxes in `docs/BUILD_PLAN.md` (most are done) + `T-6.3` Excel/PDF export.
+4. **T-14.1 Database (chat groups)**: Create chat_rooms and chat_room_members tables, add room_id to chat_messages, migrate existing messages to "All team" room.
 
 ## Commands
 - Tests: `npx vitest run --reporter=dot` (433) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
