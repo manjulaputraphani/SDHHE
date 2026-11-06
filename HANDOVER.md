@@ -5,10 +5,12 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat + receipt approval) is code-complete AND deployed** — T-12.0 … T-12.8 done and committed.
-Live worker version `5b0b7b0d-2bea-4c7a-af29-5737e58eccc0` (2026-11-06) — the chat, the live room and the
-approvals are live at https://sdhhe-api.blvphani.workers.dev/team-chat.
+Live worker version `a86fa809-a19f-4d77-8ab5-791d6864a045` (2026-11-06 10:46) — the chat, the live room and the
+approvals are live at https://sdhhe-api.blvphani.workers.dev/team-chat (web bundle `index-DlxGjY5K.js`).
 **The live build has NO R2 binding** (R2 is not enabled on the account) → attaching a receipt file answers
 503 "Receipt storage is not configured"; everything else works.
+**Remember**: `cd web && npm run build` before every deploy — the Worker uploads `web/dist`, so a change
+in the web app is only live after a rebuild (the 1-hour chat-token fix needed two deploys because of this).
 **Sign-on rule**: the web signs out after an hour of inactivity (sliding window) — and the chat now
 follows it: the web chat token lives 1 h (refreshed every 30 min), an expired token is refused at the
 door and an open socket is closed when its token runs out. The desktop token lives 12 h (the desktop
