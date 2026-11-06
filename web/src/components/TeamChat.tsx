@@ -31,10 +31,18 @@ import {
   receiptStatusTone,
 } from "../../../src/logic/chat";
 import { formatRupees } from "../../../src/logic/units";
-import { exportFileName } from "../../../src/logic/chatPrivacy";
+
 import { showToast } from "./notifications/toastStore";
 import PushToggle from "./notifications/PushToggle";
-import { groupMessages, initials, messageTick, readCount } from "../../../src/logic/chatView";
+import {
+  exportNameFor,
+  groupMessages,
+  initials,
+  isOnline,
+  messageTick,
+  presenceLabel,
+  readCount,
+} from "../../../src/logic/chatView";
 
 type Props = { user: User | null };
 
@@ -78,8 +86,7 @@ export default function TeamChat({ user }: Props) {
   /** The owner renames the group (Phase 14). */
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState("");
-  /** The name of the open room (set the moment it is renamed). */
-  const [customTitle, setCustomTitle] = useState<string | null>(null);
+
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
@@ -90,6 +97,8 @@ export default function TeamChat({ user }: Props) {
   /** The reader is scrolled up — show the jump-to-bottom button. */
   const [atBottom, setAtBottom] = useState(true);
   const [missed, setMissed] = useState(0);
+  /** Who of the team is online (the heartbeat, Phase 1). */
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const typingTimer = useRef<number | null>(null);
   const lastTypingSent = useRef(0);
   const atBottomRef = useRef(true);
@@ -137,7 +146,6 @@ export default function TeamChat({ user }: Props) {
   useEffect(() => {
     setMessages([]);
     setReceipts([]);
-    setCustomTitle(null);
     void load();
   }, [load]);
 
@@ -158,11 +166,22 @@ export default function TeamChat({ user }: Props) {
 
     void refresh();
     const timer = window.setInterval(() => void refresh(), 30 * 60_000);
+    // The presence heartbeat: every 30 seconds (Phase 1).
+    const beat = window.setInterval(() => {
+      setNowTick(Date.now());
+      void api.chatHeartbeat(room).catch(() => undefined);
+      const socket = socketRef.current;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "heartbeat" }));
+      }
+    }, 30_000);
+    void api.chatHeartbeat(room).catch(() => undefined);
     return () => {
       stopped = true;
       window.clearInterval(timer);
+      window.clearInterval(beat);
     };
-  }, []);
+  }, [room]);
 
   useEffect(() => {
     if (!token) return;
@@ -233,8 +252,9 @@ export default function TeamChat({ user }: Props) {
             );
           }
           if (frame.type === "rename") {
-            setCustomTitle(frame.title ?? null);
+            // Read the name from the list (the database), never a local copy.
             void loadConversations();
+            void load();
           }
           if (frame.type === "typing" && frame.name) {
             setTyping(frame.name);
@@ -291,7 +311,10 @@ export default function TeamChat({ user }: Props) {
     if (!title) return;
     try {
       await api.renameChatConversation(room, title);
-      setCustomTitle(title);
+      // The list is the single source of the name — no second copy.
+      setConversations((prev) =>
+        prev.map((entry) => (entry.room === room ? { ...entry, title } : entry)),
+      );
       await loadConversations();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -434,7 +457,7 @@ export default function TeamChat({ user }: Props) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = exportFileName(room);
+    link.download = exportNameFor(room, activeConversation?.title ?? null);
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -444,6 +467,17 @@ export default function TeamChat({ user }: Props) {
   const activeConversation = conversations.find((c) => c.room === room);
   // The people whose ticks count: the other member of a private chat, or
   // everybody else in the shop room.
+  /** Is the other member of a private chat online? */
+  const otherOnline = useMemo(() => {
+    if (activeConversation?.kind !== "direct") return false;
+    const member = members.find((entry) => entry.id === activeConversation.other?.id);
+    return isOnline(member?.lastSeenAt, nowTick);
+  }, [activeConversation, members, nowTick]);
+  /** How many of the team are online (a heartbeat in the last minute). */
+  const onlineCount = useMemo(
+    () => members.filter((member) => isOnline(member.lastSeenAt, nowTick)).length + 1,
+    [members, nowTick],
+  );
   const otherMemberIds = useMemo(() => {
     if (activeConversation?.kind === "direct") {
       return activeConversation.other ? [activeConversation.other.id] : [];
@@ -455,10 +489,9 @@ export default function TeamChat({ user }: Props) {
     [messages, user?.id],
   );
   const roomName =
-    customTitle ??
-    (activeConversation?.kind === "direct"
+    activeConversation?.kind === "direct"
       ? activeConversation.other?.name ?? room
-      : activeConversation?.title?.trim() || "Shop room");
+      : activeConversation?.title?.trim() || "Shop room";
   let lastDay = "";
 
   return (
@@ -513,7 +546,20 @@ export default function TeamChat({ user }: Props) {
                       : "text-muted hover:bg-surface-2"
                   }`}
                 >
-                  <span className="truncate">{name}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className={`size-1.5 shrink-0 rounded-full ${
+                        isOnline(
+                          members.find((entry) => entry.id === conversation.other?.id)?.lastSeenAt,
+                          nowTick,
+                        )
+                          ? "bg-secondary"
+                          : "bg-muted/40"
+                      }`}
+                    />
+                    <span className="truncate">{name}</span>
+                  </span>
                   {conversation.unread > 0 && (
                     <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] text-accent-ink">
                       {conversation.unread}
@@ -576,7 +622,35 @@ export default function TeamChat({ user }: Props) {
               </h2>
             )}
             {activeConversation?.kind === "direct" && (
-              <span className="badge badge-warn">Private</span>
+              <span className="text-[11px] text-muted">
+                {presenceLabel(
+                  members.find((entry) => entry.id === activeConversation.other?.id)?.lastSeenAt,
+                  new Date(nowTick),
+                )}
+              </span>
+            )}
+            {activeConversation?.kind === "group" && (
+              <details className="relative">
+                <summary className="cursor-pointer text-[11px] text-muted">
+                  {members.length + 1} members · {onlineCount} online
+                </summary>
+                <div className="absolute left-0 top-5 z-20 w-56 space-y-1 rounded-xl border border-line bg-surface p-2 shadow-lg">
+                  {members.map((member) => (
+                    <p key={member.id} className="flex items-center gap-2 text-xs text-ink">
+                      <span
+                        aria-hidden="true"
+                        className={`size-2 rounded-full ${
+                          isOnline(member.lastSeenAt, nowTick) ? "bg-secondary" : "bg-muted/50"
+                        }`}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{member.name}</span>
+                      <span className="text-[10px] text-muted">
+                        {isOnline(member.lastSeenAt, nowTick) ? "Online" : "Offline"}
+                      </span>
+                    </p>
+                  ))}
+                </div>
+              </details>
             )}
             {typing && (
               <span className="flex items-center gap-1 text-[11px] text-muted">
@@ -608,6 +682,21 @@ export default function TeamChat({ user }: Props) {
               const last = group.messages[group.messages.length - 1]!;
               const tick = group.mine ? messageTick(last, otherMemberIds) : null;
               const counts = readCount(last, otherMemberIds);
+              // Who read it and when (Phase 1).
+              const readers = (last.readBy ?? [])
+                .map((id) => {
+                  const member = members.find((entry) => entry.id === id);
+                  return {
+                    userId: id,
+                    name: member?.name ?? `#${id}`,
+                    initials: initials(member?.name ?? "?"),
+                    readAt: last.createdAt,
+                  };
+                })
+                .filter(() => true);
+              const pending = otherMemberIds
+                .filter((id) => !(last.readBy ?? []).includes(id))
+                .map((id) => members.find((entry) => entry.id === id)?.name ?? `#${id}`);
               return (
                 <div
                   key={group.key}
@@ -681,28 +770,74 @@ export default function TeamChat({ user }: Props) {
                         </div>
                       );
                     })}
-                    <span className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-muted">
+                    <span className="mt-0.5 flex items-center gap-1.5 px-1 text-[11px] text-muted">
                       {formatChatTime(last.createdAt)}
                       {tick && (
                         <span
                           className={tick === "read" ? "text-accent-ink" : "text-muted"}
                           title={
                             tick === "read"
-                              ? "Read"
+                              ? "Read by everybody"
                               : tick === "delivered"
-                                ? "Delivered"
+                                ? "Delivered to everybody"
                                 : "Sent"
                           }
                         >
-                          {tick === "read" ? "✓✓✓" : tick === "delivered" ? "✓✓" : "✓"}
+                          {tick === "sent" ? "✓" : "✓✓"}
                         </span>
                       )}
-                      {/* How many of the others have read it. */}
-                      {group.mine && counts.total > 1 && (
-                        <span title={`Read by ${counts.read} of ${counts.total}`}>
-                          Read by {counts.read}
-                        </span>
-                      )}
+                      {/* Who has read it — only on the newest message I sent. */}
+                      {group.mine &&
+                        (activeConversation?.kind === "direct" ? (
+                          <span title="Seen">
+                            {readers.length > 0
+                              ? `Seen ${formatChatTime(readers[0]!.readAt)}`
+                              : ""}
+                          </span>
+                        ) : (
+                          readers.length > 0 && (
+                            <details className="relative">
+                              <summary
+                                className="flex cursor-pointer items-center"
+                                aria-label={`Read by ${readers.length} of ${counts.total}`}
+                              >
+                                {readers.slice(0, 3).map((reader, index) => (
+                                  <span
+                                    key={reader.userId}
+                                    className={`grid size-4 place-items-center rounded-full border border-surface bg-surface-3 text-[8px] font-semibold text-muted ${
+                                      index > 0 ? "-ml-1.5" : ""
+                                    }`}
+                                  >
+                                    {reader.initials}
+                                  </span>
+                                ))}
+                                {readers.length > 3 && (
+                                  <span className="-ml-1.5 grid size-4 place-items-center rounded-full border border-surface bg-surface-3 text-[8px] font-semibold text-muted">
+                                    +{readers.length - 3}
+                                  </span>
+                                )}
+                              </summary>
+                              <div className="absolute right-0 top-5 z-20 w-48 space-y-0.5 rounded-lg border border-line bg-surface p-2 text-[11px] shadow-lg">
+                                <p className="font-medium text-ink">Read by</p>
+                                {readers.map((reader) => (
+                                  <p key={reader.userId} className="text-muted">
+                                    {reader.name} {formatChatTime(reader.readAt)}
+                                  </p>
+                                ))}
+                                {pending.length > 0 && (
+                                  <>
+                                    <p className="pt-1 font-medium text-ink">Delivered, not read</p>
+                                    {pending.map((name) => (
+                                      <p key={name} className="text-muted">
+                                        {name}
+                                      </p>
+                                    ))}
+                                  </>
+                                )}
+                              </div>
+                            </details>
+                          )
+                        ))}
                     </span>
                   </div>
                 </div>

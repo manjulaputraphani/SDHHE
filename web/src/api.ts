@@ -69,7 +69,7 @@ export type ChatConversation = {
 };
 
 /** A member of the shop (who may be chatted with). */
-export type ChatMember = { id: number; name: string; role: string };
+export type ChatMember = { id: number; name: string; role: string; lastSeenAt?: string | null };
 
 // ---- The notification system (Phase 15) ----
 export type AnnouncementKind = "info" | "success" | "warning" | "critical";
@@ -568,6 +568,11 @@ export const api = {
   // ---- Direct chat (Phase 13) ----
   chatConversations: () => request<{ conversations: ChatConversation[] }>("/api/chat/conversations"),
   chatMembers: () => request<{ members: ChatMember[] }>("/api/chat/members"),
+  chatHeartbeat: (room: string) =>
+    request<{ ok: boolean; at: string }>("/api/chat/heartbeat", {
+      method: "POST",
+      body: JSON.stringify({ room }),
+    }),
   startChatConversation: (userId: number) =>
     request<{ conversation: ChatConversation }>("/api/chat/conversations", {
       method: "POST",

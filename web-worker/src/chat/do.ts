@@ -66,7 +66,7 @@ export class ChatRoom extends DurableObject<Env> {
     const server = pair[1];
 
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment(user);
+    server.serializeAttachment({ ...user, lastSeen: Date.now() });
 
     const presence = this.onlineUsers();
     server.send(encodeFrame({ type: "hello", user, presence }));
@@ -113,7 +113,16 @@ export class ChatRoom extends DurableObject<Env> {
     const text = encodeFrame(frame);
     for (const socket of this.ctx.getWebSockets()) {
       // The chat may not outlive the sign-on: an expired token closes the socket.
-      const attachment = socket.deserializeAttachment() as ChatUser | null;
+      const attachment = socket.deserializeAttachment() as ChatUser & { lastSeen?: number } | null;
+      // Offline after 60 s without a heartbeat.
+      if (attachment?.lastSeen && Date.now() - attachment.lastSeen > 60_000) {
+        try {
+          socket.close(1000, "offline");
+        } catch {
+          // already gone
+        }
+        continue;
+      }
       if (isTokenExpired(attachment?.exp)) {
         try {
           socket.close(1000, "sign-on expired");
@@ -130,7 +139,7 @@ export class ChatRoom extends DurableObject<Env> {
     }
   }
 
-  /** A member sent something (a ping, or "I am typing"). */
+  /** A member sent something (a ping, a heartbeat, or "I am typing"). */
   webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
     if (typeof message !== "string") return;
     if (message === "ping") {
@@ -139,6 +148,11 @@ export class ChatRoom extends DurableObject<Env> {
     }
     try {
       const frame = JSON.parse(message) as { type?: string; userId?: number; name?: string };
+      // A heartbeat keeps the member "online" (Phase 1).
+      if (frame.type === "heartbeat") {
+        socket.serializeAttachment({ ...(socket.deserializeAttachment() as ChatUser | null), lastSeen: Date.now() });
+        return;
+      }
       // "I am typing" is relayed to the other members of the room.
       if (frame.type === "typing" && typeof frame.userId === "number") {
         this.relay(socket, { type: "typing", userId: frame.userId, name: String(frame.name ?? "") });

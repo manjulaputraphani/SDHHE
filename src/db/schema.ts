@@ -205,6 +205,8 @@ export const appUsers = pgTable(
     lastSeenRelease: integer("last_seen_release"),
     /** When this member signed in the last time. */
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    /** The last sign of life (the chat heartbeat) — "last seen today at 16:20". */
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("app_users_role_valid", sql`${t.role} in ('owner','ca','staff')`)],

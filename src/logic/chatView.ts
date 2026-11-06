@@ -107,3 +107,33 @@ export function initials(name: string): string {
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
 }
+
+/** Is this member online? (a heartbeat in the last 60 seconds) */
+export function isOnline(lastSeenAt: string | null | undefined, now: number = Date.now()): boolean {
+  if (!lastSeenAt) return false;
+  const at = new Date(lastSeenAt).getTime();
+  return Number.isFinite(at) && now - at < 60_000;
+}
+
+/** "Online" or "Last seen today at 16:20" (Phase 1). */
+export function presenceLabel(
+  lastSeenAt: string | null | undefined,
+  now: Date = new Date(),
+): string {
+  if (isOnline(lastSeenAt, now.getTime())) return "Online";
+  if (!lastSeenAt) return "Offline";
+  const at = new Date(lastSeenAt);
+  const time = at.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  const startOf = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((startOf(now) - startOf(at)) / 86_400_000);
+  if (days <= 0) return `Last seen today at ${time}`;
+  if (days === 1) return `Last seen yesterday at ${time}`;
+  return `Last seen ${at.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} at ${time}`;
+}
+
+/** The file name of an exported chat (the group name wins). */
+export function exportNameFor(room: string, title: string | null | undefined): string {
+  const base = (title && title.trim()) || (room === "main" ? "shop room" : room);
+  const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `chat-${slug || room}.txt`;
+}

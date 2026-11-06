@@ -241,6 +241,7 @@ function routePermission(
   if (/^\/api\/chat\/receipts\/\d+\/decision$/.test(pathname)) return { module: "chat", action: "edit" };
   // Web Push (Phase 16): any member may subscribe their own device.
   if (pathname === "/api/push/subscribe") return { module: "chat", action: "view" };
+  if (pathname === "/api/chat/heartbeat") return { module: "chat", action: "view" };
   if (pathname === "/api/push/key") return null;
 
   // The notification system (Phase 15).
@@ -1374,8 +1375,13 @@ const handler = {
       }
 
       if (url.pathname === "/api/chat/members" && request.method === "GET") {
-        const members = (await listChatMembers(db)).filter((member) => member.id !== session.uid);
-        return json({ members });
+        const rows = await sqlQuery(
+          env,
+          `select id, name, role, last_seen_at::text as "lastSeenAt" from app_users
+           where active = true and id <> $1 order by name`,
+          [session.uid],
+        );
+        return json({ members: rows });
       }
 
       // ---- Team Chat (Phase 12): messages and approvals ----
@@ -1434,14 +1440,26 @@ const handler = {
         }
         const renamed = await renameConversation(db, room, title);
         if (!renamed) return json({ error: "Give the group a name" }, { status: 400 });
-        // Everybody in the room sees the new name at once.
+        // Everybody in the room sees the new name at once…
         await broadcastToChat(env, { type: "rename", room, title: renamed }, room);
+        // …and the rename is written into the conversation itself.
+        const system = await asActor(actor, () =>
+          insertMessage(db, {
+            room,
+            userId: session.uid,
+            author: session.name,
+            role: session.role,
+            kind: "system",
+            body: `${session.name} renamed the group to "${renamed}"`,
+          }),
+        );
+        await broadcastToChat(env, { type: "message", message: system }, room);
         await logActivity(db, {
           event: "chat.rename",
           summary: `Chat renamed to ${renamed}`,
           entity: "chat",
         });
-        return json({ ok: true, room, title: renamed });
+        return json({ ok: true, room, title: renamed, message: system });
       }
 
       // ---- The notification system (Phase 15) ----
@@ -1567,6 +1585,16 @@ const handler = {
         return json({
           logins: await listLoginHistory(db, session.uid, session.sid ?? null, 10),
         });
+      }
+
+      // ---- Presence (Phase 1) ----
+      if (url.pathname === "/api/chat/heartbeat" && request.method === "POST") {
+        const room = String(body.room ?? SHARED_ROOM);
+        if (!(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        await sqlQuery(env, "update app_users set last_seen_at = now() where id = $1", [session.uid]);
+        return json({ ok: true, at: new Date().toISOString() });
       }
 
       // ---- Web Push (Phase 16) ----
