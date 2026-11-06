@@ -424,6 +424,38 @@ Reconciliation with the interim work of 2026-10-30:
 - [x] **T-14.5 Tests + deploy** — unit tests for the state logic, a local end-to-end check (send → delivered →
   read → the sender sees the blue tick), the Playwright spec for the ticks, the worker deployed.
 
+## Phase 2 — the chat redesign (web, added 2026-11-06 on request)
+> Only `web/src/components/TeamChat.tsx` (+ a few lines in `web/src/styles.css`, new icons in
+> `web/src/components/icons.tsx`, pure helpers in `src/logic/chatView.ts` / `chat.ts`). No new dependency, no new colours.
+- [x] **P2.1 Pure view helpers + tests** — `chatDaySections` (date separators "Today"/"Yesterday"/"Fri, 3 Nov"),
+  `conversationName`, `filterConversations`, `filterMessages`, `formatChatListTimeRow` in `src/logic/chatView.ts`;
+  `formatChatListTime` + `conversationPreview` + weekday day labels in `src/logic/chat.ts`.
+  Tests in `src/logic/chatView.test.ts` (16 tests). Acceptance: `npx vitest run` green (463 unit tests).
+- [x] **P2.2 The list preview** — `listConversations` now also returns `lastMessage` (author/body/kind/createdAt)
+  via a SQL subquery — no migration. `ChatConversation.lastMessage?` in `web/src/api.ts` + `src/lib/chatClient.ts`.
+- [x] **P2.3 Layout** — the three panels fill the viewport height (`h-[calc(100dvh-…)]`, `min-h-0 flex-1`):
+  list **300px**, centre flexible (the old `max-h-[52vh]` is gone), approvals **340px and collapsible**
+  (chevron; collapsed shows a 64px rail with the pending count). Mobile: the list is the screen, a chat opens
+  full-screen with a back arrow, the approvals become a tab (`mobileView` state, `lg:` hidden).
+- [x] **P2.4 Chat list rows** — avatar (initials / group icon) + presence dot, name, truncated one-line
+  `lastMessage` preview, list time (today "09:42", else "Yesterday"/"Tue, 3 Nov"), unread badge, **bold when
+  unread**, a **search bar** on top, pinned chats first.
+- [x] **P2.5 Chat header** — avatar, name, status line (typing / presence / member count kept from Phase 1),
+  and on the right **search-in-chat**, **members** popup, **⋮ menu** (Rename → inline form, Export chat, Mute,
+  Pin chat — Escape/backdrop closes).
+- [x] **P2.6 Messages** — 16px-rounded bubbles with the tail on the grouped last bubble, sender name + avatar
+  on incoming groups, grouping (shared `groupMessages`), **time on hover** (`.chat-bubble .chat-time`),
+  **date separators** (`chatDaySections`), soft shadows / 1px borders / 150–200 ms transitions.
+- [x] **P2.7 Composer** — one rounded bar: paperclip (receipt), emoji picker (8 emoji, no library),
+  **auto-growing textarea** (`field-sizing: content`, max 160px), filled **circular send button**
+  (grey when empty), **Enter sends / Shift+Enter newline**.
+- [x] **P2.8 Loaders & empty states** — skeleton shimmer while the list/room load, friendly empty states
+  (with a search-aware message).
+- [x] **Kept**: Phase 1 behaviour (rename single source, presence, read avatars, two ticks), the socket + auto
+  reconnect, receipts + R2, the Web Push toggle, the jump-to-bottom button. Playwright **19/19 green**
+  (rename moved into the ⋮ menu; new tests: list search, Enter-to-send), 463 unit tests, tsc clean app/web/worker,
+  `cd web && npm run build` OK.
+
 ### Phase 14 — addendum: the owner renames the group (2026-11-06)
 - [x] **T-14.6 Rename the group (owner only)** — the admin (role **owner**) can give the shop room a name
   (`POST /api/chat/rename`, `chat_conversations.title`); a staff member gets **403**. The new name is pushed

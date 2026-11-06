@@ -492,3 +492,59 @@
 [data-theme="dark"] .nav-texture::before {
   opacity: 0.04;
 }
+
+/* ------------------------------------------------------------------
+   Team Chat redesign (Phase 2) — only tokens, no new colours.
+   ------------------------------------------------------------------ */
+
+/* The page title on the web uses the serif like the desktop (page-title). */
+.page-title {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* Skeleton loaders while the chat list / messages load. */
+@keyframes chat-shimmer {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+.skeleton {
+  border-radius: 12px;
+  background: var(--c-surface-3);
+  animation: chat-shimmer 1.1s ease-in-out infinite alternate;
+}
+
+/* A message bubble that shows its time on hover (Phase 2). */
+.chat-bubble {
+  position: relative;
+}
+.chat-bubble .chat-time {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.chat-bubble:hover .chat-time,
+.chat-bubble:focus-within .chat-time {
+  opacity: 1;
+}
+
+/* The auto-growing composer textarea — one rounded bar. */
+.chat-composer {
+  field-sizing: content;
+  min-height: 40px;
+  max-height: 160px;
+  resize: none;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--c-ink);
+  font: inherit;
+  line-height: 1.4;
+}
+.chat-composer::placeholder {
+  color: var(--c-muted);
+  opacity: 0.8;
+}

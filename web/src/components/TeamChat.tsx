@@ -1,15 +1,15 @@
 /**
- * Team Chat — the web screen (Phase 12 + 13).
+ * Team Chat — the web screen (Phase 12 + 13, redesigned in Phase 2).
  *
  * The room is a Cloudflare Durable Object: the history is loaded once over
  * REST and everything after that arrives over the WebSocket. Receipts are
  * attached to a message and wait for an approval (owner / CA).
  *
  * The left column holds the conversations: the shop room (everybody) and the
- * private chats, with the unread count of each.
+ * private chats, with a search bar, a preview and the unread count of each.
+ * The right column is the approvals panel (collapsible; a tab on mobile).
  *
- * Colours: only the tokens from src/App.css (the web app has the same
- * palette). The layout follows docs/chat-in-app-preview.html.
+ * Colours: only the tokens from styles.css — no new colours (Phase 2).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -25,7 +25,7 @@ import {
 } from "../api";
 import {
   canApproveReceipts,
-  formatChatDayLabel,
+  conversationPreview,
   formatChatTime,
   receiptStatusLabel,
   receiptStatusTone,
@@ -35,7 +35,12 @@ import { formatRupees } from "../../../src/logic/units";
 import { showToast } from "./notifications/toastStore";
 import PushToggle from "./notifications/PushToggle";
 import {
+  chatDaySections,
+  conversationName,
   exportNameFor,
+  filterConversations,
+  filterMessages,
+  formatChatListTimeRow,
   groupMessages,
   initials,
   isOnline,
@@ -43,6 +48,19 @@ import {
   presenceLabel,
   readCount,
 } from "../../../src/logic/chatView";
+import {
+  IconArrowLeft,
+  IconBellOff,
+  IconChevronDown,
+  IconDownload,
+  IconMoreVertical,
+  IconPaperclip,
+  IconPin,
+  IconSearch,
+  IconSend,
+  IconSmile,
+  IconUsers,
+} from "./icons";
 
 type Props = { user: User | null };
 
@@ -53,6 +71,9 @@ const BADGE_CLASS: Record<string, string> = {
 };
 
 const SHARED_ROOM = "main";
+
+/** A handful of emoji for the composer picker — no emoji library. */
+const EMOJI = ["☕", "🙏", "👍", "✅", "🧾", "📦", "💰", "😊"];
 
 /** The text of a conversation, for the export button. */
 export function conversationText(
@@ -67,6 +88,8 @@ export function conversationText(
   }
   return lines.join("\n");
 }
+
+type MobileView = "list" | "room" | "approvals";
 
 export default function TeamChat({ user }: Props) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -83,7 +106,7 @@ export default function TeamChat({ user }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [showReceiptForm, setShowReceiptForm] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
-  /** The owner renames the group (Phase 14). */
+  /** The owner renames the group (Phase 14) — from the ⋮ menu (Phase 2). */
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState("");
 
@@ -99,10 +122,32 @@ export default function TeamChat({ user }: Props) {
   const [missed, setMissed] = useState(0);
   /** Who of the team is online (the heartbeat, Phase 1). */
   const [nowTick, setNowTick] = useState(() => Date.now());
+  // ---- Phase 2: the redesigned screen state ----
+  /** The search bar above the chat list. */
+  const [listQuery, setListQuery] = useState("");
+  /** The search inside the open room (the magnifier in the header). */
+  const [showRoomSearch, setShowRoomSearch] = useState(false);
+  const [roomQuery, setRoomQuery] = useState("");
+  /** The ⋮ menu in the room header (Rename, Export, Mute, Pin). */
+  const [menuOpen, setMenuOpen] = useState(false);
+  /** The member list popup in the room header. */
+  const [showMembers, setShowMembers] = useState(false);
+  /** On mobile only one panel is the screen at a time. */
+  const [mobileView, setMobileView] = useState<MobileView>("list");
+  /** The approvals panel is collapsible on desktop (a tab on mobile). */
+  const [approvalsOpen, setApprovalsOpen] = useState(true);
+  /** Pinned / muted chats — a local preference of this browser only. */
+  const [pinned, setPinned] = useState<string[]>([]);
+  const [muted, setMuted] = useState<string[]>([]);
+  /** Skeleton loaders while the first load is on its way. */
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingRoom, setLoadingRoom] = useState(true);
+
   const typingTimer = useRef<number | null>(null);
   const lastTypingSent = useRef(0);
   const atBottomRef = useRef(true);
   const socketRef = useRef<WebSocket | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -121,6 +166,8 @@ export default function TeamChat({ user }: Props) {
       setMembers(people.members);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingList(false);
     }
   }, []);
 
@@ -140,12 +187,15 @@ export default function TeamChat({ user }: Props) {
       scrollToBottom();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingRoom(false);
     }
   }, [room, scrollToBottom]);
 
   useEffect(() => {
     setMessages([]);
     setReceipts([]);
+    setLoadingRoom(true);
     void load();
   }, [load]);
 
@@ -340,6 +390,7 @@ export default function TeamChat({ user }: Props) {
   /** Open a conversation and mark it as read. */
   async function openRoom(next: string) {
     setRoom(next);
+    setMobileView("room");
     setError(null);
     try {
       await api.markChatRead(next);
@@ -364,8 +415,8 @@ export default function TeamChat({ user }: Props) {
     }
   }
 
-  async function send(event: React.FormEvent) {
-    event.preventDefault();
+  /** Send the draft (the composer's Enter key and the send button both call this). */
+  async function submitDraft() {
     const text = draft.trim();
     if (!text || busy) return;
     setBusy(true);
@@ -383,6 +434,11 @@ export default function TeamChat({ user }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function send(event: React.FormEvent) {
+    event.preventDefault();
+    await submitDraft();
   }
 
   async function sendReceipt(event: React.FormEvent) {
@@ -450,6 +506,7 @@ export default function TeamChat({ user }: Props) {
 
   /** Save the conversation as a text file. */
   function exportConversation() {
+    setMenuOpen(false);
     const active = conversations.find((c) => c.room === room);
     const name = active?.kind === "direct" ? active.other?.name ?? room : "Shop room";
     const text = conversationText(room, name, messages);
@@ -462,17 +519,35 @@ export default function TeamChat({ user }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  function togglePin() {
+    setMenuOpen(false);
+    setPinned((prev) =>
+      prev.includes(room) ? prev.filter((r) => r !== room) : [...prev, room],
+    );
+    showToast(
+      pinned.includes(room) ? "Chat unpinned" : "Chat pinned to the top",
+      "info",
+      2000,
+    );
+  }
+
+  function toggleMute() {
+    setMenuOpen(false);
+    setMuted((prev) =>
+      prev.includes(room) ? prev.filter((r) => r !== room) : [...prev, room],
+    );
+    showToast(
+      muted.includes(room) ? "Notifications on for this chat" : "Chat muted",
+      "info",
+      2000,
+    );
+  }
+
   const pending = receipts.filter((r) => r.status === "pending");
   const receiptById = new Map(receipts.map((r) => [r.id, r]));
   const activeConversation = conversations.find((c) => c.room === room);
   // The people whose ticks count: the other member of a private chat, or
   // everybody else in the shop room.
-  /** Is the other member of a private chat online? */
-  const otherOnline = useMemo(() => {
-    if (activeConversation?.kind !== "direct") return false;
-    const member = members.find((entry) => entry.id === activeConversation.other?.id);
-    return isOnline(member?.lastSeenAt, nowTick);
-  }, [activeConversation, members, nowTick]);
   /** How many of the team are online (a heartbeat in the last minute). */
   const onlineCount = useMemo(
     () => members.filter((member) => isOnline(member.lastSeenAt, nowTick)).length + 1,
@@ -484,21 +559,35 @@ export default function TeamChat({ user }: Props) {
     }
     return members.map((member) => member.id);
   }, [activeConversation, members]);
-  const groups = useMemo(
-    () => groupMessages(messages, user?.id ?? null),
-    [messages, user?.id],
+  // ---- Phase 2: the list with its search, pinned chats first ----
+  const visibleConversations = useMemo(() => {
+    const pinnedFirst = [...conversations].sort((a, b) => {
+      const pa = pinned.includes(a.room) ? 0 : 1;
+      const pb = pinned.includes(b.room) ? 0 : 1;
+      return pa - pb;
+    });
+    return filterConversations(pinnedFirst, listQuery);
+  }, [conversations, pinned, listQuery]);
+  // ---- Phase 2: the room search filters the open conversation ----
+  const visibleMessages = useMemo(
+    () => (roomQuery.trim() ? filterMessages(messages, roomQuery) : messages),
+    [messages, roomQuery],
   );
-  const roomName =
-    activeConversation?.kind === "direct"
-      ? activeConversation.other?.name ?? room
-      : activeConversation?.title?.trim() || "Shop room";
-  let lastDay = "";
+  const sections = useMemo(
+    () => chatDaySections(visibleMessages, new Date(nowTick)),
+    [visibleMessages, nowTick],
+  );
+  const roomName = activeConversation
+    ? conversationName(activeConversation)
+    : room === SHARED_ROOM
+      ? "Shop room"
+      : room;
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <section className="relative flex h-[calc(100dvh-3rem)] flex-col md:h-[calc(100dvh-4rem)]">
+      <div className="flex flex-wrap items-end justify-between gap-3 pb-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Team Chat</h1>
+          <h1 className="page-title text-xl font-semibold tracking-tight md:text-2xl">Team Chat</h1>
           <p className="text-sm text-muted">
             Talk about the shop and send receipts for approval.
           </p>
@@ -520,360 +609,625 @@ export default function TeamChat({ user }: Props) {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
+      {/* Mobile: the list is the screen; a chat opens full-screen, the
+          approvals become a tab (Phase 2). On lg all three panels sit
+          side by side and this tab bar is hidden. */}
+      {mobileView !== "list" && (
+        <div className="mb-2 flex gap-2 lg:hidden">
+          <button
+            type="button"
+            className={`btn-mini ${mobileView === "room" ? "bg-surface-3 font-semibold" : ""}`}
+            onClick={() => setMobileView("room")}
+          >
+            Chat
+          </button>
+          <button
+            type="button"
+            className={`btn-mini ${mobileView === "approvals" ? "bg-surface-3 font-semibold" : ""}`}
+            onClick={() => setMobileView("approvals")}
+          >
+            Approvals{pending.length > 0 ? ` (${pending.length})` : ""}
+          </button>
+        </div>
+      )}
+
+      <div
+        className={`grid min-h-0 flex-1 gap-4 ${
+          approvalsOpen
+            ? "lg:grid-cols-[300px_minmax(0,1fr)_340px]"
+            : "lg:grid-cols-[300px_minmax(0,1fr)_64px]"
+        }`}
+      >
         {/* ---------------- conversations ---------------- */}
-        <aside className="card space-y-2 p-3">
+        <aside
+          className={`${
+            mobileView === "list" ? "flex" : "hidden"
+          } card min-h-0 flex-col space-y-2 p-3 lg:flex`}
+        >
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ink">Chats</h2>
             <button className="btn-mini" onClick={() => setShowNewChat(true)}>
               New chat
             </button>
           </div>
-          <div className="space-y-1">
-            {conversations.map((conversation) => {
-              const name =
-                conversation.kind === "direct"
-                  ? conversation.other?.name ?? conversation.room
-                  : conversation.title?.trim() || "Shop room";
-              const active = conversation.room === room;
-              return (
-                <button
-                  key={conversation.room}
-                  onClick={() => void openRoom(conversation.room)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm ${
-                    active
-                      ? "bg-surface-3 font-medium text-ink"
-                      : "text-muted hover:bg-surface-2"
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className={`size-1.5 shrink-0 rounded-full ${
-                        isOnline(
-                          members.find((entry) => entry.id === conversation.other?.id)?.lastSeenAt,
-                          nowTick,
-                        )
-                          ? "bg-secondary"
-                          : "bg-muted/40"
-                      }`}
-                    />
-                    <span className="truncate">{name}</span>
-                  </span>
-                  {conversation.unread > 0 && (
-                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] text-accent-ink">
-                      {conversation.unread}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          <div className="relative">
+            <IconSearch
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <input
+              className="input input-icon h-9 text-sm"
+              placeholder="Search chats"
+              aria-label="Search chats"
+              value={listQuery}
+              onChange={(event) => setListQuery(event.currentTarget.value)}
+            />
           </div>
-          {activeConversation?.kind === "direct" && (
-            <p className="px-1 text-[11px] text-muted">
-              A private chat — only you and {activeConversation.other?.name} can read it.
-            </p>
-          )}
-          <button className="btn-mini w-full justify-center" onClick={exportConversation}>
-            Export this chat
-          </button>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+            {loadingList &&
+              [0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center gap-2.5 px-2 py-2">
+                  <span className="skeleton size-10 shrink-0 rounded-full" />
+                  <span className="flex-1 space-y-1.5">
+                    <span className="skeleton block h-3 w-2/3" />
+                    <span className="skeleton block h-2.5 w-1/2" />
+                  </span>
+                </div>
+              ))}
+            {!loadingList && visibleConversations.length === 0 && (
+              <p className="px-1 py-4 text-center text-xs text-muted">
+                {listQuery.trim()
+                  ? "No chat matches that search."
+                  : "No chats yet — start one with New chat."}
+              </p>
+            )}
+            {!loadingList &&
+              visibleConversations.map((conversation) => {
+                const name = conversationName(conversation);
+                const active = conversation.room === room;
+                const direct = conversation.kind === "direct";
+                const online = isOnline(
+                  members.find((entry) => entry.id === conversation.other?.id)?.lastSeenAt,
+                  nowTick,
+                );
+                const preview = conversationPreview(
+                  conversation.lastMessage ?? null,
+                  conversation.kind === "group",
+                );
+                return (
+                  <button
+                    key={conversation.room}
+                    onClick={() => void openRoom(conversation.room)}
+                    className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors duration-150 ${
+                      active ? "bg-surface-3" : "hover:bg-surface-2"
+                    }`}
+                  >
+                    <span className="relative grid size-10 shrink-0 place-items-center rounded-full bg-surface-3 text-xs font-semibold text-muted">
+                      {direct ? initials(name) : <IconUsers size={16} />}
+                      {direct && (
+                        <span
+                          aria-hidden="true"
+                          className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-surface ${
+                            online ? "bg-secondary" : "bg-muted/40"
+                          }`}
+                        />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span
+                          className={`truncate text-sm ${
+                            conversation.unread > 0 ? "font-semibold text-ink" : "text-ink"
+                          }`}
+                        >
+                          {name}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-muted">
+                          {formatChatListTimeRow(conversation.lastMessageAt, new Date(nowTick))}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 flex items-center justify-between gap-2">
+                        <span
+                          className={`truncate text-xs ${
+                            conversation.unread > 0 ? "font-medium text-ink" : "text-muted"
+                          }`}
+                        >
+                          {preview || "No messages yet"}
+                        </span>
+                        {conversation.unread > 0 && (
+                          <span className="badge bg-accent-soft px-1.5 text-[10px] text-accent-ink">
+                            {conversation.unread}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
         </aside>
 
         {/* ---------------- the room ---------------- */}
-        <div className="relative">
-          <div className="card flex min-h-[420px] flex-col overflow-hidden">
-          <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
-            {renaming ? (
-              <form
-                className="flex items-center gap-1"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void saveName();
-                }}
-              >
-                <input
-                  className="input h-8 w-44 py-1 text-sm"
-                  value={newName}
-                  autoFocus
-                  onChange={(event) => setNewName(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setRenaming(false);
+        <div
+          className={`relative ${
+            mobileView === "room" ? "flex" : "hidden"
+          } min-h-0 flex-1 flex-col lg:flex`}
+        >
+          <div className="card flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="relative z-10 flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-2">
+            <button
+              type="button"
+              aria-label="Back to chats"
+              className="grid size-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink lg:hidden"
+              onClick={() => setMobileView("list")}
+            >
+              <IconArrowLeft size={17} />
+            </button>
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-3 text-xs font-semibold text-muted">
+              {activeConversation?.kind === "direct" ? (
+                initials(roomName)
+              ) : (
+                <IconUsers size={16} />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              {renaming ? (
+                <form
+                  className="flex w-full items-center gap-1"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveName();
                   }}
-                />
-                <button type="submit" className="btn-mini">
-                  Save
-                </button>
-              </form>
-            ) : (
-              <h2 className="text-sm font-semibold text-ink">
-                {roomName}
-                {user?.role === "owner" && activeConversation?.kind === "group" && (
+                >
+                  <input
+                    className="input h-8 min-w-0 flex-1 py-1 text-sm"
+                    aria-label="Rename chat"
+                    value={newName}
+                    autoFocus
+                    onChange={(event) => setNewName(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setRenaming(false);
+                    }}
+                  />
+                  <button type="submit" className="btn-mini">
+                    Save
+                  </button>
+                </form>
+              ) : (
+                <h2 className="truncate text-sm font-semibold text-ink">{roomName}</h2>
+              )}
+              <p className="truncate text-[11px] text-muted">
+                {typing
+                  ? `${typing} is typing…`
+                  : activeConversation?.kind === "direct"
+                    ? `${presenceLabel(
+                        members.find((entry) => entry.id === activeConversation.other?.id)
+                          ?.lastSeenAt,
+                        new Date(nowTick),
+                      )} · Private — only you and ${activeConversation.other?.name ?? "them"} can read it`
+                    : `${members.length + 1} members · ${onlineCount} online`}
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="Search messages"
+              title="Search in this chat"
+              className={`grid size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-3 ${
+                showRoomSearch ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
+              }`}
+              onClick={() => {
+                setShowRoomSearch((open) => !open);
+                if (showRoomSearch) setRoomQuery("");
+              }}
+            >
+              <IconSearch size={16} />
+            </button>
+            {activeConversation?.kind !== "direct" && (
+              <button
+                type="button"
+                aria-label="Members"
+                title="Members"
+                className={`hidden size-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-3 sm:grid ${
+                  showMembers ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
+                }`}
+                onClick={() => setShowMembers((open) => !open)}
+              >
+                <IconUsers size={16} />
+              </button>
+            )}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                aria-label="Chat menu"
+                title="Chat menu"
+                className={`grid size-8 place-items-center rounded-full transition-colors hover:bg-surface-3 ${
+                  menuOpen ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
+                }`}
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                <IconMoreVertical size={16} />
+              </button>
+              {menuOpen && (
+                <>
                   <button
                     type="button"
-                    className="ml-2 text-[11px] font-normal text-muted underline"
-                    onClick={() => {
-                      setNewName(roomName);
-                      setRenaming(true);
-                    }}
+                    aria-label="Close menu"
+                    className="fixed inset-0 z-10 cursor-default"
+                    onClick={() => setMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-10 z-20 w-48 space-y-0.5 rounded-xl border border-line bg-surface p-1.5 shadow-lg">
+                  {user?.role === "owner" && activeConversation?.kind === "group" && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-2"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setNewName(roomName);
+                        setRenaming(true);
+                      }}
+                    >
+                      Rename
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-2"
+                    onClick={exportConversation}
                   >
-                    Rename
+                    <IconDownload size={13} /> Export chat
                   </button>
-                )}
-              </h2>
-            )}
-            {activeConversation?.kind === "direct" && (
-              <span className="text-[11px] text-muted">
-                {presenceLabel(
-                  members.find((entry) => entry.id === activeConversation.other?.id)?.lastSeenAt,
-                  new Date(nowTick),
-                )}
-              </span>
-            )}
-            {activeConversation?.kind === "group" && (
-              <details className="relative">
-                <summary className="cursor-pointer text-[11px] text-muted">
-                  {members.length + 1} members · {onlineCount} online
-                </summary>
-                <div className="absolute left-0 top-5 z-20 w-56 space-y-1 rounded-xl border border-line bg-surface p-2 shadow-lg">
-                  {members.map((member) => (
-                    <p key={member.id} className="flex items-center gap-2 text-xs text-ink">
-                      <span
-                        aria-hidden="true"
-                        className={`size-2 rounded-full ${
-                          isOnline(member.lastSeenAt, nowTick) ? "bg-secondary" : "bg-muted/50"
-                        }`}
-                      />
-                      <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                      <span className="text-[10px] text-muted">
-                        {isOnline(member.lastSeenAt, nowTick) ? "Online" : "Offline"}
-                      </span>
-                    </p>
-                  ))}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-2"
+                    onClick={toggleMute}
+                  >
+                    <IconBellOff size={13} /> {muted.includes(room) ? "Unmute" : "Mute"}
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-2"
+                    onClick={togglePin}
+                  >
+                    <IconPin size={13} /> {pinned.includes(room) ? "Unpin chat" : "Pin chat"}
+                  </button>
+                  </div>
+                </>
+              )}
+            </div>
+            {showMembers && activeConversation?.kind !== "direct" && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close members"
+                  className="absolute inset-0 z-10 cursor-default"
+                  onClick={() => setShowMembers(false)}
+                />
+                <div className="absolute left-3 right-3 top-14 z-20 max-h-64 space-y-1 overflow-y-auto rounded-xl border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-3 sm:w-56">
+                {members.map((member) => (
+                  <p key={member.id} className="flex items-center gap-2 text-xs text-ink">
+                    <span
+                      aria-hidden="true"
+                      className={`size-2 rounded-full ${
+                        isOnline(member.lastSeenAt, nowTick) ? "bg-secondary" : "bg-muted/50"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{member.name}</span>
+                    <span className="text-[10px] text-muted">
+                      {isOnline(member.lastSeenAt, nowTick) ? "Online" : "Offline"}
+                    </span>
+                  </p>
+                ))}
                 </div>
-              </details>
-            )}
-            {typing && (
-              <span className="flex items-center gap-1 text-[11px] text-muted">
-                <span className="flex gap-0.5" aria-hidden="true">
-                  <span className="size-1 animate-pulse rounded-full bg-muted" />
-                  <span className="size-1 animate-pulse rounded-full bg-muted [animation-delay:150ms]" />
-                  <span className="size-1 animate-pulse rounded-full bg-muted [animation-delay:300ms]" />
-                </span>
-                {typing} is typing…
-              </span>
+              </>
             )}
           </div>
+          {showRoomSearch && (
+            <div className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2">
+              <IconSearch size={14} className="shrink-0 text-muted" />
+              <input
+                className="input h-8 flex-1 text-sm"
+                placeholder="Search in this chat…"
+                aria-label="Search in this chat"
+                value={roomQuery}
+                autoFocus
+                onChange={(event) => setRoomQuery(event.currentTarget.value)}
+              />
+              {roomQuery.trim() && (
+                <span className="shrink-0 text-[11px] text-muted">
+                  {visibleMessages.length} match{visibleMessages.length === 1 ? "" : "es"}
+                </span>
+              )}
+              <button
+                type="button"
+                className="btn-mini shrink-0"
+                onClick={() => {
+                  setRoomQuery("");
+                  setShowRoomSearch(false);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          )}
           <div
             ref={listRef}
-            className="max-h-[52vh] flex-1 space-y-1 overflow-y-auto bg-bg p-4"
+            className="relative z-0 min-h-0 flex-1 space-y-1 overflow-y-auto bg-bg p-4"
             onScroll={onScroll}
           >
-            {groups.length === 0 && (
+            {loadingRoom &&
+              [0, 1, 2, 3].map((i) => (
+                <div key={i} className={`flex ${i % 2 ? "justify-end" : "justify-start"}`}>
+                  <span className="skeleton block h-9 w-2/3 max-w-[70%] rounded-2xl" />
+                </div>
+              ))}
+            {!loadingRoom && sections.length === 0 && (
               <div className="grid h-full place-items-center text-center">
                 <div>
-                  <p className="text-sm font-medium text-ink">No messages yet</p>
+                  <p className="text-sm font-medium text-ink">
+                    {roomQuery.trim() ? "No messages match that search" : "No messages yet"}
+                  </p>
                   <p className="mt-1 text-xs text-muted">
-                    Say hello to the team — everyone in this chat sees it right away.
+                    {roomQuery.trim()
+                      ? "Try a different word."
+                      : "Say hello to the team — everyone in this chat sees it right away."}
                   </p>
                 </div>
               </div>
             )}
-            {groups.map((group) => {
-              const last = group.messages[group.messages.length - 1]!;
-              const tick = group.mine ? messageTick(last, otherMemberIds) : null;
-              const counts = readCount(last, otherMemberIds);
-              // Who read it and when (Phase 1).
-              const readers = (last.readBy ?? [])
-                .map((id) => {
-                  const member = members.find((entry) => entry.id === id);
-                  return {
-                    userId: id,
-                    name: member?.name ?? `#${id}`,
-                    initials: initials(member?.name ?? "?"),
-                    readAt: last.createdAt,
-                  };
-                })
-                .filter(() => true);
-              const pending = otherMemberIds
-                .filter((id) => !(last.readBy ?? []).includes(id))
-                .map((id) => members.find((entry) => entry.id === id)?.name ?? `#${id}`);
-              return (
-                <div
-                  key={group.key}
-                  className={`flex items-end gap-2 ${group.mine ? "justify-end" : "justify-start"}`}
-                >
-                  {!group.mine && (
-                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-3 text-[10px] font-semibold text-muted">
-                      {initials(group.author)}
+            {!loadingRoom &&
+              sections.map((section) => (
+                <div key={section.key}>
+                  <p className="my-2 text-center">
+                    <span className="rounded-full border border-line bg-surface-2 px-3 py-0.5 text-[11px] text-muted">
+                      {section.label}
                     </span>
-                  )}
-                  <div className={`flex max-w-[78%] flex-col ${group.mine ? "items-end" : "items-start"}`}>
-                    {!group.mine && (
-                      <span className="mb-0.5 px-1 text-[11px] font-medium text-muted">
-                        {group.author}
-                      </span>
-                    )}
-                    {group.messages.map((message, index) => {
-                      const receipt = message.receiptId ? receiptById.get(message.receiptId) : undefined;
-                      const isFirst = index === 0;
-                      const isLast = index === group.messages.length - 1;
-                      if (message.kind === "system") {
-                        return (
-                          <p
-                            key={message.id}
-                            className="my-1 rounded-full border border-line bg-surface-2 px-3 py-0.5 text-center text-[11px] text-muted"
-                          >
-                            {message.body}
-                          </p>
-                        );
-                      }
-                      if (message.kind === "receipt" && receipt) {
-                        return (
-                          <div key={message.id} className="card space-y-2 p-3">
-                            <p className="text-sm font-semibold text-ink">{receipt.title}</p>
-                            <p className="text-lg font-semibold text-ink">
-                              {formatRupees(receipt.amountPaise)}
-                            </p>
-                            {receipt.note && <p className="text-xs text-muted">{receipt.note}</p>}
-                            {receipt.mime.startsWith("image/") ? (
-                              <img
-                                src={chatReceiptUrl(receipt.r2Key)}
-                                alt={receipt.filename}
-                                className="max-h-56 w-full rounded-xl border border-line object-cover"
-                              />
-                            ) : (
-                              <a
-                                href={chatReceiptUrl(receipt.r2Key)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block truncate rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs text-ink"
-                              >
-                                {receipt.filename}
-                              </a>
-                            )}
-                            <span className={`badge ${BADGE_CLASS[receiptStatusTone(receipt.status)] ?? ""}`}>
-                              {receiptStatusLabel(receipt.status)}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div
-                          key={message.id}
-                          className={`rounded-2xl px-3.5 py-2 text-sm ${
-                            group.mine
-                              ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
-                              : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
-                          } ${isFirst ? "" : "mt-0.5"}`}
-                        >
-                          {message.body}
-                        </div>
-                      );
-                    })}
-                    <span className="mt-0.5 flex items-center gap-1.5 px-1 text-[11px] text-muted">
-                      {formatChatTime(last.createdAt)}
-                      {tick && (
-                        <span
-                          className={tick === "read" ? "text-accent-ink" : "text-muted"}
-                          title={
-                            tick === "read"
-                              ? "Read by everybody"
-                              : tick === "delivered"
-                                ? "Delivered to everybody"
-                                : "Sent"
-                          }
-                        >
-                          {tick === "sent" ? "✓" : "✓✓"}
-                        </span>
-                      )}
-                      {/* Who has read it — only on the newest message I sent. */}
-                      {group.mine &&
-                        (activeConversation?.kind === "direct" ? (
-                          <span title="Seen">
-                            {readers.length > 0
-                              ? `Seen ${formatChatTime(readers[0]!.readAt)}`
-                              : ""}
+                  </p>
+                  {groupMessages(section.messages, user?.id ?? null).map((group) => {
+                    const last = group.messages[group.messages.length - 1]!;
+                    const tick = group.mine ? messageTick(last, otherMemberIds) : null;
+                    const counts = readCount(last, otherMemberIds);
+                    // Who read it and when (Phase 1).
+                    const readers = (last.readBy ?? [])
+                      .map((id) => {
+                        const member = members.find((entry) => entry.id === id);
+                        return {
+                          userId: id,
+                          name: member?.name ?? `#${id}`,
+                          initials: initials(member?.name ?? "?"),
+                          readAt: last.createdAt,
+                        };
+                      })
+                      .filter(() => true);
+                    const pendingReaders = otherMemberIds
+                      .filter((id) => !(last.readBy ?? []).includes(id))
+                      .map((id) => members.find((entry) => entry.id === id)?.name ?? `#${id}`);
+                    return (
+                      <div
+                        key={group.key}
+                        className={`flex items-end gap-2 ${group.mine ? "justify-end" : "justify-start"}`}
+                      >
+                        {!group.mine && (
+                          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-3 text-[10px] font-semibold text-muted">
+                            {initials(group.author)}
                           </span>
-                        ) : (
-                          readers.length > 0 && (
-                            <details className="relative">
-                              <summary
-                                className="flex cursor-pointer items-center"
-                                aria-label={`Read by ${readers.length} of ${counts.total}`}
-                              >
-                                {readers.slice(0, 3).map((reader, index) => (
-                                  <span
-                                    key={reader.userId}
-                                    className={`grid size-4 place-items-center rounded-full border border-surface bg-surface-3 text-[8px] font-semibold text-muted ${
-                                      index > 0 ? "-ml-1.5" : ""
-                                    }`}
-                                  >
-                                    {reader.initials}
-                                  </span>
-                                ))}
-                                {readers.length > 3 && (
-                                  <span className="-ml-1.5 grid size-4 place-items-center rounded-full border border-surface bg-surface-3 text-[8px] font-semibold text-muted">
-                                    +{readers.length - 3}
-                                  </span>
-                                )}
-                              </summary>
-                              <div className="absolute right-0 top-5 z-20 w-48 space-y-0.5 rounded-lg border border-line bg-surface p-2 text-[11px] shadow-lg">
-                                <p className="font-medium text-ink">Read by</p>
-                                {readers.map((reader) => (
-                                  <p key={reader.userId} className="text-muted">
-                                    {reader.name} {formatChatTime(reader.readAt)}
+                        )}
+                        <div className={`flex max-w-[78%] flex-col ${group.mine ? "items-end" : "items-start"}`}>
+                          {!group.mine && (
+                            <span className="mb-0.5 px-1 text-[11px] font-medium text-muted">
+                              {group.author}
+                            </span>
+                          )}
+                          {group.messages.map((message, index) => {
+                            const receipt = message.receiptId ? receiptById.get(message.receiptId) : undefined;
+                            const isFirst = index === 0;
+                            const isLast = index === group.messages.length - 1;
+                            if (message.kind === "system") {
+                              return (
+                                <p
+                                  key={message.id}
+                                  className="my-1 rounded-full border border-line bg-surface-2 px-3 py-0.5 text-center text-[11px] text-muted"
+                                >
+                                  {message.body}
+                                </p>
+                              );
+                            }
+                            if (message.kind === "receipt" && receipt) {
+                              return (
+                                <div key={message.id} className="card space-y-2 p-3">
+                                  <p className="text-sm font-semibold text-ink">{receipt.title}</p>
+                                  <p className="text-lg font-semibold text-ink">
+                                    {formatRupees(receipt.amountPaise)}
                                   </p>
-                                ))}
-                                {pending.length > 0 && (
-                                  <>
-                                    <p className="pt-1 font-medium text-ink">Delivered, not read</p>
-                                    {pending.map((name) => (
-                                      <p key={name} className="text-muted">
-                                        {name}
-                                      </p>
-                                    ))}
-                                  </>
-                                )}
+                                  {receipt.note && <p className="text-xs text-muted">{receipt.note}</p>}
+                                  {receipt.mime.startsWith("image/") ? (
+                                    <img
+                                      src={chatReceiptUrl(receipt.r2Key)}
+                                      alt={receipt.filename}
+                                      className="max-h-56 w-full rounded-xl border border-line object-cover"
+                                    />
+                                  ) : (
+                                    <a
+                                      href={chatReceiptUrl(receipt.r2Key)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block truncate rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs text-ink"
+                                    >
+                                      {receipt.filename}
+                                    </a>
+                                  )}
+                                  <span className={`badge ${BADGE_CLASS[receiptStatusTone(receipt.status)] ?? ""}`}>
+                                    {receiptStatusLabel(receipt.status)}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div
+                                key={message.id}
+                                className={`chat-bubble rounded-2xl px-3.5 py-2 text-sm ${
+                                  group.mine
+                                    ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
+                                    : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
+                                } ${isFirst ? "" : "mt-0.5"}`}
+                              >
+                                <span>{message.body}</span>
+                                <span
+                                  className={`chat-time ml-2 inline-block align-baseline text-[10px] ${
+                                    group.mine ? "text-on-primary/70" : "text-muted"
+                                  }`}
+                                >
+                                  {formatChatTime(message.createdAt)}
+                                </span>
                               </div>
-                            </details>
-                          )
-                        ))}
-                    </span>
-                  </div>
+                            );
+                          })}
+                          <span className="mt-0.5 flex items-center gap-1.5 px-1 text-[11px] text-muted">
+                            {tick && (
+                              <span
+                                className={tick === "read" ? "text-accent-ink" : "text-muted"}
+                                title={
+                                  tick === "read"
+                                    ? "Read by everybody"
+                                    : tick === "delivered"
+                                      ? "Delivered to everybody"
+                                      : "Sent"
+                                }
+                              >
+                                {tick === "sent" ? "✓" : "✓✓"}
+                              </span>
+                            )}
+                            {/* Who has read it — only on the newest message I sent. */}
+                            {group.mine &&
+                              (activeConversation?.kind === "direct" ? (
+                                <span title="Seen">
+                                  {readers.length > 0
+                                    ? `Seen ${formatChatTime(readers[0]!.readAt)}`
+                                    : ""}
+                                </span>
+                              ) : (
+                                readers.length > 0 && (
+                                  <details className="relative">
+                                    <summary
+                                      className="flex cursor-pointer items-center"
+                                      aria-label={`Read by ${readers.length} of ${counts.total}`}
+                                    >
+                                      {readers.slice(0, 3).map((reader, index) => (
+                                        <span
+                                          key={reader.userId}
+                                          className={`grid size-4 place-items-center rounded-full border border-surface bg-surface-3 text-[8px] font-semibold text-muted ${
+                                            index > 0 ? "-ml-1.5" : ""
+                                          }`}
+                                        >
+                                          {reader.initials}
+                                        </span>
+                                      ))}
+                                      {readers.length > 3 && (
+                                        <span className="-ml-1.5 grid size-4 place-items-center rounded-full border border-surface bg-surface-3 text-[8px] font-semibold text-muted">
+                                          +{readers.length - 3}
+                                        </span>
+                                      )}
+                                    </summary>
+                                    <div className="absolute right-0 top-5 z-20 w-48 space-y-0.5 rounded-lg border border-line bg-surface p-2 text-[11px] shadow-lg">
+                                      <p className="font-medium text-ink">Read by</p>
+                                      {readers.map((reader) => (
+                                        <p key={reader.userId} className="text-muted">
+                                          {reader.name} {formatChatTime(reader.readAt)}
+                                        </p>
+                                      ))}
+                                      {pendingReaders.length > 0 && (
+                                        <>
+                                          <p className="pt-1 font-medium text-ink">Delivered, not read</p>
+                                          {pendingReaders.map((name) => (
+                                            <p key={name} className="text-muted">
+                                              {name}
+                                            </p>
+                                          ))}
+                                        </>
+                                      )}
+                                    </div>
+                                  </details>
+                                )
+                              ))}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              ))}
             <div ref={bottomRef} />
           </div>
 
-          <form onSubmit={send} className="flex items-center gap-2 border-t border-line bg-surface p-3">
-            <button
-              type="button"
-              className="btn-mini"
-              onClick={() => setShowReceiptForm((open) => !open)}
-            >
-              Attach receipt
-            </button>
-            <input
-              className="input flex-1"
-              placeholder="Message…"
-              value={draft}
-              onChange={(e) => {
-                setDraft(e.currentTarget.value);
-                sendTyping();
-              }}
-              disabled={busy}
-              maxLength={2000}
-            />
-            <button type="submit" className="btn" disabled={busy || !draft.trim()}>
-              Send
-            </button>
+          <form onSubmit={send} className="relative z-10 border-t border-line bg-surface p-3">
+            <div className="flex items-end gap-1 rounded-full border border-line bg-surface-2 py-1 pl-1.5 pr-1 transition-colors focus-within:border-primary">
+              <button
+                type="button"
+                aria-label="Attach receipt"
+                title="Attach receipt"
+                className="grid size-9 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink"
+                onClick={() => setShowReceiptForm((open) => !open)}
+              >
+                <IconPaperclip size={17} />
+              </button>
+              <details className="group/emoji relative shrink-0">
+                <summary
+                  className="grid size-9 cursor-pointer list-none place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink [&::-webkit-details-marker]:hidden"
+                  aria-label="Emoji"
+                >
+                  <IconSmile size={17} />
+                </summary>
+                <div className="absolute bottom-11 left-0 z-20 hidden w-44 flex-wrap gap-1 rounded-xl border border-line bg-surface p-2 shadow-lg group-open/emoji:flex">
+                  {EMOJI.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className="grid size-8 place-items-center rounded-lg text-base transition-colors hover:bg-surface-2"
+                      onClick={() => {
+                        setDraft((current) => current + emoji);
+                        composerRef.current?.focus();
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </details>
+              <textarea
+                ref={composerRef}
+                className="chat-composer flex-1 px-1 py-2 text-sm"
+                rows={1}
+                placeholder="Message…"
+                aria-label="Message"
+                value={draft}
+                onChange={(e) => {
+                  setDraft(e.currentTarget.value);
+                  sendTyping();
+                }}
+                onKeyDown={(e) => {
+                  // Enter sends, Shift+Enter makes a new line.
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void submitDraft();
+                  }
+                }}
+                disabled={busy}
+                maxLength={2000}
+              />
+              <button
+                type="submit"
+                aria-label="Send"
+                disabled={busy || !draft.trim()}
+                className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-on-primary transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted"
+              >
+                <IconSend size={16} />
+              </button>
+            </div>
           </form>
 
           {showReceiptForm && (
             <form
               onSubmit={sendReceipt}
-              className="space-y-3 border-t border-line bg-surface-2 p-3"
+              className="relative z-10 space-y-3 border-t border-line bg-surface-2 p-3"
             >
               <p className="text-sm font-medium text-ink">Send a receipt for approval</p>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -920,7 +1274,7 @@ export default function TeamChat({ user }: Props) {
             <button
               type="button"
               onClick={jumpToBottom}
-              className="absolute bottom-24 right-6 z-10 flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink shadow-lg"
+              className="absolute bottom-28 right-6 z-10 flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink shadow-lg"
             >
               {missed > 0 && (
                 <span className="rounded-full bg-accent-soft px-1.5 text-[11px] text-accent-ink">
@@ -933,102 +1287,145 @@ export default function TeamChat({ user }: Props) {
         </div>
 
         {/* ---------------- approvals ---------------- */}
-        <aside className="card space-y-3 p-4">
-          <h2 className="text-sm font-semibold text-ink">Receipt approvals</h2>
-          {pending.length === 0 && (
-            <p className="text-sm text-muted">Nothing is waiting for a decision.</p>
-          )}
-          {pending.map((receipt) => (
-            <div key={receipt.id} className="space-y-2 rounded-lg border border-line bg-surface-2 p-3">
-              <p className="text-sm font-semibold text-ink">{receipt.title}</p>
-              <p className="text-sm text-ink">{formatRupees(receipt.amountPaise)}</p>
-              <p className="text-xs text-muted">
-                {receipt.submitterName} · {formatChatTime(receipt.createdAt)}
-              </p>
-              {receipt.mime.startsWith("image/") && (
-                <img
-                  src={chatReceiptUrl(receipt.r2Key)}
-                  alt={receipt.filename}
-                  className="max-h-40 w-full rounded-lg border border-line object-cover"
-                />
+        <aside
+          className={`${
+            mobileView === "approvals" ? "flex" : "hidden"
+          } card min-h-0 flex-col space-y-3 p-4 lg:flex`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            {approvalsOpen ? (
+              <>
+                <h2 className="text-sm font-semibold text-ink">Receipt approvals</h2>
+                <span className="flex items-center gap-1.5">
+                  {pending.length > 0 && (
+                    <span className="badge bg-accent-soft text-accent-ink">
+                      {pending.length} pending
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Collapse approvals"
+                    className="hidden size-7 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink lg:grid"
+                    onClick={() => setApprovalsOpen(false)}
+                  >
+                    <IconChevronDown size={14} className="rotate-90" />
+                  </button>
+                </span>
+              </>
+            ) : (
+              <button
+                type="button"
+                aria-label="Expand approvals"
+                className="flex w-full flex-col items-center gap-1 py-1 text-muted transition-colors hover:text-ink"
+                onClick={() => setApprovalsOpen(true)}
+              >
+                <IconChevronDown size={14} className="-rotate-90" />
+                {pending.length > 0 && (
+                  <span className="badge bg-accent-soft text-accent-ink">{pending.length}</span>
+                )}
+              </button>
+            )}
+          </div>
+          {approvalsOpen && (
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+              {pending.length === 0 && (
+                <p className="text-sm text-muted">Nothing is waiting for a decision.</p>
               )}
-              {canApprove ? (
-                <div className="flex gap-2">
-                  <button
-                    className="btn-mini ok"
-                    disabled={deciding === receipt.id}
-                    onClick={() => void decide(receipt, "approve")}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    className="btn-mini danger"
-                    disabled={deciding === receipt.id}
-                    onClick={() => void decide(receipt, "reject")}
-                  >
-                    Reject
-                  </button>
+              {pending.map((receipt) => (
+                <div key={receipt.id} className="space-y-2 rounded-lg border border-line bg-surface-2 p-3">
+                  <p className="text-sm font-semibold text-ink">{receipt.title}</p>
+                  <p className="text-sm text-ink">{formatRupees(receipt.amountPaise)}</p>
+                  <p className="text-xs text-muted">
+                    {receipt.submitterName} · {formatChatTime(receipt.createdAt)}
+                  </p>
+                  {receipt.mime.startsWith("image/") && (
+                    <img
+                      src={chatReceiptUrl(receipt.r2Key)}
+                      alt={receipt.filename}
+                      className="max-h-40 w-full rounded-lg border border-line object-cover"
+                    />
+                  )}
+                  {canApprove ? (
+                    <div className="flex gap-2">
+                      <button
+                        className="btn-mini ok"
+                        disabled={deciding === receipt.id}
+                        onClick={() => void decide(receipt, "approve")}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="btn-mini danger"
+                        disabled={deciding === receipt.id}
+                        onClick={() => void decide(receipt, "reject")}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="badge badge-warn">Waiting for an owner</span>
+                  )}
                 </div>
-              ) : (
-                <span className="badge badge-warn">Waiting for an owner</span>
+              ))}
+              {receipts.filter((r) => r.status !== "pending").length > 0 && (
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-muted">
+                    Decided receipts ({receipts.filter((r) => r.status !== "pending").length})
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {receipts
+                      .filter((r) => r.status !== "pending")
+                      .map((receipt) => (
+                        <div key={receipt.id} className="rounded-lg border border-line bg-surface-2 p-2">
+                          <p className="text-sm text-ink">{receipt.title}</p>
+                          <p className="text-xs text-muted">{formatRupees(receipt.amountPaise)}</p>
+                          <span className={`badge ${BADGE_CLASS[receiptStatusTone(receipt.status)] ?? ""}`}>
+                            {receiptStatusLabel(receipt.status)}
+                            {receipt.deciderName ? ` · ${receipt.deciderName}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </details>
               )}
             </div>
-          ))}
-          {receipts.filter((r) => r.status !== "pending").length > 0 && (
-            <details className="text-sm">
-              <summary className="cursor-pointer text-muted">
-                Decided receipts ({receipts.filter((r) => r.status !== "pending").length})
-              </summary>
-              <div className="mt-2 space-y-2">
-                {receipts
-                  .filter((r) => r.status !== "pending")
-                  .map((receipt) => (
-                    <div key={receipt.id} className="rounded-lg border border-line bg-surface-2 p-2">
-                      <p className="text-sm text-ink">{receipt.title}</p>
-                      <p className="text-xs text-muted">{formatRupees(receipt.amountPaise)}</p>
-                      <span className={`badge ${BADGE_CLASS[receiptStatusTone(receipt.status)] ?? ""}`}>
-                        {receiptStatusLabel(receipt.status)}
-                        {receipt.deciderName ? ` · ${receipt.deciderName}` : ""}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            </details>
           )}
         </aside>
       </div>
 
       {showNewChat && (
-        <div className="card space-y-2 p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-ink">Start a private chat</h2>
-            <button className="btn-mini" onClick={() => setShowNewChat(false)}>
-              Close
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {members.map((member) => (
-              <button
-                key={member.id}
-                className="btn-mini"
-                disabled={busy}
-                onClick={() => void startChat(member)}
-              >
-                {member.name}
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/60 p-4">
+          <div className="card w-full max-w-md space-y-2 p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-ink">Start a private chat</h2>
+              <button className="btn-mini" onClick={() => setShowNewChat(false)}>
+                Close
               </button>
-            ))}
-            {members.length === 0 && <p className="text-sm text-muted">Nobody else to chat with.</p>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {members.map((member) => (
+                <button
+                  key={member.id}
+                  className="btn-mini"
+                  disabled={busy}
+                  onClick={() => void startChat(member)}
+                >
+                  {member.name}
+                </button>
+              ))}
+              {members.length === 0 && <p className="text-sm text-muted">Nobody else to chat with.</p>}
+            </div>
           </div>
         </div>
       )}
 
       {error && (
-        <p role="alert" className="rounded-lg bg-error-soft px-3 py-2 text-sm text-error-ink">
+        <p role="alert" className="mt-3 rounded-lg bg-error-soft px-3 py-2 text-sm text-error-ink">
           {error}
         </p>
       )}
       {notice && (
-        <p className="rounded-lg bg-success-soft px-3 py-2 text-sm text-success-ink">{notice}</p>
+        <p className="mt-3 rounded-lg bg-success-soft px-3 py-2 text-sm text-success-ink">{notice}</p>
       )}
     </section>
   );

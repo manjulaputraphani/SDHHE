@@ -29,6 +29,8 @@ export type ChatConversation = {
   other: ChatMember | null;
   unread: number;
   lastMessageAt: string | null;
+  /** The newest message of the room — shown as a one-line preview in the list (Phase 2). */
+  lastMessage: { author: string; body: string; kind: string; createdAt: string } | null;
 };
 
 /** The room name of a private chat (null when the two people are the same). */
@@ -111,6 +113,7 @@ export async function ensureGroupConversation(
     other: null,
     unread: 0,
     lastMessageAt: null,
+    lastMessage: null,
   };
 }
 
@@ -160,6 +163,7 @@ export async function ensureDirectConversation(
     other: other[0] ?? null,
     unread: 0,
     lastMessageAt: null,
+    lastMessage: null,
   };
 }
 
@@ -201,6 +205,13 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
                and (m.user_id is null or m.user_id <> ${userId})
            ), 0)::int as unread,
            (select max(m.created_at) from chat_messages m where m.room = c.room)::text as last_message_at,
+            (
+              select json_build_object(
+                'author', m.author, 'body', m.body, 'kind', m.kind, 'createdAt', m.created_at
+              )
+              from chat_messages m where m.room = c.room
+              order by m.id desc limit 1
+            ) as last_message,
            (
              select json_build_object('id', u.id, 'name', u.name, 'role', u.role)
              from chat_conversation_members cm2
@@ -222,6 +233,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     title: string | null;
     unread: number;
     last_message_at: string | null;
+    last_message: { author: string; body: string; kind: string; createdAt: Date | string } | null;
     other: ChatMember | null;
   }>).map((row) => ({
     id: row.id,
@@ -231,6 +243,14 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     other: row.other ?? null,
     unread: Number(row.unread ?? 0),
     lastMessageAt: row.last_message_at ?? null,
+    lastMessage: row.last_message
+      ? {
+          author: row.last_message.author,
+          body: row.last_message.body,
+          kind: row.last_message.kind,
+          createdAt: new Date(row.last_message.createdAt).toISOString(),
+        }
+      : null,
   }));
 }
 

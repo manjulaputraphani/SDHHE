@@ -112,6 +112,8 @@ export type ChatConversation = {
   other: { id: number; name: string; role: string } | null;
   unread: number;
   lastMessageAt: string | null;
+  /** The newest message — the one-line preview in the chat list (Phase 2). */
+  lastMessage?: { author: string; body: string; kind: string; createdAt: string } | null;
 };
 
 /** A member of the shop (who may be chatted with). */

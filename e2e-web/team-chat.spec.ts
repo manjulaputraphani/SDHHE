@@ -101,6 +101,12 @@ const CONVERSATIONS = [
     other: null,
     unread: 0,
     lastMessageAt: "2026-11-06T09:43:00.000Z",
+    lastMessage: {
+      author: "B PHANI KUMAR",
+      body: "₹96/kg — kal 20 kg laya tha",
+      kind: "text",
+      createdAt: "2026-11-06T09:43:00.000Z",
+    },
   },
   {
     id: 2,
@@ -110,6 +116,12 @@ const CONVERSATIONS = [
     other: { id: 4, name: "RAJU", role: "staff" },
     unread: 2,
     lastMessageAt: "2026-11-06T09:40:00.000Z",
+    lastMessage: {
+      author: "RAJU",
+      body: "ok boss",
+      kind: "text",
+      createdAt: "2026-11-06T09:40:00.000Z",
+    },
   },
 ];
 
@@ -291,7 +303,7 @@ test.describe("Team Chat", () => {
     await page.goto("/team-chat");
 
     await expect(page.getByRole("heading", { name: "Team Chat" })).toBeVisible();
-    await expect(page.getByText("Baki stock ki kya rate badha?")).toBeVisible();
+    await expect(page.getByText("Baki stock ki kya rate badha?", { exact: true })).toBeVisible();
     await expect(page.getByPlaceholder("Message…")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Receipt approvals" })).toBeVisible();
     await expect(page.getByText("Transport bill").first()).toBeVisible();
@@ -335,14 +347,15 @@ test.describe("Team Chat", () => {
 
     await page.getByPlaceholder("Message…").fill("Kal subah 6 baje khula hai");
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.getByText("Kal subah 6 baje khula hai")).toBeVisible();
+    await expect(page.getByText("Kal subah 6 baje khula hai", { exact: true })).toBeVisible();
   });
 
   test("shows the read tick on my own message", async ({ page }) => {
     await mockChat(page, OWNER);
     await page.goto("/team-chat");
 
-    await expect(page.getByText("₹96/kg — kal 20 kg laya tha")).toBeVisible();
+    // The message is in the room (the list preview shows it too — use exact).
+    await expect(page.getByText("₹96/kg — kal 20 kg laya tha", { exact: true })).toBeVisible();
     // Read by the other member → the two ticks, plus who read it.
     await expect(page.getByText("✓✓").first()).toBeVisible();
   });
@@ -357,13 +370,36 @@ test.describe("Team Chat", () => {
     await mockChat(page, OWNER);
     await page.goto("/team-chat");
 
+    // Phase 2: the rename lives in the ⋮ menu of the room header.
+    await page.getByRole("button", { name: "Chat menu" }).click();
     await page.getByRole("button", { name: "Rename" }).click();
-    const input = page.getByRole("textbox", { name: "" }).first();
+    const input = page.getByRole("textbox", { name: "Rename chat" });
     await input.fill("Morning team");
     await page.getByRole("button", { name: "Save" }).click();
 
-    // The new name is asked for from the worker (and shown in the room).
-    await expect(page.getByText("Morning team")).toBeVisible();
+    // The new name is asked for from the worker (shown in the room AND the list).
+    await expect(page.getByText("Morning team").first()).toBeVisible();
+  });
+
+  test("the chat list has a search bar and date previews (Phase 2)", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await page.goto("/team-chat");
+
+    await expect(page.getByRole("textbox", { name: "Search chats" })).toBeVisible();
+    // Filtering the list by name works.
+    await page.getByRole("textbox", { name: "Search chats" }).fill("raju");
+    await expect(page.getByRole("button", { name: /RAJU/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Shop room/ })).toHaveCount(0);
+  });
+
+  test("the composer sends with Enter (Phase 2)", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await page.goto("/team-chat");
+
+    const composer = page.getByPlaceholder("Message…");
+    await composer.fill("Sent with Enter");
+    await composer.press("Enter");
+    await expect(page.getByText("Sent with Enter", { exact: true })).toBeVisible();
   });
 
   test("a staff member cannot rename the group", async ({ page }) => {

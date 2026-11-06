@@ -100,8 +100,9 @@ export function formatChatTime(iso: string): string {
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** Day separator — "Today", "Yesterday" or "2 Jan". */
+/** Day separator — "Today", "Yesterday" or "Fri, 2 Jan" (Phase 2 shows the weekday). */
 export function formatChatDayLabel(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -110,5 +111,37 @@ export function formatChatDayLabel(iso: string, now: Date = new Date()): string 
   const days = Math.round((startOf(now) - startOf(date)) / 86_400_000);
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
-  return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+  return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]}`;
+}
+
+/**
+ * The time shown in the chat list (Phase 2) — "09:42" for today,
+ * "Yesterday", or "Tue, 3 Nov" for older days.
+ */
+export function formatChatListTime(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const startOf = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((startOf(now) - startOf(date)) / 86_400_000);
+  if (days <= 0) return formatChatTime(iso);
+  if (days === 1) return "Yesterday";
+  return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]}`;
+}
+
+/**
+ * The one-line preview of a conversation's last message in the chat list
+ * (Phase 2). Receipts are marked, group messages keep the author.
+ */
+export function conversationPreview(
+  message: { body: string; kind: string; author?: string | null } | null | undefined,
+  inGroup = false,
+): string {
+  if (!message) return "";
+  const text = message.body.replace(/\s+/g, " ").trim();
+  if (message.kind === "receipt") return text ? `Receipt: ${text}` : "Receipt";
+  if (message.kind === "system") return text;
+  if (inGroup && message.author) return `${message.author}: ${text}`;
+  return text;
 }

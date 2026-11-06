@@ -7,6 +7,7 @@
  * - my messages sit on the right in the brand colour,
  * - the ticks show sent / delivered / read.
  */
+import { formatChatDayLabel, formatChatListTime } from "./chat";
 import { tickState, type MemberState } from "./chatStates";
 
 /** The part of a message the view needs (both apps use their own type). */
@@ -137,3 +138,81 @@ export function exportNameFor(room: string, title: string | null | undefined): s
   const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return `chat-${slug || room}.txt`;
 }
+
+// ----------------------------------------------------------------------
+// Phase 2 — the redesigned web chat (list, search, date separators)
+// ----------------------------------------------------------------------
+
+/** The part of a conversation the list needs to name it (Phase 2). */
+export type ConversationListEntry = {
+  room: string;
+  kind: "group" | "direct";
+  title?: string | null;
+  other?: { name: string } | null;
+};
+
+/** The name shown in the chat list and in the room header (Phase 2). */
+export function conversationName(conversation: ConversationListEntry): string {
+  if (conversation.kind === "direct") {
+    return conversation.other?.name ?? conversation.room;
+  }
+  return conversation.title?.trim() || "Shop room";
+}
+
+/** The chat list filtered by the search bar (Phase 2) — matches the name only. */
+export function filterConversations<T extends ConversationListEntry>(
+  list: T[],
+  query: string,
+): T[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return list;
+  return list.filter((entry) => conversationName(entry).toLowerCase().includes(needle));
+}
+
+/** The messages of the open room filtered by the header search (Phase 2). */
+export function filterMessages<T extends ViewMessage>(messages: T[], query: string): T[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return messages;
+  return messages.filter(
+    (message) =>
+      message.body.toLowerCase().includes(needle) ||
+      message.author.toLowerCase().includes(needle),
+  );
+}
+
+/** One day of the room, with its separator label (Phase 2). */
+export type ChatDaySection = {
+  /** The calendar day, unique per section — safe as a React key. */
+  key: string;
+  label: string;
+  messages: ViewMessage[];
+};
+
+/**
+ * Split the (chronological) messages into day sections for the date
+ * separators ("Today", "Yesterday", "Fri, 3 Nov"). Pure — the web and the
+ * desktop can share it.
+ */
+export function chatDaySections(messages: ViewMessage[], now: Date = new Date()): ChatDaySection[] {
+  const sections: ChatDaySection[] = [];
+  for (const message of messages) {
+    const date = new Date(message.createdAt);
+    const key = Number.isNaN(date.getTime())
+      ? `id-${message.id}`
+      : `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    const last = sections[sections.length - 1];
+    if (last && last.key === key) {
+      last.messages.push(message);
+    } else {
+      sections.push({ key, label: formatChatDayLabel(message.createdAt, now), messages: [message] });
+    }
+  }
+  return sections;
+}
+
+/** The time in a chat-list row (Phase 2) — today: "09:42", else "Yesterday"/"Tue, 3 Nov". */
+export function formatChatListTimeRow(iso: string | null | undefined, now: Date = new Date()): string {
+  return formatChatListTime(iso, now);
+}
+
+export { formatChatListTime };

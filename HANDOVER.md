@@ -97,7 +97,25 @@ To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `
 5. Optional: the deployed `SESSION_SECRET` is NOT the one in `web-worker/.dev.vars`, so the local check scripts
    cannot sign in to the live worker — copy the deployed value into `.dev.vars` if that is wanted.
 
-## Phase 2 — the chat redesign (READY TO START, next session)
+## Phase 2 — the chat redesign (DONE 2026-11-06, committed)
+Only `web/src/components/TeamChat.tsx` was rewritten (+ a few lines in `web/src/styles.css`, 9 new icons in
+`web/src/components/icons.tsx`, pure helpers in `src/logic/chatView.ts` + `chat.ts`). **No new dependency, no new colours.**
+- Layout fills the viewport: list 300px · centre flexible (the old `max-h-[52vh]` is gone) · approvals 340px and
+  collapsible (chevron; collapsed = 64px rail with the pending count). Mobile: list = screen, chat full-screen with
+  back arrow, approvals = tab (`mobileView`).
+- Chat list: search bar, avatar + presence dot, name, one-line `lastMessage` preview (new SQL subquery in
+  `listConversations` — no migration), list time (today "09:42" / "Yesterday" / "Tue, 3 Nov"), unread badge, bold
+  when unread, pinned chats first.
+- Header: avatar, name, status (typing/presence/members), right side: search-in-chat, members popup, ⋮ menu
+  (Rename → inline form, Export chat, Mute, Pin — backdrop/Escape closes).
+- Messages: 16px bubbles with tail on the grouped last, sender + avatar on incoming groups, **time on hover**,
+  date separators (Today / Yesterday / "Fri, 3 Nov"), skeletons while loading, friendly empty states.
+- Composer: one rounded bar — paperclip, emoji picker (8, no lib), auto-growing textarea (`field-sizing: content`),
+  filled circular send (grey when empty), **Enter sends / Shift+Enter newline**.
+- Kept: Phase 1 (rename single source, presence, read avatars, ticks), socket + reconnect, receipts/R2, Web Push
+  toggle, jump-to-bottom. **463 unit tests, tsc clean (app/web/worker), Playwright 19/19** (rename now in the ⋮
+  menu; new: list search, Enter-to-send). `cd web && npm run build` OK. **Not deployed yet** — owner deploys with
+  `cd web-worker && npx wrangler deploy` after `cd web && npm run build`.
 **Only `web/src/components/TeamChat.tsx` (+ a few lines in `web/src/styles.css`). No new dependency.**
 The user's spec (verbatim intent):
 - **Palette**: keep the existing tokens (they already match: warm cream `--c-bg`, white cards `--c-surface`,

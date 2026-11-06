@@ -137,8 +137,8 @@ describe("chat time", () => {
     expect(formatChatDayLabel(new Date(2026, 0, 1, 9, 0).toISOString(), now)).toBe("Yesterday");
   });
 
-  it("shows the date for older days", () => {
+  it("shows the weekday and date for older days (Phase 2: \"Fri, 2 Jan\")", () => {
     const now = new Date(2026, 0, 20, 12, 0);
-    expect(formatChatDayLabel(new Date(2026, 0, 2, 9, 0).toISOString(), now)).toBe("2 Jan");
+    expect(formatChatDayLabel(new Date(2026, 0, 2, 9, 0).toISOString(), now)).toBe("Fri, 2 Jan");
   });
 });
