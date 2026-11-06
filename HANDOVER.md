@@ -73,8 +73,9 @@ To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `
 1. ~~Enable R2~~ ✅ **done** — the bucket `sdhhe-receipts` is created and the binding is live. Verify it in the
    browser: Team Chat → Attach receipt → the photo appears in the room and in the approvals panel.
 2. ~~Zero Trust~~ ✅ **done 2026-11-06** — Cloudflare Access is LIVE on `sdhhe-api.blvphani.workers.dev`
-   (team `royal-shadow-9e0b.cloudflareaccess.com`, enabled from Worker → Settings → Domains & Routes →
-   workers.dev). Verified: `/`, `/api/health`, `/team-chat` → 302 to the Access login. A plain self-hosted
+   (team `sdhhe.cloudflareaccess.com`, enabled from Worker → Settings → Domains & Routes → workers.dev).
+   Login methods: Cloudflare + **One-time PIN** (Cloudflare emails the code). Policy **Shop staff** (Emails,
+   24 h) is first on the app `sdhhe-api - Cloudflare Workers`; add staff in Access → Policies → Shop staff. Verified: `/`, `/api/health`, `/team-chat` → 302 to the Access login. A plain self-hosted
    app with a "subdomain" did NOT work — workers.dev is not a zone; use the Worker toggle.
    ⚠️ **Side effect**: everything that calls the Worker without a browser is now blocked by Access — the
    desktop chat client (`src/lib/chatClient.ts`), the WebSocket, ntfy/cron callbacks and
