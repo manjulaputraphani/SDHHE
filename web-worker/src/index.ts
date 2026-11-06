@@ -1610,6 +1610,15 @@ const handler = {
           await logFirstDirectMessage(db, room, session, message);
           await broadcastToChat(env, { type: "message", message }, room);
           await markRead(db, room, session.uid, message.id);
+          // The shop room pushes the phones of the team (ntfy). A private chat
+          // does not — the push topic is shared, and the text is private.
+          if (room === SHARED_ROOM) {
+            await pushNtfy(
+              env.NTFY_TOPIC,
+              `${session.name} wrote in the shop room`,
+              input.body.slice(0, 120),
+            );
+          }
           return json({ message });
         }
 
