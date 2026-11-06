@@ -5,10 +5,10 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat) and Phase 13 (Direct chat) are code-complete AND deployed.**
-Live worker version `22af8463-5234-46c9-8d00-0faacbbe2de3` (2026-11-06 12:46) — web bundle `index-0zs2fwLa.js`.
+Live worker version `469fd112-8ed8-45be-a945-c05e0935148c` (2026-11-06 12:51) — web bundle `index-0zs2fwLa.js`.
 Live: https://sdhhe-api.blvphani.workers.dev/team-chat (shop room + private chats).
-**The live build has NO R2 binding** (R2 is not enabled on the account) → attaching a receipt file answers
-503 "Receipt storage is not configured"; everything else works.
+**R2 is LIVE**: the bucket `sdhhe-receipts` exists and the binding `env.RECEIPTS` is deployed — the receipt
+upload/download works. The Worker also sends the security headers (HSTS, CSP, no framing) on every response.
 **Remember**: `cd web && npm run build` before every deploy — the Worker uploads `web/dist`.
 Web LIVE: https://sdhhe-api.blvphani.workers.dev · Desktop = Tauri app in `src/`.
 Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
@@ -70,14 +70,18 @@ typechecks the **web app** and the **Cloudflare Worker** (they were never checke
 To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `scripts/gh-job-log.sh <job id>`.
 
 ## Owner steps that are still open
-1. **Enable R2** (dashboard) — `npx wrangler r2 bucket list` still says "Please enable R2 through the Cloudflare
-   Dashboard" (code 10042). Then `cd web-worker && npx wrangler r2 bucket create sdhhe-receipts` and
-   `npx wrangler deploy` again (the binding is already in `web-worker/wrangler.toml`).
-2. **Set the mail secrets**: `cd web-worker && npx wrangler secret put SMTP_USER` · `SMTP_PASS` (a Gmail **App
+1. ~~Enable R2~~ ✅ **done** — the bucket `sdhhe-receipts` is created and the binding is live. Verify it in the
+   browser: Team Chat → Attach receipt → the photo appears in the room and in the approvals panel.
+2. **Zero Trust (dashboard)**: to put the app behind Cloudflare Access, the owner has to create a Zero Trust
+   team in the dashboard (Zero Trust → Get started → a team name) — the free plan covers 50 users. Everything
+   code-side is already done: HTTPS-only, HSTS + CSP + no framing on every response, HttpOnly signed cookies,
+   the 30-minute idle logout, one device at a time, "sign out everybody", the per-route permissions, the audit
+   log and the private chats.
+3. **Set the mail secrets**: `cd web-worker && npx wrangler secret put SMTP_USER` · `SMTP_PASS` (a Gmail **App
    Password** — only the owner can create it, and it must be typed into the terminal, never into the chat).
    ✅ `NTFY_TOPIC` is already set (the push topic `sdhhe-team-683c7d880f68`).
-3. **Desktop**: Settings → Team Chat → paste `https://sdhhe-api.blvphani.workers.dev`, sign out, sign in again.
-4. **Role check**: Team → Roles & permissions → the new **Team Chat** module (staff view+create, CA
+5. **Desktop**: Settings → Team Chat → paste `https://sdhhe-api.blvphani.workers.dev`, sign out, sign in again.
+6. **Role check**: Team → Roles & permissions → the new **Team Chat** module (staff view+create, CA
    view+create+edit, owner all).
 5. Optional: the deployed `SESSION_SECRET` is NOT the one in `web-worker/.dev.vars`, so the local check scripts
    cannot sign in to the live worker — copy the deployed value into `.dev.vars` if that is wanted.
