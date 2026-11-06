@@ -69,7 +69,8 @@ Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 r
   auto-grows to ~6 lines then scrolls internally, normal `px-3.5 py-2.5` padding, `flex w-full items-end`
   row ([attach][emoji][textarea][send]) with icons/send aligned to the bottom and never overlapping text.
   Message list keeps `min-h-0 flex-1` so it shrinks as the composer grows. Enter sends, Shift+Enter new line,
-  send disabled on empty/whitespace. typecheck + build clean.
+  send disabled on empty/whitespace. typecheck + build clean. **Deployed** (worker `sdhhe-api`, version
+  `a33dd06f-b58d-42e2-8156-a6541efb4af3`; web assets uploaded to `web/dist`).
 
 ## Next tasks
 0. **Access service token for the desktop app** (owner creates it in Zero Trust → Access → Service Auth).
