@@ -65,8 +65,10 @@ import {
   listConversationMembers,
   listConversations,
   markRead,
+  polishEnabled,
   removeConversationMember,
   renameConversation,
+  setAiPolish,
   SHARED_ROOM,
   unreadCount,
 } from "../../src/db/chatRooms";
@@ -270,6 +272,9 @@ function routePermission(
     return { module: "chat", action: read ? "view" : method === "DELETE" ? "delete" : "create" };
   }
   if (pathname === "/api/chat/groups/archive") return { module: "chat", action: "delete" };
+  // AI polish (Phase 15): a member asks for a suggestion, the owner sets the switch.
+  if (pathname === "/api/chat/groups/polish") return { module: "chat", action: "create" };
+  if (pathname === "/api/chat/polish") return { module: "chat", action: "create" };
 
   return null;
 }
@@ -1684,6 +1689,28 @@ const handler = {
           entity: "chat",
         });
         return json({ ok: true, message: system });
+      }
+
+      // ---- AI polish (Phase 15, T-15.1): the owner sets the switch per group ----
+      if (url.pathname === "/api/chat/groups/polish" && request.method === "POST") {
+        if (session.role !== "owner") {
+          return json({ error: "Owner only" }, { status: 403 });
+        }
+        const room = String(body.room ?? "");
+        const enabled = Boolean(body.enabled);
+        if (!room) return json({ error: "Which group?" }, { status: 400 });
+        const saved = await asActor(actor, () => setAiPolish(db, room, enabled));
+        if (!saved) {
+          return json({ error: "That room cannot use AI polish" }, { status: 404 });
+        }
+        // Everybody in the room picks the change up at once.
+        await broadcastToChat(env, { type: "settings", room }, room);
+        await logActivity(db, {
+          event: "chat.polish",
+          summary: `AI polish turned ${enabled ? "on" : "off"} for chat room ${room}`,
+          entity: "chat",
+        });
+        return json({ ok: true, room, aiPolish: enabled });
       }
 
       // ---- The notification system (Phase 15) ----

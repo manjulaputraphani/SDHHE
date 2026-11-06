@@ -402,6 +402,10 @@ export default function TeamChat({ user }: Props) {
             void loadConversations();
             void loadGroupMembers(room);
           }
+          if (frame.type === "settings") {
+            // A room setting changed (AI polish) — reload the lists.
+            void loadConversations();
+          }
           if (frame.type === "typing" && frame.name) {
             setTyping(frame.name);
             if (typingTimer.current) window.clearTimeout(typingTimer.current);
@@ -530,6 +534,31 @@ export default function TeamChat({ user }: Props) {
       showToast("Group archived", "success");
       await loadConversations();
       await openRoom(SHARED_ROOM);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Switch AI polish on or off for the open group (the owner only, T-15.1). */
+  async function togglePolish() {
+    setMenuOpen(false);
+    const next = !activeConversation?.aiPolish;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.setChatGroupPolish(room, next);
+      // The list is the single source of the flag — update it at once.
+      setConversations((prev) =>
+        prev.map((entry) => (entry.room === room ? { ...entry, aiPolish: next } : entry)),
+      );
+      await loadConversations();
+      showToast(
+        next ? "AI polish on — messages get a suggestion before sending" : "AI polish off",
+        "info",
+        3000,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -997,7 +1026,17 @@ export default function TeamChat({ user }: Props) {
                   </button>
                 </form>
               ) : (
-                <h2 className="truncate text-sm font-semibold text-ink">{roomName}</h2>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <h2 className="truncate text-sm font-semibold text-ink">{roomName}</h2>
+                  {activeConversation?.kind === "group" && activeConversation.aiPolish && (
+                    <span
+                      className="badge shrink-0 bg-accent-soft px-1.5 text-[10px] text-accent-ink"
+                      data-testid="ai-polish-chip"
+                    >
+                      ✨ AI polish on
+                    </span>
+                  )}
+                </span>
               )}
               <p className="truncate text-[11px] text-muted">
                 {typing
@@ -1072,6 +1111,16 @@ export default function TeamChat({ user }: Props) {
                       }}
                     >
                       Rename
+                    </button>
+                  )}
+                  {user?.role === "owner" && activeConversation?.kind === "group" && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-surface-2"
+                      onClick={() => void togglePolish()}
+                      disabled={busy}
+                    >
+                      AI polish messages — {activeConversation.aiPolish ? "on" : "off"}
                     </button>
                   )}
                   {isOwnerGroup && (

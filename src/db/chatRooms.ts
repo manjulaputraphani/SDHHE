@@ -32,6 +32,8 @@ export type ChatConversation = {
   lastMessageAt: string | null;
   /** The newest message of the room — shown as a one-line preview in the list (Phase 2). */
   lastMessage: { author: string; body: string; kind: string; createdAt: string } | null;
+  /** AI polish (Phase 15): the owner turned it on for this group. */
+  aiPolish: boolean;
 };
 
 /** The room name of a private chat (null when the two people are the same). */
@@ -115,6 +117,7 @@ export async function ensureGroupConversation(
     unread: 0,
     lastMessageAt: null,
     lastMessage: null,
+    aiPolish: Boolean(row.aiPolish),
   };
 }
 
@@ -165,6 +168,7 @@ export async function ensureDirectConversation(
     unread: 0,
     lastMessageAt: null,
     lastMessage: null,
+    aiPolish: Boolean(row.aiPolish),
   };
 }
 
@@ -200,6 +204,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
            c.room,
            c.kind,
            c.title,
+           c.ai_polish,
            coalesce((
              select count(*) from chat_messages m
              where m.room = c.room
@@ -234,6 +239,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     room: string;
     kind: ConversationKind;
     title: string | null;
+    ai_polish: boolean;
     unread: number;
     last_message_at: string | null;
     last_message: { author: string; body: string; kind: string; createdAt: Date | string } | null;
@@ -246,6 +252,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     other: row.other ?? null,
     unread: Number(row.unread ?? 0),
     lastMessageAt: row.last_message_at ?? null,
+    aiPolish: Boolean(row.ai_polish),
     lastMessage: row.last_message
       ? {
           author: row.last_message.author,
@@ -393,6 +400,7 @@ export async function createGroupConversation(
     unread: 0,
     lastMessageAt: null,
     lastMessage: null,
+    aiPolish: Boolean(row.aiPolish),
   };
 }
 
@@ -486,4 +494,46 @@ export async function archiveConversation(db: Db | TxDb, room: string): Promise<
     )
     .returning();
   return Boolean(updated);
+}
+
+// ---- AI polish (Phase 15, T-15.1) — per group, switched by the owner ----
+
+/**
+ * Turn AI polish on or off for a room (the Worker checks that the owner is
+ * asking). Only a live group can carry it — never a private chat, never a
+ * retired room. The shop room counts as a group.
+ */
+export async function setAiPolish(
+  db: Db | TxDb,
+  room: string,
+  enabled: boolean,
+): Promise<boolean> {
+  const [updated] = await db
+    .update(chatConversations)
+    .set({ aiPolish: enabled })
+    .where(
+      and(
+        eq(chatConversations.room, room),
+        eq(chatConversations.kind, "group"),
+        isNull(chatConversations.archivedAt),
+      ),
+    )
+    .returning();
+  return Boolean(updated);
+}
+
+/** Is AI polish turned on for this room? (false for private and retired rooms) */
+export async function polishEnabled(db: Db | TxDb, room: string): Promise<boolean> {
+  const [row] = await db
+    .select({ aiPolish: chatConversations.aiPolish })
+    .from(chatConversations)
+    .where(
+      and(
+        eq(chatConversations.room, room),
+        eq(chatConversations.kind, "group"),
+        isNull(chatConversations.archivedAt),
+      ),
+    )
+    .limit(1);
+  return Boolean(row?.aiPolish);
 }

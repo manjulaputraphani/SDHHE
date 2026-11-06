@@ -457,6 +457,8 @@ export const chatConversations = pgTable(
     kind: text("kind").notNull().default("direct"),
     /** Shown above the conversation (the shop room has a name). */
     title: text("title"),
+    /** AI polish (Phase 15): the owner turned it on for this group. */
+    aiPolish: boolean("ai_polish").notNull().default(false),
     /** Set when an owner-made group is retired (never hard-deleted). */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

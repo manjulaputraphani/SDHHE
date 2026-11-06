@@ -29,6 +29,8 @@ export type ChatFrame =
   | { type: "rename"; room: string; title: string }
   /** The members of a group changed (added, removed, archived) — reload. */
   | { type: "members"; room: string }
+  /** A room setting changed (e.g. AI polish was switched) — reload the lists. */
+  | { type: "settings"; room: string }
   | { type: "error"; message: string };
 
 export const CHAT_FRAME_TYPES = [
@@ -41,6 +43,7 @@ export const CHAT_FRAME_TYPES = [
   "read",
   "rename",
   "members",
+  "settings",
   "error",
 ] as const;
 

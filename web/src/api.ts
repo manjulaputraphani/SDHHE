@@ -63,6 +63,8 @@ export type ChatConversation = {
   kind: "group" | "direct";
   /** The name the owner gave the group (Phase 14). */
   title: string | null;
+  /** AI polish is on for this group (Phase 15) — the owner set it. */
+  aiPolish: boolean;
   other: ChatUser | null;
   unread: number;
   lastMessageAt: string | null;
@@ -677,6 +679,11 @@ export const api = {
     request<{ ok: boolean }>("/api/chat/groups/archive", {
       method: "POST",
       body: JSON.stringify({ room }),
+    }),
+  setChatGroupPolish: (room: string, enabled: boolean) =>
+    request<{ ok: boolean; room: string; aiPolish: boolean }>("/api/chat/groups/polish", {
+      method: "POST",
+      body: JSON.stringify({ room, enabled }),
     }),
 };
 

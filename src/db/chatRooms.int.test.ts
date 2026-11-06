@@ -13,8 +13,10 @@ import {
   listConversationMembers,
   listConversations,
   markRead,
+  polishEnabled,
   removeConversationMember,
   renameConversation,
+  setAiPolish,
   unreadCount,
 } from "./chatRooms";
 import { appUsers, chatConversations } from "./schema";
@@ -213,5 +215,59 @@ suite("Chat groups (Phase 14)", () => {
     });
     expect(await archiveConversation(db!, group!.room)).toBe(true);
     expect(await renameConversation(db!, group!.room, "After")).toBeNull();
+  });
+});
+
+suite("AI polish per group (Phase 15 — T-15.1)", () => {
+  beforeEach(async () => {
+    if (db) await resetAll(db);
+  });
+
+  async function seed() {
+    return db!
+      .insert(appUsers)
+      .values([
+        { name: "OWNER", phone: "9000000020", passwordHash: "x", role: "owner" },
+        { name: "RAVI", phone: "9000000021", passwordHash: "x", role: "staff" },
+        { name: "SURESH", phone: "9000000022", passwordHash: "x", role: "staff" },
+      ])
+      .returning();
+  }
+
+  it("is off until the owner turns it on — for the shop room too", async () => {
+    const [owner] = await seed();
+
+    expect(await polishEnabled(db!, SHARED_ROOM)).toBe(false);
+    expect(await setAiPolish(db!, SHARED_ROOM, true)).toBe(true);
+    expect(await polishEnabled(db!, SHARED_ROOM)).toBe(true);
+    expect(await setAiPolish(db!, SHARED_ROOM, false)).toBe(true);
+    expect(await polishEnabled(db!, SHARED_ROOM)).toBe(false);
+    expect(owner.id).toBeGreaterThan(0);
+  });
+
+  it("the conversation list carries the flag", async () => {
+    await seed();
+    await setAiPolish(db!, SHARED_ROOM, true);
+
+    const list = await listConversations(db!, 1);
+    const shop = list.find((entry) => entry.room === SHARED_ROOM);
+    expect(shop?.aiPolish).toBe(true);
+  });
+
+  it("is never on for a private chat or a retired group", async () => {
+    const [, ravi, suresh] = await seed();
+    const direct = await ensureDirectConversation(db!, ravi.id, suresh.id);
+    const group = await createGroupConversation(db!, {
+      room: "group-polish",
+      title: "Polish crew",
+      memberIds: [ravi.id],
+    });
+
+    expect(await setAiPolish(db!, direct!.room, true)).toBe(false);
+    expect(await polishEnabled(db!, direct!.room)).toBe(false);
+
+    expect(await setAiPolish(db!, group!.room, true)).toBe(true);
+    await archiveConversation(db!, group!.room);
+    expect(await polishEnabled(db!, group!.room)).toBe(false);
   });
 });

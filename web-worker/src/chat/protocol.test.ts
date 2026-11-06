@@ -67,6 +67,12 @@ describe("isChatFrame", () => {
     expect(isChatFrame(frame)).toBe(true);
     expect(parseFrame(encodeFrame(frame))).toEqual(frame);
   });
+
+  it("knows the settings frame (Phase 15 — AI polish)", () => {
+    const frame = { type: "settings", room: "main" } as const;
+    expect(isChatFrame(frame)).toBe(true);
+    expect(parseFrame(encodeFrame(frame))).toEqual(frame);
+  });
 });
 
 describe("errorFrame", () => {
