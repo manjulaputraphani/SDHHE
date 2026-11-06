@@ -1,5 +1,4 @@
 # DECISIONS LOG (append one line per decision: date · decision · reason)
-
 - 2026-10-30 · Tauri 2 + React + TS (not Electron) · small installers, React skills
 - 2026-10-30 · Neon Postgres as primary DB · data safe across laptops, free plan
 - 2026-10-30 · Money in paise, qty in base units (int) · no float errors
@@ -8,7 +7,6 @@
 - 2026-10-30 · Secrets in OS secure storage only · desktop app has no server
 - 2026-10-30 · `keyring` crate for secrets (not a JS plugin / not stronghold) · native macOS Keychain & Windows Credential Manager, no extra vault file or password
 - 2026-10-30 · `argon2` crate for PIN hashing, argon2id + random salt · memory-hard, no plaintext PIN on disk
-- 2026-10-30 · `rand_core` added only to enable its `getrandom` feature · argon2 needs OsRng for the salt; reuses the version already in the tree
 - 2026-10-30 · `@types/node` (devDependency) · `src/db/test-utils.ts` reads `process.env.DATABASE_URL_TEST`; removes the old `@ts-expect-error` in vite.config.ts
 - 2026-10-30 · `@playwright/test` (devDependency) + e2e/ specs · runs the real React UI in Chromium with Tauri IPC stubbed; the only automated check of the Setup→Lock→Home flow without a GUI
 - 2026-10-30 · `@tauri-apps/plugin-http` + `tauri-plugin-http` · Ollama calls go through Rust, bypassing webview CORS; capability scope limited to http://localhost:11434/* and https://ollama.com/*
@@ -16,7 +14,6 @@
 - 2026-10-30 · Sale price stored as paise per display unit (kg/l/pcs), total = round(qty × price / factor) · matches batch costing and avoids float money
 - 2026-10-30 · keychain items DATABASE_URL/PIN_HASH re-created allow-all on this dev Mac (`security ... -A`) · ad-hoc dev binaries change code signature on every Rust rebuild, so macOS re-prompted forever; app still uses keyring, revert by deleting the items + redoing Setup
 - 2026-10-30 · Audit trail in `activity_log` (actor 'local') · single-user desktop app; rows answer who did what and when, share the data transaction, and travel with the DB backup
-- 2026-10-30 · Expense bills stored as base64 inside Postgres (`expense_bills`, 4 MB cap) · no bucket or local file paths to sync; one backup keeps the paperwork, small enough for the HTTP driver
 - 2026-10-31 · Analytics: Recharts + Dashboard tabs (Overview/Graphs/Funds/Investors) · user-approved plan (docs/PLAN_ANALYTICS.md); basic BAR + PIE always on, other charts selectable and remembered
 - 2026-10-31 · "Funds with us" = actual cash position (investments + money received − money paid out) · stock value and receivables shown separately as utilised; avoids counting unpaid revenue as cash
 - 2026-10-31 · Execution order: V2-P10 → charts → V2-P11 credit → Funds tab · charts need real sales, funds need credit/payments data
@@ -64,7 +61,6 @@
 - 2026-10-31 · `recordBillPayment` adds a payment to a bill (never above the bill total) and logs `sale.payment` · without it a credit bill could never be cleared — the tag would be a dead end
 - 2026-10-31 · The old app's 31 CamelCase tables (Users, Invoices, StockLedger, …) were dropped from the Neon database; `drizzle.config.ts` now has a `tablesFilter` listing only our tables · nothing in src/, web/ or the worker ever read them (only the old drizzle baseline did), and the guard stops `drizzle-kit push` from recreating them
 - 2026-10-31 · The database was cleaned of development data on 2026-10-31: test bills + their lines/movements, test customers/suppliers, the dismissed AI suggestion, the dev audit trail and sessions · the real data was kept (items, purchases, stock, shop settings, users, investments, KALKI ENTERPRISES) and the batch quantities + cost pool were rebuilt from the purchases so the stock matches the books again
-- 2026-10-31 · A full data backup is written to `docs/db-backup-<date>.sql` before any destructive change (git-ignored) · the Neon project is shared with the live app, so a restore point must exist on disk
 - 2026-11-01 · `.nav-texture` sets **no** `position` — it is unlayered CSS and silently overrode the Tailwind `sticky`/`fixed` utilities on the same element (that is why the rail still scrolled away and ended short) · the desktop rail is `sticky top-0` + `h-screen`/`100dvh`, the nav scrolls internally with a thin scrollbar and the theme toggle / user / Sign out stay pinned at the bottom; the mobile drawer keeps its behaviour (its `fixed` works again)
 - 2026-11-01 · The dashboard "Recent activity" card shows only the latest 4 rows (the **query** is limited to 4) with a bottom-right "View all activity →" link; the Activity screen pages 20 at a time with "Load more" (`listActivity(limit, offset)` → `/api/activity?limit=&offset=`) · never fetch the whole feed to show a glimpse
 - 2026-11-01 · The 14-day chart window is "today − 13 … today" with **today in Asia/Kolkata** (`(now() at time zone 'Asia/Kolkata')::date`) · the Neon clock is UTC, so `current_date` slides the window around midnight IST. The chart was never month-bound — it read empty on 2026-11-01 because the database has no sales/expenses: the 30–31 Oct bills were removed in the 2026-10-31 dev-data cleanup (restore point: `docs/db-backup-2026-10-31.sql`)
@@ -84,8 +80,7 @@
 - 2026-11-06 · `web-worker/.dev.vars` holds the **local-only** SMTP test values as comments (`scripts/local-smtp-server.mjs` is a fake SMTP server) — the file is gitignored, so no secret can reach the repo; miniflare refuses a connection to a literal 127.0.0.1, the hostname `localhost` works
 - 2026-11-06 · The **chat token follows the sign-on**: the web app gets a token that lives 1 h (the same rule as the web session) and refreshes it every 30 min, an expired token is refused at the socket door and an open socket is closed when its token runs out · otherwise the chat (12 h token) would have kept working after the automatic logout; the desktop token keeps 12 h because the desktop session has no timeout (it locks on request)
 - 2026-11-06 · **Direct chat (1-to-1)** on top of the shared shop room: a private chat is a room named `dm-<smallId>-<bigId>` (both people always land in the same room), one Durable Object per conversation, and `chat_conversations` + `chat_conversation_members` keep the membership and the unread marks · a private chat belongs to exactly two people, the shop room to everybody
-- 2026-11-06 · A private chat is **private**: only its two members can read it (the Worker checks the
-  membership on every route and refuses a room name that is not a chat room), while the activity log only notes
+- 2026-11-06 · A private chat is **private**: only its two members can read it (the Worker checks the membership on every route and refuses a room name that is not a chat room), while the activity log only notes
   that a private chat happened — "had a private chat (1 message(s) with member #4)" — and never the text · the
   owner can moderate without reading; every member can export their own conversation as a text file
 - 2026-11-06 · **Delivered / read ticks** (Phase 14): one `chat_message_states` row per (message, member) —
@@ -112,18 +107,19 @@
 - 2026-11-06 · **One device at a time**: a new sign-in closes the older sessions of that member and the old
   device gets the "you were signed out" window; every sign-in is written to `login_history` (browser, OS, IP)
 - 2026-11-06 · The **product tour is written from scratch** (a spotlight + tooltip) instead of adding
-  Driver.js or Shepherd.js — the rule is to ask before a new dependency, so the tour works without one and
-  can be swapped later
+   Driver.js or Shepherd.js — the rule is to ask before a new dependency, so the tour works without one and
+   can be swapped later
 - 2026-11-06 · The **read count is public**: everybody in the conversation sees how many of the others have
-  read a message ("Read by 3"), while the **text** of a private chat stays private
+   read a message ("Read by 3"), while the **text** of a private chat stays private
 - 2026-11-06 · **R2 is live**: the bucket `sdhhe-receipts` was created and the binding is deployed
-  (`env.RECEIPTS`) · the receipt files are stored under `receipts/<date>/<id>.<ext>`, private — they are only
-  streamed through the Worker after the chat permission check; nothing is ever public
+   (`env.RECEIPTS`) · the receipt files are stored under `receipts/<date>/<id>.<ext>`, private — they are only
+   streamed through the Worker after the chat permission check; nothing is ever public
 - 2026-11-06 · The **security headers** (the "zero trust" hardening in code): HSTS, a strict CSP, no framing,
-  no sniffing, no camera/microphone/geolocation — on every response of the Worker (the API, the app and the
-  receipt files)
+   no sniffing, no camera/microphone/geolocation — on every response of the Worker (the API, the app and the
+   receipt files)
 - 2026-11-06 · **The chat notifications are sent by the Worker itself** (Cloudflare Web Push, RFC 8291 +
-  VAPID, written with WebCrypto) — no third-party push service, no new npm package. The phones subscribe in
-  the browser with one tap (🔔 in the chat header) and the Worker pushes every shop-room message
-  · ntfy stays as the fallback, so a member without the browser permission still gets the phone push
-  · a private chat never pushes (the channel is shared and the text is private)
+   VAPID, written with WebCrypto) — no third-party push service, no new npm package. The phones subscribe in
+   the browser with one tap (🔔 in the chat header) and the Worker pushes every shop-room message
+   · ntfy stays as the fallback, so a member without the browser permission still gets the phone push
+   · a private chat never pushes (the channel is shared and the text is private)
+- 2026-11-07 · **Chat groups** — Added group chat functionality alongside team chat; owners can create groups, members see only their groups; permission model distinguishes team vs group chats.

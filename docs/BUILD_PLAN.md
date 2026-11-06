@@ -102,8 +102,6 @@ Each task: Files · Steps · Acceptance. Do ONE task per session if context is s
   with Bearer key, stream false, 60s AbortController. ai/suggest.ts builds a human-numbers summary
   (no raw tables/secrets), zod-validates ≤5 suggestions, DROPS any message mentioning a number absent
   from the input, strips markdown fences, falls back with "AI unavailable, showing basic suggestions".
-  db/settings.ts stores enabled/mode/model; key in keychain (OLLAMA_API_KEY). Suggestions page gained
-  "Refresh AI suggestions" + once-per-day auto-refresh (shouldAutoRefresh) + cached in ai_suggestions.
   8 tests.)
 - [x] **T-8.3 Chat with tools** — read-only tools only (get_item_usage, get_price_history, get_low_stock_items, get_spending_by_category, get_supplier_comparison).
   (2026-10-30: ai/tools.ts — six SELECT-only tools (also get_stock_value), unknown names refused; no
@@ -186,7 +184,7 @@ Each task: Files · Steps · Acceptance. Do ONE task per session if context is s
   customer). Bills → View → **Email bill** sends the HTML invoice from the shop's address and logs
   `bill.email`. Rust command `send_email` via `lettre` (rustls). Tested with GSTIN 37JAGPM1479E1ZE
   (valid): bill SD-2026-000004. 203 tests green, cargo check clean.
-- [x] **T-10.5 WhatsApp bill** — Bills → View → **WhatsApp bill** opens the customer's wa.me chat
+- [x] **T-10.5 WhatsApp bill** — Bills → View → **WhatsAPP bill** opens the customer's wa.me chat
   (10-digit mobile → +91; 0/00 prefixes stripped; +NN country codes kept) with a pre-filled summary
   (bill no, date, total, credit due, thanks); logs `bill.whatsapp`; no phone → friendly error.
   wa.me text links can't carry files — attach the PDF via Print / Save PDF manually. First slice of
@@ -257,7 +255,7 @@ Reconciliation with the interim work of 2026-10-30:
 - [x] **W4f owner screens (web)** — **New Bill** tab (customer name/phone/email/GSTIN, item+qty+rate+HSN lines, discount, GST 0/5/12/18/28%, payment mode, save → bill + invoice preview) and **Items add/edit** (POST/PUT /api/items). Verified live in Chrome: bill SD-2026-000005 ₹15.75 + invoice render, add/edit item; test data cleaned. Remaining web screens: Purchases, Stock Check, Expenses, Dashboard.
 - [x] **W4e responsive web** — mobile top bar + scrollable tabs (sidebar hidden under md), fluid tables, invoice iframe 70vh on phone/tablet and full height on desktop. Chrome device tests pass at 390/430/768: no horizontal overflow on login/invoices/items/activity/team/bill, bill fits viewport.
 - [x] **W4d web role selector** — approval uses a Staff/Owner dropdown; existing members have a role dropdown (POST /api/users/:id/role, owner only, self-role locked). Verified live.
-- [x] **W4c web self-signup + owner approval** — public POST /api/auth/signup creates a **pending** account (active=false, pending=true); owner Team shows “awaiting approval” with **Approve staff / Approve owner / Reject**; pending logins are refused; approved members get the chosen role (staff blocked from /api/users). Verified live: signup 201 → login 403 awaiting approval → approve staff 200 → login 200 → /api/users 403 → reject flow 404. Desktop login also refuses pending accounts.
+- [x] **W4c web self-signup + owner approval** — public POST /api/auth/signup creates a **pending** account (active=false, pending=true); owner Team shows “awaiting approval” with **Approve staff / Approve owner / Reject”; pending logins are refused; approved members get the chosen role (staff blocked from /api/users). Verified live: signup 201 → login 403 awaiting approval → approve staff 200 → login 200 → /api/users 403 → reject flow 404. Desktop login also refuses pending accounts.
 - [x] **W4 web UI** `web/` (Vite + React + Tailwind): phone/password login, Invoices list, **bill preview** (same invoice HTML), Items with stock, Activity with attribution, sign-out. Verified with Playwright against the Worker + real DB (SD-2026-000004 visible, 8 items, activity by B PHANI KUMAR). Dev: `cd web && npm run dev` (proxy /api → 127.0.0.1:8787). Production: `npm run build` + Pages deploy with a `/api` proxy (W6).
 - [x] **W3c transactional writes** POST /api/purchases, DELETE /api/purchases/:id, POST /api/bills, POST /api/bills/:id/cancel, POST /api/stock — Neon WebSocket transactions **work on Workers** (probe verified). Playwright: purchase 1kg ₹100 → bill SD-2026-000005 ₹78.75 → stock 500g → cancel → 1000g → delete purchase, all audit rows by B PHANI KUMAR. Note: item delete is blocked when a cancelled bill still references it (expected; no hard deletes).
 - [x] **W3b writes** POST /api/items, DELETE /api/items/:id, POST /api/customers, POST/PUT/DELETE /api/expenses, PUT /api/shop — audit actor per request (writes serialized per isolate). Verified with Playwright: create/update/delete expense + item, audit rows show B PHANI KUMAR. Pending: bill/purchase/stock writes (WebSocket transactions) and users.
@@ -278,7 +276,6 @@ Reconciliation with the interim work of 2026-10-30:
 - [x] **N2** notifyOwners() via Resend — fires on self-signup request, member add, approval and role change; honours notify_* toggles; best-effort (never blocks the action). Verified live without a key: signup 201, approve/role 200, no errors. Needs RESEND_API_KEY + MAIL_FROM for real delivery (key live on the worker 2026-11-04; MAIL_FROM pending domain verification).
 - [x] **N3 staff bill alerts** — when a staff member creates a bill, owners get an email (bill no, total, line count, member) via notifyOwners/bill toggle. Verified live with a temporary staff account (bill SD-2026-000005 created, cancelled, cleaned); skipped safely without a Resend key.
 - [x] **N4 web Settings** — owner tab: notify emails, per-event toggles (signup/member/bill), email-configured status, Save + **Send test** (owner-only endpoints, audit). Verified live: tab visible, status “NOT configured”, save persists; test returns 503 until RESEND_API_KEY is set. Notifications workstream complete.
-
 - [x] **N5 Resend key in DB (encrypted)** — Settings accepts a Resend API key, stored as `resend_api_key_enc` with AES-GCM (key derived from SESSION_SECRET), never returned; Worker decrypts at send time, Cloudflare secret still takes precedence; clear-key supported. Verified live: save → configured, test reaches provider (502 on fake key), clear → unconfigured; DB holds ciphertext only.
 - [x] **W4i clean UI buttons** — replaced bold underline text actions with small bordered buttons (`btn-mini`, danger/ok variants) across Invoices, Items, Team, Investments; secondary buttons for test/view actions. Verified live (counts: View, Edit, Delete present).
 
@@ -362,7 +359,7 @@ Reconciliation with the interim work of 2026-10-30:
   Acceptance: tsc clean, the desktop switches rooms and shows the unread badge.
   (2026-11-06: `src/lib/chatClient.ts` grew the room-scoped calls (conversations, members, start, read, export
   text) and `src/pages/TeamChat.tsx` the same conversation list, room switcher, New chat and Export as the web
-  screen. The desktop test covers the list and the switch to a private chat.
+  screen. The desktop test covers the list and the switch to a private chat.)
 - [x] **T-13.6 Privacy + export** — a direct chat is private (only its two members read it); the activity log
   records that a direct chat happened (who, when, how many messages) but never the text; every member can
   export their own conversation history as a text file.
@@ -423,40 +420,6 @@ Reconciliation with the interim work of 2026-10-30:
   the desktop look the same. Playwright: the read tick and the typing indicator are covered (9/9 green).
 - [x] **T-14.5 Tests + deploy** — unit tests for the state logic, a local end-to-end check (send → delivered →
   read → the sender sees the blue tick), the Playwright spec for the ticks, the worker deployed.
-
-## Phase 2 — the chat redesign (web, added 2026-11-06 on request)
-> Only `web/src/components/TeamChat.tsx` (+ a few lines in `web/src/styles.css`, new icons in
-> `web/src/components/icons.tsx`, pure helpers in `src/logic/chatView.ts` / `chat.ts`). No new dependency, no new colours.
-- [x] **P2.1 Pure view helpers + tests** — `chatDaySections` (date separators "Today"/"Yesterday"/"Fri, 3 Nov"),
-  `conversationName`, `filterConversations`, `filterMessages`, `formatChatListTimeRow` in `src/logic/chatView.ts`;
-  `formatChatListTime` + `conversationPreview` + weekday day labels in `src/logic/chat.ts`.
-  Tests in `src/logic/chatView.test.ts` (16 tests). Acceptance: `npx vitest run` green (463 unit tests).
-- [x] **P2.2 The list preview** — `listConversations` now also returns `lastMessage` (author/body/kind/createdAt)
-  via a SQL subquery — no migration. `ChatConversation.lastMessage?` in `web/src/api.ts` + `src/lib/chatClient.ts`.
-- [x] **P2.3 Layout** — the three panels fill the viewport height (`h-[calc(100dvh-…)]`, `min-h-0 flex-1`):
-  list **300px**, centre flexible (the old `max-h-[52vh]` is gone), approvals **340px and collapsible**
-  (chevron; collapsed shows a 64px rail with the pending count). Mobile: the list is the screen, a chat opens
-  full-screen with a back arrow, the approvals become a tab (`mobileView` state, `lg:` hidden).
-- [x] **P2.4 Chat list rows** — avatar (initials / group icon) + presence dot, name, truncated one-line
-  `lastMessage` preview, list time (today "09:42", else "Yesterday"/"Tue, 3 Nov"), unread badge, **bold when
-  unread**, a **search bar** on top, pinned chats first.
-- [x] **P2.5 Chat header** — avatar, name, status line (typing / presence / member count kept from Phase 1),
-  and on the right **search-in-chat**, **members** popup, **⋮ menu** (Rename → inline form, Export chat, Mute,
-  Pin chat — Escape/backdrop closes).
-- [x] **P2.6 Messages** — 16px-rounded bubbles with the tail on the grouped last bubble, sender name + avatar
-  on incoming groups, grouping (shared `groupMessages`), **time on hover** (`.chat-bubble .chat-time`),
-  **date separators** (`chatDaySections`), soft shadows / 1px borders / 150–200 ms transitions.
-- [x] **P2.7 Composer** — one rounded bar: paperclip (receipt), emoji picker (8 emoji, no library),
-  **auto-growing textarea** (`field-sizing: content`, max 160px), filled **circular send button**
-  (grey when empty), **Enter sends / Shift+Enter newline**.
-- [x] **P2.8 Loaders & empty states** — skeleton shimmer while the list/room load, friendly empty states
-  (with a search-aware message).
-- [x] **Kept**: Phase 1 behaviour (rename single source, presence, read avatars, two ticks), the socket + auto
-  reconnect, receipts + R2, the Web Push toggle, the jump-to-bottom button. Playwright **19/19 green**
-  (rename moved into the ⋮ menu; new tests: list search, Enter-to-send), 463 unit tests, tsc clean app/web/worker,
-  `cd web && npm run build` OK.
-
-### Phase 14 — addendum: the owner renames the group (2026-11-06)
 - [x] **T-14.6 Rename the group (owner only)** — the admin (role **owner**) can give the shop room a name
   (`POST /api/chat/rename`, `chat_conversations.title`); a staff member gets **403**. The new name is pushed
   into the room as a "rename" frame, so everybody sees it at once, and the header shows it immediately.
@@ -467,8 +430,6 @@ Reconciliation with the interim work of 2026-10-30:
   frame in the protocol, and the inline edit in the room header of both screens. Local check
   `scripts/local-rename-check.mjs` — **4/4 green**; Playwright: the owner can rename, a staff member sees no
   Rename button (**11/11**). Deployed as version `cb638c5a`.)
-
-### Phase 14 — addendum 2: the sessions (2026-11-06)
 - [x] **T-14.7 The one-hour logout actually works + "sign out everybody"** — the **bug**: the chat screen
   refreshed its token every 30 minutes, and that request **slid the one-hour idle window**, so the members
   who sat on the chat screen were never signed out. Fixed: a background call now carries
@@ -533,3 +494,47 @@ Reconciliation with the interim work of 2026-10-30:
   header: 🔔/🔕, asks for the permission, subscribes, unsubscribes.
 - [x] **T-16.6 The hook** — a message in the shop room pushes the team's phones
   (`pushToTheTeam`, skipping the sender); ntfy stays as the fallback. Deployed as `28e85bbc`.
+
+## Phase 14 — Chat groups (added 2026-11-07)
+- [ ] **T-14.0: plan chat groups** — Add this section to BUILD_PLAN.md and DECISIONS.md. Commit "T-14.0: plan chat groups".
+- [ ] **T-14.1 Database (tests first)**
+  - chat_rooms(id, name, kind 'team'|'group', created_by → app_users, created_at, archived_at)
+  - chat_room_members(room_id, user_id, role 'admin'|'member', added_by, added_at; pk room_id+user_id)
+  - chat_messages: add room_id → chat_rooms (NULL after backfill, then NOT NULL)
+  - chat_reads: change key to (user_id, room_id)
+  - Migration: create room "All team" (kind 'team', every active user is a member, new users are
+    auto-added), move all existing messages into it. Additive, back up first.
+  - chat.ts: createGroup, renameGroup, addMembers, removeMember, archiveGroup, listMyRooms
+    (with last message + unread count), listMessages(roomId,...). Never hard-delete a group.
+  - Acceptance: tables created, migration applies cleanly, unit tests pass.
+- [ ] **T-14.2 Permissions (tests first)**
+  - Only owner can create, rename, archive groups and add/remove members (permission "chat.manage";
+    owner by default, can be given to CA in the roles screen).
+  - A user can read/send only in rooms where they are a member. "All team" cannot be archived.
+  - Receipts: approvers (owner/CA) can approve receipts from ANY group, even if not a member, via the
+    Expenses banner; the group still shows the receipt card status.
+  - Acceptance: permission checks work correctly, unit tests pass.
+- [ ] **T-14.3 Worker**
+  - One Durable Object per room: env.CHAT_ROOM.idFromName("room-" + roomId). Check membership on
+    /api/chat/ws?room=, history, upload, file download (401/403 otherwise).
+  - On removeMember: tell that room's DO to close the removed user's socket.
+  - Routes: POST /api/chat/rooms, PATCH /api/chat/rooms/:id, POST/DELETE /api/chat/rooms/:id/members,
+    GET /api/chat/rooms (my rooms + unread).
+  - System messages: "Phani created the group", "Phani added Ravi", "Phani removed Suresh",
+    "Group renamed to …".
+  - Acceptance: worker handles group chat correctly, unit tests pass.
+- [ ] **T-14.4 UI (classic chat, existing colour tokens only)**
+  - Team Chat page = 2 columns: left list of groups (initials avatar on bg-accent-soft, name, last
+    message, time, gold unread badge), right = conversation. Phone width: list → tap → conversation,
+    back arrow.
+  - Owner only: "+ New group" button → dialog: name + tick members (owner auto-included) → Create.
+    Group header menu (owner): Rename, Add members, Remove member, Archive.
+  - Floating chat panel shows the group list first.
+  - Sidebar Team Chat badge = total unread across my rooms.
+  - Light + dark both correct.
+  - Acceptance: UI matches specification, unit tests pass.
+- [ ] **T-14.5 Tests**
+  - e2e/chat-groups.spec.ts: owner creates "Purchase team" with Ravi; Ravi sees it, Suresh does not;
+    Ravi sends a receipt there; owner approves from Expenses; owner removes Ravi → Ravi loses access live;
+    staff cannot see "+ New group".
+  - Acceptance: end-to-end tests pass, covers all acceptance criteria.
