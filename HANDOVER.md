@@ -32,6 +32,16 @@ generates the FROM clause **without** them → Postgres refused it → `POST /ap
 unread badge still looked right, it comes from another query). Fixed with the qualified columns + a comment;
 the local check now asserts the **status** of the read calls. Deployed as `63e9d95f`.
 
+## GitHub Actions
+The `test` workflow (npm ci → typecheck → unit tests) is **green** on `main` (run `42210397381`, commit
+`7414b04`). Two flaky Settings tests were the cause of every failed run: "validates the new PIN format and
+match" hit Vitest's 5 s default (the Settings screen re-renders everything on every keystroke → 2.3–3.1 s
+locally, more on a loaded runner) and "owner sees members and can add one" asserted right after the click,
+before the async handler had run. Fixed: the assertions now wait (`waitFor`), and the timeout is 30 s
+(`testTimeout` in `vite.config.ts` + the describe block in `src/pages/Settings.test.tsx`). The workflow now also
+typechecks the **web app** and the **Cloudflare Worker** (they were never checked in CI).
+To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `scripts/gh-job-log.sh <job id>`.
+
 ## Owner steps that are still open
 1. **Enable R2** (dashboard) — `npx wrangler r2 bucket list` still says "Please enable R2 through the Cloudflare
    Dashboard" (code 10042). Then `cd web-worker && npx wrangler r2 bucket create sdhhe-receipts` and
