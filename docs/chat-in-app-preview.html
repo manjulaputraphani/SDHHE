@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Team Chat — in-app preview</title>
+    <!--
+      DESIGN REFERENCE for Phase 12 (Team Chat + receipt approval).
+      Every colour below is copied from src/App.css — no new colours are allowed.
+      The React screens (src/pages/TeamChat.tsx and web/src/components/TeamChat.tsx)
+      must look exactly like this: same tokens, same order, same badges.
+    -->
+    <style>
+      :root {
+        color-scheme: light;
+        --c-bg: #f7f1e8;
+        --c-surface: #ffffff;
+        --c-surface-2: #fbf5ec;
+        --c-surface-3: #f2e8da;
+        --c-primary: #6f4e37;
+        --c-primary-hover: #5b3f2c;
+        --c-on-primary: #f7f1e8;
+        --c-accent: #c8963e;
+        --c-accent-ink: #7f5c1e;
+        --c-accent-soft: #f7ebd6;
+        --c-secondary: #7a8b5a;
+        --c-secondary-ink: #5c6b41;
+        --c-secondary-soft: #edf1e4;
+        --c-ink: #3b2a20;
+        --c-muted: #7d6b5d;
+        --c-line: #e6d9c8;
+        --c-success: #4f8a4b;
+        --c-success-ink: #3c7539;
+        --c-success-soft: #e9f3e6;
+        --c-error: #b84a3a;
+        --c-error-ink: #a83e30;
+        --c-error-soft: #fdf0ec;
+        --c-on-error: #f7f1e8;
+        --c-nav-bg: #6f4e37;
+        --c-nav-text: #f7f1e8;
+        --c-nav-muted: #e0d2c4;
+        --c-nav-active: rgb(255 255 255 / 0.14);
+        --c-nav-hover: rgb(255 255 255 / 0.06);
+        --c-shadow: 0 1px 2px rgb(59 42 32 / 0.05), 0 14px 30px -20px rgb(59 42 32 / 0.3);
+        --c-ring: rgb(111 78 55 / 0.28);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 28px;
+        background: var(--c-bg);
+        color: var(--c-ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 14px;
+      }
+      h1, h2, h3 { font-family: "Playfair Display", Georgia, serif; letter-spacing: -0.01em; margin: 0; }
+      h1 { font-size: 22px; font-weight: 600; }
+      h2 { font-size: 16px; font-weight: 600; }
+      p { margin: 0; }
+
+      .wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
+      .note { font-size: 12px; color: var(--c-muted); max-width: 70ch; }
+      .card {
+        background: var(--c-surface);
+        border: 1px solid var(--c-line);
+        border-radius: 12px;
+        box-shadow: var(--c-shadow);
+      }
+
+      /* ---- the screen ---- */
+      .chat { display: grid; grid-template-columns: 1fr 320px; overflow: hidden; }
+      .chat-main { display: grid; grid-template-rows: auto 1fr auto; min-height: 520px; }
+      .chat-head {
+        display: flex; align-items: center; gap: 10px;
+        padding: 14px 18px; border-bottom: 1px solid var(--c-line); background: var(--c-surface-2);
+      }
+      .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--c-secondary); }
+      .who { font-size: 12px; color: var(--c-muted); margin-left: auto; }
+
+      .messages { padding: 18px; display: grid; gap: 12px; align-content: start; background: var(--c-bg); }
+      .row { display: flex; gap: 8px; }
+      .row.me { justify-content: flex-end; }
+      .bubble {
+        max-width: 72%; padding: 8px 12px; border-radius: 12px;
+        border: 1px solid var(--c-line); background: var(--c-surface); font-size: 13.5px;
+      }
+      .row.me .bubble { background: var(--c-primary); color: var(--c-on-primary); border-color: var(--c-primary); }
+      .meta { font-size: 11px; color: var(--c-muted); margin-top: 4px; }
+      .row.me .meta { color: var(--c-on-primary); opacity: 0.75; text-align: right; }
+
+      .system {
+        justify-self: center; font-size: 12px; color: var(--c-muted);
+        background: var(--c-surface-2); border: 1px solid var(--c-line);
+        padding: 4px 10px; border-radius: 999px;
+      }
+
+      /* receipt card inside the room */
+      .receipt {
+        min-width: 320px; max-width: 380px; padding: 12px; border-radius: 12px;
+        border: 1px solid var(--c-line); background: var(--c-surface);
+      }
+      .receipt h3 { font-size: 14px; }
+      .receipt .amount { font-size: 18px; font-weight: 600; color: var(--c-ink); }
+      .file {
+        display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px;
+        border: 1px solid var(--c-line); border-radius: 8px; background: var(--c-surface-2); font-size: 12.5px;
+      }
+      .file .thumb {
+        width: 40px; height: 40px; border-radius: 6px; background: var(--c-accent-soft);
+        display: grid; place-items: center; color: var(--c-accent-ink); font-size: 10px; font-weight: 600;
+      }
+      .actions { display: flex; gap: 8px; margin-top: 10px; }
+
+      .btn {
+        border-radius: 8px; padding: 6px 12px; font-size: 12.5px; font-weight: 500;
+        border: 1px solid var(--c-line); background: var(--c-surface); color: var(--c-ink); cursor: pointer;
+      }
+      .btn-primary { background: var(--c-primary); color: var(--c-on-primary); border-color: var(--c-primary); }
+      .btn-ok { background: var(--c-secondary-soft); color: var(--c-secondary-ink); border-color: var(--c-secondary); }
+      .btn-bad { background: var(--c-error-soft); color: var(--c-error-ink); border-color: var(--c-error); }
+
+      .composer { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--c-line); background: var(--c-surface); }
+      .composer input {
+        flex: 1; border-radius: 8px; border: 1px solid var(--c-line); background: var(--c-surface);
+        padding: 8px 10px; color: var(--c-ink); font: inherit;
+      }
+      .composer input:focus { outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 3px var(--c-ring); }
+
+      /* ---- right column: approvals ---- */
+      .side { border-left: 1px solid var(--c-line); background: var(--c-surface); padding: 14px; display: grid; gap: 10px; align-content: start; }
+      .side h2 { font-size: 14px; }
+      .pending {
+        border: 1px solid var(--c-line); border-radius: 10px; padding: 10px; background: var(--c-surface-2);
+        display: grid; gap: 6px;
+      }
+      .pending .title { font-size: 13px; font-weight: 600; }
+      .pending .sub { font-size: 12px; color: var(--c-muted); }
+      .badge {
+        display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px;
+        font-size: 11px; font-weight: 500;
+      }
+      .badge-ok { background: var(--c-success-soft); color: var(--c-success-ink); }
+      .badge-warn { background: var(--c-accent-soft); color: var(--c-accent-ink); }
+      .badge-bad { background: var(--c-error-soft); color: var(--c-error-ink); }
+      .empty { font-size: 12.5px; color: var(--c-muted); padding: 10px 0; }
+      .legend { font-size: 12px; color: var(--c-muted); }
+      .legend code { background: var(--c-surface-2); border: 1px solid var(--c-line); border-radius: 4px; padding: 1px 5px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Team Chat — in-app preview</h1>
+        <p class="note">
+          Phase 12 reference for <code>/team-chat</code>. Colours are the tokens from
+          <code>src/App.css</code> only. Layout: header with the live dot and who is online, the room on the
+          left, receipt approvals on the right, composer at the bottom.
+        </p>
+      </header>
+
+      <section class="card chat">
+        <!-- ---------- the room ---------- -->
+        <div class="chat-main">
+          <div class="chat-head">
+            <span class="dot"></span>
+            <h2>Team Chat</h2>
+            <span class="who">3 online · B PHANI KUMAR, ANITA, RAJU</span>
+          </div>
+
+          <div class="messages">
+            <div class="system">Raju joined the chat</div>
+
+            <div class="row">
+              <div>
+                <div class="bubble">Baki stock ki kya rate badha?</div>
+                <div class="meta">ANITA · 09:42</div>
+              </div>
+            </div>
+
+            <div class="row me">
+              <div>
+                <div class="bubble">₹96/kg — kal 20 kg laya tha</div>
+                <div class="meta">You · 09:43</div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="receipt">
+                <h3>Transport bill — Today</h3>
+                <div class="amount">₹450.00</div>
+                <p class="legend">Paid to SHIVAKARAN TRANSPORT · 12 Nov 2026</p>
+                <div class="file">
+                  <span class="thumb">IMG</span>
+                  <span>transport-receipt.jpg<br /><span class="legend">142 KB</span></span>
+                </div>
+                <div class="actions">
+                  <span class="badge badge-warn">Pending approval</span>
+                </div>
+              </div>
+              <div class="meta">RAJU · 09:45</div>
+            </div>
+
+            <div class="system">B PHANI KUMAR approved receipt #12 · Transport bill</div>
+
+            <div class="row me">
+              <div>
+                <div class="bubble">Approved ✓</div>
+                <div class="meta">You · 09:47</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer">
+            <button class="btn" type="button">Attach receipt</button>
+            <input placeholder="Message the team…" />
+            <button class="btn btn-primary" type="button">Send</button>
+          </div>
+        </div>
+
+        <!-- ---------- approvals ---------- -->
+        <aside class="side">
+          <h2>Receipt approvals</h2>
+          <div class="pending">
+            <div class="title">Transport bill — ₹450.00</div>
+            <div class="sub">RAJU · 12 Nov 2026 · 09:45</div>
+            <div class="actions">
+              <button class="btn btn-ok" type="button">Approve</button>
+              <button class="btn btn-bad" type="button">Reject</button>
+            </div>
+          </div>
+          <div class="pending">
+            <div class="title">Loading charges — ₹1,200.00</div>
+            <div class="sub">ANITA · 11 Nov 2026 · 18:02</div>
+            <div class="actions">
+              <span class="badge badge-ok">Approved</span>
+              <span class="badge badge-bad">Rejected</span>
+            </div>
+          </div>
+          <p class="empty">Nothing else to approve.</p>
+        </aside>
+      </section>
+
+      <p class="legend">
+        Rules: only roles with <code>chat:edit</code> see Approve / Reject · the composer is always visible ·
+        money is integer paise and shown with the <code>formatRupees</code> helper · receipts are images or PDF,
+        4 MB max, stored in R2 (never in Postgres).
+      </p>
+    </div>
+  </body>
+</html>
