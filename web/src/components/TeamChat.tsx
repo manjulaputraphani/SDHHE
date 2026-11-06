@@ -30,6 +30,7 @@ import {
   receiptStatusLabel,
   receiptStatusTone,
 } from "../../../src/logic/chat";
+import { polishSkipReason } from "../../../src/logic/aiPolish";
 import { formatRupees } from "../../../src/logic/units";
 
 import { showToast } from "./notifications/toastStore";
@@ -164,6 +165,17 @@ export default function TeamChat({ user }: Props) {
   const [showRemoveMember, setShowRemoveMember] = useState(false);
   /** The members of the open group — the popup and the owner's menu. */
   const [groupMembers, setGroupMembers] = useState<ChatMember[]>([]);
+  /** The polish preview (Phase 15): waiting for the AI, a suggestion, or a failure. */
+  const [polishCard, setPolishCard] = useState<
+    | { state: "waiting" }
+    | { state: "ready"; suggested: string; original: string; keptOriginal: boolean }
+    | { state: "failed"; original: string }
+    | null
+  >(null);
+  /** The message being edited in place (Phase 17 — message editing). */
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -379,6 +391,14 @@ export default function TeamChat({ user }: Props) {
             }
             // The message reached this device — tell the sender.
             void api.markChatDelivered(frame.message.id).catch(() => undefined);
+          }
+          if (frame.type === "update" && frame.message) {
+            // Somebody edited their message — swap in the fixed text.
+            const updated = frame.message as ChatMessage;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)),
+            );
+            void loadConversations();
           }
           if (frame.type === "delivered" || frame.type === "read") {
             const ids = (frame.messageIds ?? []) as number[];
@@ -610,24 +630,80 @@ export default function TeamChat({ user }: Props) {
     }
   }
 
-  /** Send the draft (the composer's Enter key and the send button both call this). */
+  /** Send the draft (the composer's Enter key and the send button both call this).
+   *  In a room with AI polish on, the member first confirms a suggestion (Phase 15). */
   async function submitDraft() {
     const text = draft.trim();
     if (!text || busy) return;
+    // A suggestion card is already open — its buttons send, Enter does nothing.
+    if (polishCard) return;
+    if (activeConversation?.kind === "group" && activeConversation.aiPolish) {
+      // Tiny and emoji-only texts skip the AI; a receipt never comes through here.
+      if (polishSkipReason(text)) {
+        await sendMessage(text, false);
+        return;
+      }
+      setPolishCard({ state: "waiting" });
+      setError(null);
+      try {
+        const result = await api.polishChatMessage(room, text);
+        if (result.polished == null) {
+          setPolishCard({ state: "failed", original: text });
+        } else {
+          setPolishCard({
+            state: "ready",
+            suggested: result.polished,
+            original: text,
+            keptOriginal: Boolean(result.keptOriginal),
+          });
+        }
+      } catch {
+        // No answer in time or a network error — the member decides.
+        setPolishCard({ state: "failed", original: text });
+      }
+      return;
+    }
+    await sendMessage(text, false);
+  }
+
+  /** Put a text message into the room (the composer and the polish card share this). */
+  async function sendMessage(text: string, aiPolished: boolean) {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
       // The message is shown right away (the socket would send it again).
-      const { message } = await api.sendChatMessage({ kind: "text", body: text, room });
+      const { message } = await api.sendChatMessage({ kind: "text", body: text, room, aiPolished });
       setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       setDraft("");
+      setPolishCard(null);
       scrollToBottom();
       showToast("Message sent", "success", 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Save an edit of one of my own messages (Phase 17 — message editing). */
+  async function saveEdit(messageId: number) {
+    const text = editDraft.trim();
+    if (!text || savingEdit) return;
+    setSavingEdit(true);
+    setError(null);
+    try {
+      const { message } = await api.editChatMessage(messageId, text);
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)));
+      setEditingMessageId(null);
+      setEditDraft("");
+      // The preview line in the chat list may have changed too.
+      void loadConversations();
+      showToast("Message edited", "success", 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -1347,18 +1423,77 @@ export default function TeamChat({ user }: Props) {
                                 </div>
                               );
                             }
+                            // The author fixes their own text right in the bubble (Phase 17).
+                            if (message.id === editingMessageId) {
+                              return (
+                                <form
+                                  key={message.id}
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    void saveEdit(message.id);
+                                  }}
+                                  className="card w-full max-w-[80%] space-y-2 p-2 md:max-w-[65%]"
+                                >
+                                  <textarea
+                                    className="input min-h-16 text-sm"
+                                    aria-label="Edit message"
+                                    value={editDraft}
+                                    autoFocus
+                                    onChange={(event) => setEditDraft(event.currentTarget.value)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Escape") {
+                                        setEditingMessageId(null);
+                                        setEditDraft("");
+                                      }
+                                    }}
+                                  />
+                                  <div className="flex gap-2">
+                                    <button type="submit" className="btn-mini" disabled={savingEdit}>
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-mini"
+                                      onClick={() => {
+                                        setEditingMessageId(null);
+                                        setEditDraft("");
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </form>
+                              );
+                            }
                             return (
                               <div
                                 key={message.id}
                                 tabIndex={0}
                                 aria-label={`${group.author}: ${message.body}`}
+                                onClick={() => {
+                                  // Tap my own text to fix it.
+                                  if (message.kind === "text" && message.userId === user?.id) {
+                                    setEditingMessageId(message.id);
+                                    setEditDraft(message.body);
+                                  }
+                                }}
                                 className={`chat-bubble outline-none rounded-2xl px-3.5 py-2 text-sm ${
                                   group.mine
                                     ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
                                     : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
-                                } ${isFirst ? "" : "mt-0.5"}`}
+                                } ${isFirst ? "" : "mt-0.5"} ${
+                                  group.mine && message.kind === "text" ? "cursor-pointer" : ""
+                                }`}
                               >
                                 <span>{message.body}</span>
+                                {message.aiPolished && (
+                                  <span title="Polished by AI" aria-label="Polished by AI" className="ml-0.5 text-[10px]">
+                                    ✨
+                                  </span>
+                                )}
+                                {message.editedAt && (
+                                  <span className="ml-1 text-[9px] italic opacity-70">edited</span>
+                                )}
                                 <span
                                   className={`chat-time ml-2 inline-block align-baseline text-[10px] ${
                                     group.mine ? "text-on-primary/70" : "text-muted"
@@ -1450,6 +1585,73 @@ export default function TeamChat({ user }: Props) {
             onSubmit={send}
             className="relative z-10 border-t border-line bg-surface px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
           >
+            {/* The AI polish card (Phase 15): the member confirms before sending. */}
+            {polishCard && (
+              <div
+                className="mb-2 rounded-xl bg-accent-soft px-3 py-2.5 text-accent-ink"
+                role="note"
+                aria-label="AI polish suggestion"
+              >
+                {polishCard.state === "waiting" && (
+                  <p className="text-xs font-medium">✨ Polishing…</p>
+                )}
+                {polishCard.state === "failed" && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium">AI not available — send original?</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn-mini"
+                        disabled={busy}
+                        onClick={() => void sendMessage(polishCard.original, false)}
+                      >
+                        Send original
+                      </button>
+                      <button type="button" className="btn-mini" onClick={() => setPolishCard(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {polishCard.state === "ready" && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold">
+                      ✨ {polishCard.keptOriginal ? "Kept original — numbers changed" : "Suggested"}
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm">{polishCard.suggested}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn-mini bg-primary font-semibold text-on-primary"
+                        disabled={busy}
+                        onClick={() => void sendMessage(polishCard.suggested, !polishCard.keptOriginal)}
+                      >
+                        Send suggested
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-mini"
+                        disabled={busy}
+                        onClick={() => void sendMessage(polishCard.original, false)}
+                      >
+                        Send original
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-mini"
+                        onClick={() => {
+                          setDraft(polishCard.suggested);
+                          setPolishCard(null);
+                          composerRef.current?.focus();
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex w-full items-end gap-2 rounded-[20px] border border-line bg-surface-2 px-2 py-2 transition-colors focus-within:border-primary">
               <button
                 type="button"
@@ -1499,6 +1701,11 @@ export default function TeamChat({ user }: Props) {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     void submitDraft();
+                  }
+                  // Escape closes the AI polish card (the draft stays).
+                  if (e.key === "Escape" && polishCard) {
+                    e.preventDefault();
+                    setPolishCard(null);
                   }
                 }}
                 disabled={busy}

@@ -87,6 +87,7 @@ let conversationsState: Array<{
   room: string;
   kind: "group" | "direct";
   title: string | null;
+  aiPolish: boolean;
   other: { id: number; name: string; role: string } | null;
   unread: number;
   lastMessageAt: string | null;
@@ -98,6 +99,7 @@ const CONVERSATIONS = [
     room: "main",
     kind: "group" as const,
     title: null,
+    aiPolish: false,
     other: null,
     unread: 0,
     lastMessageAt: "2026-11-06T09:43:00.000Z",
@@ -113,6 +115,7 @@ const CONVERSATIONS = [
     room: "dm-1-4",
     kind: "direct" as const,
     title: null,
+    aiPolish: false,
     other: { id: 4, name: "RAJU", role: "staff" },
     unread: 2,
     lastMessageAt: "2026-11-06T09:40:00.000Z",
@@ -133,6 +136,7 @@ const GROUP = {
   room: "group-buy",
   kind: "group" as const,
   title: "Purchase team",
+  aiPolish: false,
   other: null,
   unread: 0,
   lastMessageAt: "2026-11-06T09:50:00.000Z",
@@ -151,7 +155,7 @@ const GROUP_MEMBERS = [{ id: 4, name: "RAJU", role: "staff", lastSeenAt: null }]
 async function mockChat(
   page: Page,
   member: typeof OWNER | typeof STAFF,
-  options: { onDecision?: (id: number) => void; groups?: boolean } = {},
+  options: { onDecision?: (id: number) => void; groups?: boolean; polish?: boolean } = {},
 ) {
   // Anything else the app asks for (the shop details, the activity, ...) is
   // answered with an empty result — a 401 would sign the app out again and a
@@ -275,8 +279,50 @@ async function mockChat(
   await page.route("**/api/chat/groups/archive**", (route) =>
     route.fulfill({ json: { ok: true } }),
   );
-  // Start every test from the default conversation list.
-  conversationsState = options.groups ? [...CONVERSATIONS, GROUP] : CONVERSATIONS;
+  // AI polish (Phase 15): the owner sets the switch, the member asks for a suggestion.
+  await page.route("**/api/chat/groups/polish**", (route) => {
+    const request = route.request();
+    const data = JSON.parse(request.postData() ?? "{}") as { room?: string; enabled?: boolean };
+    conversationsState = conversationsState.map((entry) =>
+      entry.room === (data.room ?? "") ? { ...entry, aiPolish: Boolean(data.enabled) } : entry,
+    );
+    return route.fulfill({
+      json: { ok: true, room: data.room ?? "", aiPolish: Boolean(data.enabled) },
+    });
+  });
+  await page.route("**/api/chat/polish**", (route) =>
+    route.fulfill({
+      json: { polished: "Please send 20 bags by tomorrow." },
+    }),
+  );
+  // Message editing (Phase 17): the author fixes their own text.
+  await page.route("**/api/chat/messages/*", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const id = Number(route.request().url().match(/\/messages\/(\d+)/)?.[1] ?? 0);
+    const data = JSON.parse(route.request().postData() ?? "{}") as { body?: string };
+    return route.fulfill({
+      json: {
+        message: {
+          id,
+          room: "main",
+          userId: member.id,
+          author: member.name,
+          role: member.role,
+          kind: "text",
+          body: String(data.body ?? ""),
+          receiptId: null,
+          createdAt: new Date(Date.now() - 60_000).toISOString(),
+          editedAt: new Date().toISOString(),
+        },
+      },
+    });
+  });
+  // Start every test from the default conversation list (polish can be pre-armed).
+  conversationsState = options.groups
+    ? [...CONVERSATIONS, GROUP]
+    : options.polish
+      ? CONVERSATIONS.map((entry) => (entry.room === "main" ? { ...entry, aiPolish: true } : entry))
+      : CONVERSATIONS;
   await page.route("**/api/auth/logout-all", (route) =>
     route.fulfill({ json: { ok: true, epoch: 2 } }),
   );
@@ -284,8 +330,13 @@ async function mockChat(
     route.fulfill({ json: { token: "test-token", expiresAt: Date.now() + 3_600_000, user: member } }),
   );
   await page.route("**/api/chat/messages**", async (route) => {
+    // Message editing (Phase 17) has its own route above.
+    if (route.request().method() === "PATCH") return route.fallback();
     if (route.request().method() === "POST") {
-      const body = JSON.parse(route.request().postData() ?? "{}") as { body?: string };
+      const body = JSON.parse(route.request().postData() ?? "{}") as {
+        body?: string;
+        aiPolished?: boolean;
+      };
       await route.fulfill({
         json: {
           message: {
@@ -297,6 +348,7 @@ async function mockChat(
             kind: "text",
             body: body.body ?? "",
             receiptId: null,
+            aiPolished: body.aiPolished === true,
             createdAt: new Date().toISOString(),
           },
         },
@@ -341,9 +393,17 @@ async function mockChat(
 }
 
 test.describe("Team Chat", () => {
+  /** The app always opens on the Dashboard now (the owner asked) — the tests
+   *  walk into the chat through the sidebar, like a member does. */
+  async function openChat(page: Page) {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Team Chat" }).click();
+    await expect(page.getByRole("heading", { name: "Team Chat" })).toBeVisible();
+  }
+
   test("shows the room, the composer and the approvals", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await expect(page.getByRole("heading", { name: "Team Chat" })).toBeVisible();
     await expect(page.getByText("Baki stock ki kya rate badha?", { exact: true })).toBeVisible();
@@ -355,15 +415,26 @@ test.describe("Team Chat", () => {
 
   test("keeps the address at /team-chat", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
     await expect(page.getByRole("heading", { name: "Team Chat" })).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe("/team-chat");
+    await expect(page).toHaveURL(/\/team-chat$/);
+  });
+
+  test("the app ALWAYS opens on the Dashboard, even from a /team-chat URL", async ({ page }) => {
+    await mockChat(page, OWNER);
+    // A cold open at the chat URL must still land on the Dashboard.
+    await page.goto("/team-chat");
+
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Team Chat" })).toHaveCount(0);
+    // The address bar settles back to the app root.
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test("the owner can approve a receipt", async ({ page }) => {
     let decided: number | null = null;
     await mockChat(page, OWNER, { onDecision: (id) => (decided = id) });
-    await page.goto("/team-chat");
+    await openChat(page);
 
     const approve = page.getByRole("button", { name: "Approve" }).first();
     await expect(approve).toBeVisible();
@@ -375,7 +446,7 @@ test.describe("Team Chat", () => {
 
   test("staff sees the receipt but cannot approve it", async ({ page }) => {
     await mockChat(page, STAFF);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await expect(page.getByRole("heading", { name: "Receipt approvals" })).toBeVisible();
     await expect(page.getByText("Transport bill").first()).toBeVisible();
@@ -386,7 +457,7 @@ test.describe("Team Chat", () => {
 
   test("sends a message", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await page.getByPlaceholder("Message…").fill("Kal subah 6 baje khula hai");
     await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -395,7 +466,7 @@ test.describe("Team Chat", () => {
 
   test("shows the read tick on my own message", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     // The message is in the room (the list preview shows it too — use exact).
     await expect(page.getByText("₹96/kg — kal 20 kg laya tha", { exact: true })).toBeVisible();
@@ -405,13 +476,13 @@ test.describe("Team Chat", () => {
 
   test("shows who is typing", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
     await expect(page.getByText(/RAJU is typing/)).toBeVisible();
   });
 
   test("the owner can rename the group", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     // Phase 2: the rename lives in the ⋮ menu of the room header.
     await page.getByRole("button", { name: "Chat menu" }).click();
@@ -426,7 +497,7 @@ test.describe("Team Chat", () => {
 
   test("the chat list has a search bar and date previews (Phase 2)", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await expect(page.getByRole("textbox", { name: "Search chats" })).toBeVisible();
     // Filtering the list by name works.
@@ -437,7 +508,7 @@ test.describe("Team Chat", () => {
 
   test("the composer sends with Enter (Phase 2)", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     const composer = page.getByPlaceholder("Message…");
     await composer.fill("Sent with Enter");
@@ -447,7 +518,7 @@ test.describe("Team Chat", () => {
 
   test("a staff member cannot rename the group", async ({ page }) => {
     await mockChat(page, STAFF);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Rename" })).toHaveCount(0);
@@ -455,7 +526,7 @@ test.describe("Team Chat", () => {
 
   test("lists the conversations with their unread count", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Shop room/ })).toBeVisible();
@@ -466,7 +537,7 @@ test.describe("Team Chat", () => {
 
   test("opens a private chat from the member list", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await page.getByRole("button", { name: "New chat" }).click();
     await expect(page.getByRole("heading", { name: "Start a private chat" })).toBeVisible();
@@ -480,7 +551,7 @@ test.describe("Team Chat", () => {
   // ---- Chat groups (Phase 14) ----
   test("the owner can make a group with the members they pick", async ({ page }) => {
     await mockChat(page, OWNER);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await page.getByRole("button", { name: "New group" }).click();
     await expect(page.getByRole("heading", { name: "New group" })).toBeVisible();
@@ -497,14 +568,14 @@ test.describe("Team Chat", () => {
 
   test("staff cannot make a group", async ({ page }) => {
     await mockChat(page, STAFF);
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await expect(page.getByRole("button", { name: "New group" })).toHaveCount(0);
   });
 
   test("the owner can manage the members of a group from the header menu", async ({ page }) => {
     await mockChat(page, OWNER, { groups: true });
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await page.getByRole("button", { name: /Purchase team/ }).click();
     await page.getByRole("button", { name: "Chat menu" }).click();
@@ -523,7 +594,7 @@ test.describe("Team Chat", () => {
 
   test("the owner can remove a member from a group", async ({ page }) => {
     await mockChat(page, OWNER, { groups: true });
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await page.getByRole("button", { name: /Purchase team/ }).click();
     await page.getByRole("button", { name: "Chat menu" }).click();
@@ -535,7 +606,7 @@ test.describe("Team Chat", () => {
 
   test("the owner can archive a group", async ({ page }) => {
     await mockChat(page, OWNER, { groups: true });
-    await page.goto("/team-chat");
+    await openChat(page);
 
     await page.getByRole("button", { name: /Purchase team/ }).click();
     await page.getByRole("button", { name: "Chat menu" }).click();
@@ -544,5 +615,77 @@ test.describe("Team Chat", () => {
     await expect(page.getByText("Group archived")).toBeVisible();
     // The owner lands back in the shop room.
     await expect(page.getByRole("heading", { name: "Shop room" })).toBeVisible();
+  });
+
+  // ---- AI polish (Phase 15) ----
+  test("the owner turns AI polish on for the shop room", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+
+    await page.getByRole("button", { name: "Chat menu" }).click();
+    await page.getByRole("button", { name: /AI polish messages — off/ }).click();
+
+    // Everybody in the room sees the chip at once.
+    await expect(page.getByTestId("ai-polish-chip")).toBeVisible();
+    await page.getByRole("button", { name: "Chat menu" }).click();
+    await expect(page.getByRole("button", { name: /AI polish messages — on/ })).toBeVisible();
+  });
+
+  test("staff cannot see the AI polish switch", async ({ page }) => {
+    await mockChat(page, STAFF);
+    await openChat(page);
+
+    await page.getByRole("button", { name: "Chat menu" }).click();
+    await expect(page.getByRole("button", { name: /AI polish messages/ })).toHaveCount(0);
+  });
+
+  test("a member confirms a polish suggestion before the message goes out", async ({ page }) => {
+    await mockChat(page, STAFF, { polish: true });
+    await openChat(page);
+
+    await page.getByPlaceholder("Message…").fill("pls send 20 bags tmrw");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+
+    // The suggestion card appears — nothing has been sent yet.
+    await expect(page.getByRole("note", { name: "AI polish suggestion" })).toBeVisible();
+    await expect(page.getByText("✨ Suggested")).toBeVisible();
+    await expect(page.getByText("Please send 20 bags by tomorrow.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Send suggested" }).click();
+
+    // The polished text goes out, marked with the spark.
+    await expect(
+      page.getByText("Please send 20 bags by tomorrow.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Polished by AI")).toBeVisible();
+  });
+
+  test("a room without polish sends directly — no AI call, no card", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+
+    await page.getByPlaceholder("Message…").fill("Kal subah 6 baje khula hai");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+
+    await expect(page.getByText("Kal subah 6 baje khula hai", { exact: true })).toBeVisible();
+    await expect(page.getByRole("note", { name: "AI polish suggestion" })).toHaveCount(0);
+  });
+
+  // ---- Message editing (Phase 17) ----
+  test("the author can fix their own message", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+
+    // Tap my own message (#2 — B PHANI KUMAR wrote it).
+    await page
+      .locator('[aria-label="B PHANI KUMAR: ₹96/kg — kal 20 kg laya tha"]')
+      .click();
+    const editor = page.getByRole("textbox", { name: "Edit message" });
+    await expect(editor).toBeVisible();
+    await editor.fill("₹96/kg — kal 25 kg laya tha");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+
+    await expect(page.getByText("₹96/kg — kal 25 kg laya tha", { exact: true })).toBeVisible();
+    await expect(page.getByText("edited").first()).toBeVisible();
   });
 });

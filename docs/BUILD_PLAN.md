@@ -563,3 +563,44 @@ Reconciliation with the interim work of 2026-10-30:
   `visualViewport`. Verified by `e2e-web/responsive.spec.ts` at 375 / 390 / 430 / 768 / 1280 px
   (no horizontal scroll, no auto-zoom, per page: Login, Dashboard, New Bill, Invoices, Items,
   Purchases, Roasting, Team Chat, Settings) + the full 34-test web suite.
+
+## Phase 15 — AI polish (added 2026-11-07)
+The owner turns AI polish on per group; in those groups a message is rewritten professionally
+before sending — as a suggestion the sender confirms. *Adapted like Phase 14: groups live in
+`chat_conversations` (kind `group`, room strings) — there is no `chat_rooms` table or `useChat`
+hook; `roomId` = the room string, "TEAM SDHHE" = the shop room ("main"), and `btn-ghost` does not
+exist in the design system (the card uses `btn-mini` + `bg-accent-soft`/`text-accent-ink` +
+`bg-primary text-on-primary`).*
+- [x] **T-15.1 Setting (tests first)** — `chat_conversations.ai_polish` boolean default false
+  (drizzle/0016, additive). Owner-only toggle: `POST /api/chat/groups/polish` + header menu item
+  "AI polish messages — on/off"; a `settings` frame reloads open clients; "✨ AI polish on" chip in
+  the group header for everyone. Int tests: on/off + shop room + never for direct/retired rooms.
+- [x] **T-15.2 Worker endpoint** — `POST /api/chat/polish {room, text}`: session + membership +
+  `ai_polish` checks, then Ollama Cloud (glm-5.3-flash:cloud, the key stays in the Worker) with
+  the plan's system prompt (verbatim). Skip AI for <15 chars / emoji-only (`src/logic/aiPolish.ts`);
+  receipts never reach the endpoint (the client does not ask with a file attached). 8 s timeout →
+  `{polished: null}`; 30 polishes per user per hour; the AI text is never stored unless sent.
+- [x] **T-15.3 Composer UX** — in a polish room Enter/Send opens the preview card ("✨ Polishing…"
+  → "✨ Suggested" with the polished text, `whitespace-pre-wrap`); [Send suggested] [Send original]
+  [Edit], Esc cancels, failure shows "AI not available — send original?" and sends nothing.
+  Polish-off rooms send directly (no AI call). The sent message stores `ai_polished`
+  (drizzle/0017) and the bubble shows a tiny ✨.
+- [x] **T-15.4 Tests** — unit: skip rules (short/emoji), numbers guard (`keptAllNumbers`: Indian
+  comma formats tolerated; a rewrite that drops a number falls back + "Kept original — numbers
+  changed"), system prompt wording pinned. e2e: owner toggles polish for the shop room (chip
+  appears), staff gets the suggestion flow → Send suggested → bubble + ✨, polish-off sends
+  directly, staff sees no switch. 486 unit / 45 e2e green.
+
+## Fixes (2026-11-07, requested by the owner)
+- [x] **Message editing finished** — the worker route was missing entirely (only the import was
+  committed): `PATCH /api/chat/messages/:id` now checks membership and author-only (via
+  `updateMessage`), broadcasts an `update` frame so every client swaps the text at once; tap your
+  own text bubble to edit in place (Esc/Cancel, Save), the bubble shows an "edited" mark
+  (`edited_at > created_at`, the owner's 0014 design). e2e: author fixes their message.
+- [x] **The app ALWAYS opens on the Dashboard** — even from a `/team-chat` URL (the chat deep link
+  caused "the default screen changed" after push notifications linked there); the URL settles
+  back to `/`, the Team Chat link still pushes `/team-chat` while you are in the chat. Roles
+  without dashboard permission still fall to their first allowed screen (grant Dashboard in
+  Roles & permissions).
+- [x] **12-hour AM/PM local times in the chat** — `formatChatTime` now renders "09:42 AM" /
+  "03:05 PM" (browser-local zone) in bubbles and the chat list.

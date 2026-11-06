@@ -138,8 +138,9 @@ describe("filterMessages", () => {
 describe("formatChatListTime", () => {
   const now = new Date(2026, 10, 6, 15, 0); // Fri 6 Nov 2026, 15:00
 
-  it("shows the clock time for today", () => {
-    expect(formatChatListTime(new Date(2026, 10, 6, 9, 42).toISOString(), now)).toBe("09:42");
+  it("shows the clock time for today (12-hour, AM/PM)", () => {
+    expect(formatChatListTime(new Date(2026, 10, 6, 9, 42).toISOString(), now)).toBe("09:42 AM");
+    expect(formatChatListTime(new Date(2026, 10, 6, 21, 7).toISOString(), now)).toBe("09:07 PM");
   });
 
   it("shows Yesterday for yesterday", () => {

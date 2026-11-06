@@ -13,6 +13,10 @@ export type ChatMessage = {
   body: string;
   receiptId: number | null;
   createdAt: string;
+  /** When the author edited the text (only set after a real edit). */
+  editedAt?: string;
+  /** The sender accepted the AI polish suggestion (Phase 15). */
+  aiPolished?: boolean;
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */
@@ -561,10 +565,27 @@ export const api = {
     request<{ messages: ChatMessage[] }>(
       `/api/chat/messages${room ? `?room=${encodeURIComponent(room)}` : ""}`,
     ),
-  sendChatMessage: (body: { kind: "text" | "receipt"; body: string; room?: string; receipt?: ChatReceiptInput }) =>
+  sendChatMessage: (body: { kind: "text" | "receipt"; body: string; room?: string; receipt?: ChatReceiptInput; aiPolished?: boolean }) =>
     request<{ message: ChatMessage; receipt?: ChatReceipt }>("/api/chat/messages", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  editChatMessage: (id: number, body: string) =>
+    request<{ message: ChatMessage }>(`/api/chat/messages/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body }),
+    }),
+  polishChatMessage: (room: string, text: string) =>
+    request<{
+      /** The suggested text (null when the AI did not answer in time). */
+      polished: string | null;
+      /** True when the numbers check kept the original text. */
+      keptOriginal?: boolean;
+      /** Why the AI was skipped — the client then sends as it is. */
+      skipped?: "short" | "emoji";
+    }>("/api/chat/polish", {
+      method: "POST",
+      body: JSON.stringify({ room, text }),
     }),
   chatReceipts: (status?: "pending" | "approved" | "rejected", room?: string) =>
     request<{ receipts: ChatReceipt[]; pending: number }>(

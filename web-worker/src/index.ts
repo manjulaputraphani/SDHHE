@@ -247,6 +247,9 @@ function routePermission(
   // ---- Team Chat (Phase 12) ----
   if (pathname === "/api/chat/auth") return null; // the caller proves who they are
   if (pathname === "/api/chat/messages") return { module: "chat", action: read ? "view" : "create" };
+  if (/^\/api\/chat\/messages\/\d+$/.test(pathname) && method === "PATCH") {
+    return { module: "chat", action: "edit" };
+  }
   if (pathname === "/api/chat/receipts") return { module: "chat", action: read ? "view" : "create" };
   if (/^\/api\/chat\/receipts\/[A-Za-z0-9_-]+$/.test(pathname)) return { module: "chat", action: "view" };
   if (/^\/api\/chat\/receipts\/\d+\/decision$/.test(pathname)) return { module: "chat", action: "edit" };
@@ -1495,7 +1498,7 @@ const handler = {
       }
 
       // ---- W3b writes (session actor threaded per request) ----
-      const body = (["POST", "PUT", "DELETE"].includes(request.method)
+      const body = (["POST", "PUT", "DELETE", "PATCH"].includes(request.method)
         ? await request.json().catch(() => ({}))
         : {}) as Record<string, unknown>;
 
@@ -2026,6 +2029,7 @@ const handler = {
               role: session.role,
               kind: "text",
               body: input.body,
+              aiPolished: input.aiPolished,
             }),
           );
           await logFirstDirectMessage(db, room, session, message);
@@ -2073,6 +2077,33 @@ const handler = {
         await markRead(db, room, session.uid, message.id);
         await notifyReceipt(env, receipt, session.name);
         return json({ message, receipt });
+      }
+
+      // ---- Message editing (Phase 17): the author fixes their own text ----
+      const editMatch = url.pathname.match(/^\/api\/chat\/messages\/(\d+)$/);
+      if (editMatch && request.method === "PATCH") {
+        const id = Number(editMatch[1]);
+        const room = await messageRoom(db, id);
+        if (!room || !(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        let edited: Awaited<ReturnType<typeof updateMessage>>;
+        try {
+          edited = await asActor(actor, () =>
+            updateMessage(db, id, { userId: session.uid, body: String(body.body ?? "") }),
+          );
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const status = /not found/i.test(message)
+            ? 404
+            : /not authorized/i.test(message)
+              ? 403
+              : 400;
+          return json({ error: message }, { status });
+        }
+        // Everybody in the room sees the fixed text at once.
+        await broadcastToChat(env, { type: "update", message: edited }, room);
+        return json({ message: edited });
       }
 
       const decisionMatch = url.pathname.match(/^\/api\/chat\/receipts\/(\d+)\/decision$/);

@@ -41,10 +41,22 @@ describe("parseMessageInput", () => {
     expect(parsed.body).toBe("Transport bill");
     expect(parsed.receipt?.amountPaise).toBe(45000);
     expect(parsed.receipt?.r2Key).toBe(file.r2Key);
+    // A receipt is never AI polished.
+    expect(parsed.aiPolished).toBe(false);
   });
 
   it("refuses a receipt message without the receipt details", () => {
     expect(() => parseMessageInput({ kind: "receipt", body: "hi" })).toThrow(/receipt/i);
+  });
+
+  it("carries the AI polish flag of a text message (Phase 15)", () => {
+    expect(parseMessageInput({ kind: "text", body: "Baki stock?", aiPolished: true }).aiPolished).toBe(
+      true,
+    );
+    expect(parseMessageInput({ kind: "text", body: "Baki stock?" }).aiPolished).toBe(false);
+    expect(parseMessageInput({ kind: "text", body: "Baki stock?", aiPolished: "yes" }).aiPolished).toBe(
+      false,
+    );
   });
 });
 
@@ -128,6 +140,7 @@ describe("row mapping", () => {
         receiptId: null,
         createdAt: at,
         editedAt: at,
+        aiPolished: false,
       }),
     ).toEqual({
       id: 7,
@@ -139,7 +152,27 @@ describe("row mapping", () => {
       body: "Baki stock?",
       receiptId: null,
       createdAt: "2026-11-06T09:42:00.000Z",
+      aiPolished: false,
     });
+  });
+
+  it("marks a message that the AI polished (Phase 15)", () => {
+    const at = new Date("2026-11-07T09:42:00.000Z");
+    expect(
+      toMessage({
+        id: 8,
+        room: "main",
+        userId: 3,
+        author: "ANITA",
+        role: "staff",
+        kind: "text",
+        body: "Please send 20 bags by tomorrow.",
+        receiptId: null,
+        createdAt: at,
+        editedAt: at,
+        aiPolished: true,
+      }).aiPolished,
+    ).toBe(true);
   });
 
   it("maps a receipt row to the API shape", () => {

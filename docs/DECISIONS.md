@@ -134,3 +134,13 @@
    closes that member's sockets with close code **1008** (reason `removed` / `archived`); the web client treats 1008 as "leave this room, no
    reconnect", shows a toast and falls back to the shop room. Membership changes are broadcast to the room as a `members` frame so open clients
    reload their lists; a system message ("Phani added Ravi") is written into the room history as well.
+- 2026-11-07 · **AI polish (Phase 15) is a suggestion, never a silent rewrite** — the owner switches it per group (owner-only role check, like the
+   rename); the Worker rewrites the draft with Ollama Cloud and returns it as a preview the sender confirms ([Send suggested] / [Send original] /
+   [Edit]). The AI text is never stored unless sent; the sent message carries `ai_polished` so the bubble shows a tiny ✨. The endpoint skips the
+   AI for texts under 15 characters or emoji-only, answers `{polished: null}` after 8 s (nothing is sent, "AI not available — send original?"),
+   and enforces 30 requests per member per hour per isolate. Amounts rule: if the rewrite drops any number of the original, the original stands and
+   the card says "Kept original — numbers changed" (Indian comma formats like 1,20,000 → 120000 are tolerated).
+- 2026-11-07 · **The app ALWAYS opens on the Dashboard** — the `/team-chat` deep link no longer opens the chat on a cold load (the owner asked after
+   the app kept opening on the chat because push notifications link to `/team-chat`); the URL is settled back to `/`, and the in-app Team Chat link
+   still pushes `/team-chat` for sharing. Chat times are 12-hour local ("09:42 AM"), and messages can be fixed by tapping one's own bubble
+   (PATCH route + `update` frame — was half-committed before: only the DB function and the import existed, no route, no UI).

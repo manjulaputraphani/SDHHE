@@ -37,6 +37,8 @@ export type ChatMessage = {
   createdAt: string;
   /** When the message was last edited (if edited). */
   editedAt?: string;
+  /** The sender accepted the AI polish suggestion (Phase 15). */
+  aiPolished?: boolean;
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */
@@ -110,12 +112,15 @@ const messageInputSchema = z.object({
     .trim()
     .max(MAX_MESSAGE_CHARS, `Message is too long (max ${MAX_MESSAGE_CHARS})`),
   receipt: receiptPayloadSchema.optional(),
+  /** The sender accepted the AI polish suggestion (Phase 15) — text only. */
+  aiPolished: z.boolean().optional().catch(false),
 });
 
 export type MessageInput = {
   kind: "text" | "receipt";
   body: string;
   receipt?: ReceiptPayload;
+  aiPolished?: boolean;
 };
 
 /** Validate a message that a member sent. Throws with a user-facing message. */
@@ -127,7 +132,7 @@ export function parseMessageInput(input: unknown): MessageInput {
   const data = result.data;
   if (data.kind === "text") {
     if (!data.body) throw new Error("Message cannot be empty");
-    return { kind: "text", body: data.body };
+    return { kind: "text", body: data.body, aiPolished: data.aiPolished === true };
   }
   if (!data.receipt) throw new Error("Receipt details are required");
   if (!data.receipt.mime || !isReceiptMimeAllowed(data.receipt.mime)) {
@@ -136,6 +141,7 @@ export function parseMessageInput(input: unknown): MessageInput {
   return {
     kind: "receipt",
     body: data.body,
+    aiPolished: false,
     receipt: {
       ...data.receipt,
       title: data.receipt.title.trim(),
@@ -205,6 +211,7 @@ type MessageRow = {
   receiptId: number | null;
   createdAt: Date;
   editedAt: Date;
+  aiPolished: boolean;
 };
 
 type ReceiptRow = {
@@ -240,6 +247,7 @@ export function toMessage(row: MessageRow): ChatMessage {
     receiptId: row.receiptId,
     createdAt: row.createdAt.toISOString(),
     editedAt: row.editedAt.getTime() > row.createdAt.getTime() ? row.editedAt.toISOString() : undefined,
+    aiPolished: Boolean(row.aiPolished),
   };
 }
 
@@ -298,6 +306,8 @@ export async function insertMessage(
     kind: ChatMessageKind;
     body: string;
     receiptId?: number | null;
+    /** The sender accepted the AI polish suggestion (Phase 15). */
+    aiPolished?: boolean;
   },
 ): Promise<ChatMessage> {
   const [created] = (await db
@@ -310,6 +320,7 @@ export async function insertMessage(
       kind: input.kind,
       body: input.body,
       receiptId: input.receiptId ?? null,
+      aiPolished: input.aiPolished === true,
     })
     .returning()) as MessageRow[];
   return toMessage(created);

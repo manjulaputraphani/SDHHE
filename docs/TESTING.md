@@ -64,6 +64,16 @@ Reset dev data before each run (truncate tables in a test setup file).
 - Receipt approver (owner/CA) may decide a receipt of any group without being a member (route logic).
 - Untitled group falls back to the room name in list/exports (chatView.test).
 
+### C3 AI polish + editing + shell rules (Phase 15/17)
+- Polish skip rules: <15 chars → "short"; emoji/punctuation only → "emoji"; words → polish (aiPolish.test).
+- Numbers guard: a rewrite that drops a number falls back to the original; "1,20,000"→"120000" tolerated (aiPolish.test).
+- parseMessageInput carries `aiPolished` for text only; garbage ("yes") coerces to false, never blocks the send (chat.test).
+- e2e: owner toggles "AI polish messages" for the shop room → chip for everyone; staff sees no switch.
+- e2e: suggestion flow — Send → "✨ Suggested" card → Send suggested → bubble + ✨; polish-off room sends directly (no card).
+- e2e: author taps their own bubble → edits in place → Save → new text + "edited" mark.
+- e2e: cold load at `/team-chat` lands on the Dashboard and settles to `/` (always-default rule).
+- Unit: chat times are 12-hour local — "09:42 AM", "09:07 PM", "12:07 AM", "12:00 PM" (chat.test / chatView.test).
+
 
 ## D. Data safety (manual)
 - Install on 2nd laptop, enter same Neon URL → same data.

@@ -223,7 +223,10 @@ for (const width of [375, 390, 430]) {
 
     test("the chat shows one panel at a time with the composer pinned", async ({ page }) => {
       await mockApp(page);
-      await page.goto("/team-chat");
+      // The app opens on the Dashboard now — the drawer leads into the chat.
+      await page.goto("/");
+      await page.getByRole("button", { name: "Open menu" }).click();
+      await page.getByRole("button", { name: "Team Chat" }).click();
       await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
       // The list is the screen — no room, no back arrow yet.
       await expect(page.getByRole("button", { name: "Back to chats" })).toHaveCount(0);
@@ -270,7 +273,9 @@ test.describe("a 768px tablet", () => {
 
   test("the chat shows the list and the room side by side", async ({ page }) => {
     await mockApp(page);
-    await page.goto("/team-chat");
+    // The app opens on the Dashboard now — the sidebar leads into the chat.
+    await page.goto("/");
+    await page.getByRole("button", { name: "Team Chat" }).click();
     await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shop room" })).toBeVisible();
     // No back arrow on a tablet — the list is always there.
@@ -289,7 +294,9 @@ test.describe("a 1280px desktop", () => {
 
   test("the chat shows all three panels", async ({ page }) => {
     await mockApp(page);
-    await page.goto("/team-chat");
+    // The app opens on the Dashboard now — the sidebar leads into the chat.
+    await page.goto("/");
+    await page.getByRole("button", { name: "Team Chat" }).click();
     await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shop room" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Receipt approvals" })).toBeVisible();

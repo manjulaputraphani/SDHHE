@@ -18,6 +18,7 @@ export type ChatUser = {
 export type ChatFrame =
   | { type: "hello"; user: ChatUser; presence: ChatUser[] }
   | { type: "message"; message: unknown }
+  | { type: "update"; message: unknown }
   | { type: "receipt"; receipt: unknown; message: unknown }
   | { type: "presence"; users: ChatUser[] }
   /** Somebody is typing. */
@@ -36,6 +37,7 @@ export type ChatFrame =
 export const CHAT_FRAME_TYPES = [
   "hello",
   "message",
+  "update",
   "receipt",
   "presence",
   "typing",

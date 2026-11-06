@@ -19,6 +19,10 @@ export type ViewMessage = {
   body: string;
   receiptId: number | null;
   createdAt: string;
+  /** When the author edited the text (only set after a real edit). */
+  editedAt?: string;
+  /** The sender accepted the AI polish suggestion (Phase 15). */
+  aiPolished?: boolean;
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */

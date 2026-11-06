@@ -399,6 +399,8 @@ export const chatMessages = pgTable(
     receiptId: integer("receipt_id"),
     /** Set when the author edited the text (Phase 17 — message editing). */
     editedAt: timestamp("edited_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The sender accepted the AI polish suggestion (Phase 15). */
+    aiPolished: boolean("ai_polished").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("chat_messages_kind_valid", sql`${t.kind} in ('text','receipt','system')`)],

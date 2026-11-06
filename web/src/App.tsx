@@ -260,12 +260,9 @@ const ACTIVITY_PAGE = 20;
 export default function App() {
   const [checking, setChecking] = useState(true);
   const [user, setUser] = useState<User | null>(null);
-  // /team-chat opens the chat straight away (the URL is the source of truth).
-  const [view, setView] = useState<View>(() =>
-    typeof window !== "undefined" && window.location.pathname === "/team-chat"
-      ? "team-chat"
-      : "dashboard",
-  );
+  // The app ALWAYS opens on the Dashboard — even from a /team-chat URL (the
+  // owner asked; the chat deep link now only works through in-app navigation).
+  const [view, setView] = useState<View>("dashboard");
   const [bills, setBills] = useState<BillRow[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);

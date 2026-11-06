@@ -126,9 +126,19 @@ describe("chat message preview", () => {
 });
 
 describe("chat time", () => {
-  it("shows the clock time", () => {
-    const at = new Date(2026, 0, 2, 9, 42);
-    expect(formatChatTime(at.toISOString())).toBe("09:42");
+  it("shows the clock time in the local time zone, 12 hours with AM/PM", () => {
+    const morning = new Date(2026, 0, 2, 9, 42);
+    const afternoon = new Date(2026, 0, 2, 15, 5);
+    const midnight = new Date(2026, 0, 2, 0, 7);
+    const noon = new Date(2026, 0, 2, 12, 0);
+    expect(formatChatTime(morning.toISOString())).toBe("09:42 AM");
+    expect(formatChatTime(afternoon.toISOString())).toBe("03:05 PM");
+    expect(formatChatTime(midnight.toISOString())).toBe("12:07 AM");
+    expect(formatChatTime(noon.toISOString())).toBe("12:00 PM");
+  });
+
+  it("shows nothing for a broken date", () => {
+    expect(formatChatTime("not a date")).toBe("");
   });
 
   it("labels today and yesterday", () => {

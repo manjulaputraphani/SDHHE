@@ -73,6 +73,12 @@ describe("isChatFrame", () => {
     expect(isChatFrame(frame)).toBe(true);
     expect(parseFrame(encodeFrame(frame))).toEqual(frame);
   });
+
+  it("knows the update frame (message editing)", () => {
+    const frame = { type: "update", message: { id: 7, body: "Changed" } } as const;
+    expect(isChatFrame(frame)).toBe(true);
+    expect(parseFrame(encodeFrame(frame))).toEqual(frame);
+  });
 });
 
 describe("errorFrame", () => {

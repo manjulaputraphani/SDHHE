@@ -90,13 +90,14 @@ export function chatMessagePreview(message: { author: string; body: string }): s
   return `${message.author}: ${text}`;
 }
 
-/** Clock time of a message — "09:42". */
+/** Clock time of a message — "09:42 AM" (the shop's local time, 12-hour). */
 export function formatChatTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const hours = String(date.getHours()).padStart(2, "0");
+  const meridiem = date.getHours() < 12 ? "AM" : "PM";
+  const hours = date.getHours() % 12 || 12;
   const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+  return `${String(hours).padStart(2, "0")}:${minutes} ${meridiem}`;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
