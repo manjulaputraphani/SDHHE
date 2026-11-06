@@ -46,8 +46,8 @@ function Guarded({
   return <>{children}</>;
 }
 
-/** The desktop app signs itself out after an hour of inactivity. */
-const IDLE_LOCK_MS = 60 * 60 * 1000;
+/** The desktop app signs itself out after 30 minutes of inactivity. */
+const IDLE_LOCK_MS = 30 * 60 * 1000;
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>("loading");
@@ -78,8 +78,8 @@ export default function App() {
   useEffect(() => watchSystemTheme(), []);
 
   /**
-   * The idle lock: an hour without a mouse or a key press signs the member out
-   * of the desktop app (the web edition does the same on the server).
+   * The idle lock: half an hour without a mouse or a key press signs the member
+   * out of the desktop app (the web edition does the same on the server).
    */
   useEffect(() => {
     if (phase !== "home") return;

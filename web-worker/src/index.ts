@@ -73,6 +73,27 @@ import {
   type MailSender,
 } from "./chatMail";
 import { pushNtfy, sendMail } from "./mailer";
+import { describeDevice } from "./device";
+import {
+  completeOnboarding,
+  completeTour,
+  createAnnouncement,
+  createRelease,
+  dismissAnnouncement,
+  forceOtherSessionsOut,
+  lastLoginAt,
+  listActiveAnnouncements,
+  listAllAnnouncements,
+  listLoginHistory,
+  latestUnseenRelease,
+  markReleaseSeen,
+  onboardingSteps,
+  recordLogin,
+  sessionForcedOut,
+  setLastLoginAt,
+  updateAnnouncement,
+  completedTours,
+} from "../../src/db/notifications";
 import { chatAuditLine, isSharedRoom, membersOf } from "../../src/logic/chatPrivacy";
 import { chatMessages } from "../../src/db/schema";
 import { socketTransport } from "./smtpSocket";
@@ -112,6 +133,9 @@ export interface Env {
   ASSETS?: { fetch: typeof fetch };
 }
 
+/** How long a session may sit idle before it is signed out (minutes). */
+const IDLE_MINUTES = 30;
+
 const COOKIE = "sdhhe_session";
 const SESSION_HOURS = SESSION_MAX_SECONDS / 3600;
 const MAX_ATTEMPTS = 5;
@@ -133,6 +157,8 @@ type Session = {
   lastActivity: number;
   /** Bumped by "sign out everyone" — an older epoch is refused. */
   epoch?: number;
+  /** The id of this sign-in (the one-device rule). */
+  sid?: string;
 };
 
 function normalizeRole(value: unknown): Role {
@@ -203,6 +229,12 @@ function routePermission(
   if (pathname === "/api/chat/receipts") return { module: "chat", action: read ? "view" : "create" };
   if (/^\/api\/chat\/receipts\/[A-Za-z0-9_-]+$/.test(pathname)) return { module: "chat", action: "view" };
   if (/^\/api\/chat\/receipts\/\d+\/decision$/.test(pathname)) return { module: "chat", action: "edit" };
+  // The notification system (Phase 15).
+  if (pathname.startsWith("/api/notifications/announcements")) {
+    return { module: "team", action: read ? "view" : "edit" };
+  }
+  if (pathname.startsWith("/api/notifications/")) return { module: "team", action: "view" };
+
   // Direct chat (Phase 13): conversations, the member list, read markers.
   if (pathname === "/api/chat/conversations") return { module: "chat", action: read ? "view" : "create" };
   if (pathname === "/api/chat/members") return { module: "chat", action: "view" };
@@ -614,9 +646,24 @@ async function login(request: Request, env: Env, url: URL): Promise<Response> {
     lastActivity: Date.now(),
   };
   const epoch = await sessionEpoch(env);
-  const token = await createToken({ ...session, epoch }, env.SESSION_SECRET as string);
+  // One device at a time: the other sessions of this member are signed out.
+  const sid = crypto.randomUUID();
+  const device = describeDevice(request.headers.get("User-Agent"));
+  const ip = request.headers.get("CF-Connecting-IP") ?? null;
+  const db = getDb(env.DATABASE_URL as string);
+  await forceOtherSessionsOut(db, session.uid, sid);
+  await recordLogin(db, {
+    userId: session.uid,
+    device: device.device,
+    browser: device.browser,
+    os: device.os,
+    ip,
+    sessionId: sid,
+  });
+  await setLastLoginAt(db, session.uid);
+  const token = await createToken({ ...session, epoch, sid }, env.SESSION_SECRET as string);
   // Track the session so the activity log knows who was in and for how long.
-  await startSession(getDb(env.DATABASE_URL as string), session.uid, "web", session.name);
+  await startSession(db, session.uid, "web", session.name);
   const permissions = await loadPermissionsForRole(getDb(env.DATABASE_URL as string), session.role);
   return json(
     { user: { id: session.uid, name: session.name, role: session.role, permissions } },
@@ -911,8 +958,9 @@ export default {
       (url.pathname.startsWith("/api/chat/") ? await chatTokenSession(request, env) : null);
     if (!session) return json({ error: "Not signed in" }, { status: 401 });
 
-    // 1-hour inactivity auto-logout (sliding window, refreshed on every API call).
-    const IDLE_MS = 60 * 60 * 1000;
+    // Inactivity auto-logout (sliding window, refreshed on every API call).
+    // 30 minutes — the owner asked for half an hour.
+    const IDLE_MS = IDLE_MINUTES * 60 * 1000;
     if (Date.now() - session.lastActivity > IDLE_MS) {
       const secure = url.protocol === "https:" ? "; Secure" : "";
       return json({ error: "Session expired due to inactivity — please sign in again" }, { status: 401, headers: { "Set-Cookie": `${COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}` } });
@@ -1305,6 +1353,131 @@ export default {
           entity: "chat",
         });
         return json({ ok: true, room, title: renamed });
+      }
+
+      // ---- The notification system (Phase 15) ----
+      if (url.pathname === "/api/notifications" && request.method === "GET") {
+        const steps = await onboardingSteps(db, session.uid);
+        const previousLogin = await lastLoginAt(db, session.uid);
+        const [member] = await sqlQuery(
+          env,
+          "select id, name, role, onboarding_completed from app_users where id = $1",
+          [session.uid],
+        );
+        return json({
+          user: {
+            id: session.uid,
+            name: session.name,
+            role: session.role,
+            lastLoginAt: previousLogin,
+          },
+          announcements: await listActiveAnnouncements(db, session.uid),
+          release: await latestUnseenRelease(db, session.uid),
+          onboarding: {
+            steps,
+            done: steps.filter((step) => step.done).length,
+            total: steps.length,
+            completed: Boolean(member?.onboarding_completed),
+          },
+          tours: await completedTours(db, session.uid),
+          loginHistory: await listLoginHistory(db, session.uid, session.sid ?? null, 10),
+          session: { expiresAt: new Date(session.exp).toISOString() },
+        });
+      }
+
+      if (url.pathname.startsWith("/api/notifications/announcements/") && request.method === "POST") {
+        const dismiss = url.pathname.match(/^\/api\/notifications\/announcements\/(\d+)\/dismiss$/);
+        if (dismiss) {
+          await dismissAnnouncement(db, Number(dismiss[1]), session.uid);
+          return json({ ok: true });
+        }
+        const deactivate = url.pathname.match(
+          /^\/api\/notifications\/announcements\/(\d+)\/deactivate$/,
+        );
+        if (deactivate) {
+          if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+          const ok = await updateAnnouncement(db, Number(deactivate[1]), { isActive: false });
+          return json({ ok });
+        }
+      }
+
+      if (url.pathname === "/api/notifications/announcements" && request.method === "GET") {
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+        return json({ announcements: await listAllAnnouncements(db) });
+      }
+
+      if (url.pathname === "/api/notifications/announcements" && request.method === "POST") {
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+        const kind = ["info", "success", "warning", "critical"].includes(String(body.kind))
+          ? (body.kind as "info" | "success" | "warning" | "critical")
+          : "info";
+        const created = await createAnnouncement(db, {
+          title: String(body.title ?? "").trim(),
+          message: String(body.message ?? "").trim(),
+          kind,
+          linkLabel: body.linkLabel ? String(body.linkLabel) : null,
+          linkUrl: body.linkUrl ? String(body.linkUrl) : null,
+          startDate: body.startDate ? String(body.startDate) : null,
+          endDate: body.endDate ? String(body.endDate) : null,
+          createdBy: session.uid,
+        });
+        if (!created.title || !created.message) {
+          return json({ error: "A title and a message are needed" }, { status: 400 });
+        }
+        return json({ announcement: created });
+      }
+
+      if (url.pathname.match(/^\/api\/notifications\/announcements\/\d+$/) && request.method === "PUT") {
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+        const id = Number(url.pathname.split("/").pop());
+        const ok = await updateAnnouncement(db, id, {
+          ...(body.title !== undefined ? { title: String(body.title) } : {}),
+          ...(body.message !== undefined ? { message: String(body.message) } : {}),
+          ...(body.kind !== undefined ? { kind: String(body.kind) as "info" } : {}),
+          ...(body.isActive !== undefined ? { isActive: Boolean(body.isActive) } : {}),
+        });
+        return json({ ok });
+      }
+
+      if (url.pathname === "/api/notifications/onboarding/complete" && request.method === "POST") {
+        await completeOnboarding(db, session.uid);
+        return json({ ok: true });
+      }
+
+      if (url.pathname.match(/^\/api\/notifications\/releases\/\d+\/seen$/) && request.method === "POST") {
+        const id = Number(url.pathname.split("/")[4]);
+        await markReleaseSeen(db, session.uid, id);
+        return json({ ok: true });
+      }
+
+      if (url.pathname.match(/^\/api\/notifications\/tours\/[a-z0-9-]+$/i) && request.method === "POST") {
+        const tourId = url.pathname.split("/").pop()!;
+        await completeTour(db, session.uid, tourId);
+        return json({ ok: true });
+      }
+
+      if (url.pathname === "/api/notifications/releases" && request.method === "POST") {
+        // Publishing a release tells the whole team: everybody is signed out
+        // so they see the "what's new" window the next time they sign in.
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+        const items = Array.isArray(body.items)
+          ? (body.items as unknown[]).map((item) => String(item)).filter(Boolean)
+          : [];
+        const release = await createRelease(db, {
+          version: String(body.version ?? "").trim() || "1.0",
+          title: String(body.title ?? "").trim() || "What's new",
+          items,
+          imageUrl: body.imageUrl ? String(body.imageUrl) : null,
+        });
+        const epoch = await bumpSessionEpoch(env);
+        await sqlQuery(env, "update user_sessions set ended_at = now(), duration_seconds = 0 where ended_at is null");
+        return json({ release, epoch });
+      }
+
+      if (url.pathname === "/api/notifications/login-history" && request.method === "GET") {
+        return json({
+          logins: await listLoginHistory(db, session.uid, session.sid ?? null, 10),
+        });
       }
 
       // ---- Team Chat (Phase 13): conversations (writes) ----

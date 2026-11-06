@@ -3,7 +3,9 @@ import {
   boolean,
   check,
   date,
+  index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   serial,
@@ -197,6 +199,12 @@ export const appUsers = pgTable(
     pending: boolean("pending").notNull().default(false),
     /** Optional last day of access — the account is disabled after this date. */
     accessUntil: date("access_until"),
+    /** The setup checklist is done (or skipped). */
+    onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+    /** The newest release this member has seen. */
+    lastSeenRelease: integer("last_seen_release"),
+    /** When this member signed in the last time. */
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("app_users_role_valid", sql`${t.role} in ('owner','ca','staff')`)],
@@ -233,6 +241,14 @@ export const userSessions = pgTable(
     /** Active seconds — written when the session is closed. */
     durationSeconds: integer("duration_seconds"),
     source: text("source").notNull().default("web"),
+    /** The id of the signed session (the one-device rule). */
+    sessionId: text("session_id"),
+    device: text("device"),
+    browser: text("browser"),
+    os: text("os"),
+    ip: text("ip"),
+    /** Signed out because the member signed in on another device. */
+    forcedOut: boolean("forced_out").notNull().default(false),
   },
   (t) => [check("user_sessions_source_valid", sql`${t.source} in ('web','desktop')`)],
 );
@@ -515,3 +531,102 @@ export const supplierPayments = pgTable("supplier_payments", {
   actor: text("actor"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * The in-app notification system (Phase 15).
+ *
+ * Announcements (the bar on every page), the releases ("what's new"), the
+ * tours and the login history.
+ */
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    kind: text("kind").notNull().default("info"),
+    linkLabel: text("link_label"),
+    linkUrl: text("link_url"),
+    startDate: timestamp("start_date", { withTimezone: true }),
+    endDate: timestamp("end_date", { withTimezone: true }),
+    isActive: boolean("is_active").notNull().default(true),
+    createdBy: integer("created_by").references(() => appUsers.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("announcements_kind_valid", sql`${t.kind} in ('info','success','warning','critical')`),
+  ],
+);
+
+/** A member closed an announcement (it does not come back on any device). */
+export const announcementDismissals = pgTable(
+  "announcement_dismissals",
+  {
+    announcementId: integer("announcement_id")
+      .notNull()
+      .references(() => announcements.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.announcementId, t.userId] })],
+);
+
+/** A published release — it shows up as "what's new" once per member. */
+export const releases = pgTable("releases", {
+  id: serial("id").primaryKey(),
+  version: text("version").notNull(),
+  title: text("title").notNull(),
+  /** The list of what changed (a JSON array of strings). */
+  items: jsonb("items").notNull().default(sql`'[]'::jsonb`),
+  imageUrl: text("image_url"),
+  releaseDate: timestamp("release_date", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The member has seen this release. */
+export const userReleasesSeen = pgTable(
+  "user_releases_seen",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    releaseId: integer("release_id")
+      .notNull()
+      .references(() => releases.id, { onDelete: "cascade" }),
+    seenAt: timestamp("seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.releaseId] })],
+);
+
+/** The member has finished this tour. */
+export const userTours = pgTable(
+  "user_tours",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    tourId: text("tour_id").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.tourId] })],
+);
+
+/** Every sign-in of every member (the "recent logins" list). */
+export const loginHistory = pgTable(
+  "login_history",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    device: text("device"),
+    browser: text("browser"),
+    os: text("os"),
+    ip: text("ip"),
+    sessionId: text("session_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("login_history_user_idx").on(t.userId, t.createdAt)],
+);

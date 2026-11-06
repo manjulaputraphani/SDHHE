@@ -46,6 +46,12 @@ import ResponsiveTable from "./components/ResponsiveTable";
 import SalesChart from "./components/SalesChart";
 import RotationChart from "./components/RotationChart";
 import TeamChat from "./components/TeamChat";
+import ToastHost from "./components/notifications/ToastHost";
+import NotificationsHost from "./components/notifications/NotificationsHost";
+import AnnouncementsAdmin from "./components/AnnouncementsAdmin";
+import { showToast } from "./components/notifications/toastStore";
+import type { LoginEntry } from "./api";
+import { TOURS } from "./components/notifications/tourSteps";
 import {
   IconActivity,
   IconBanknote,
@@ -284,6 +290,14 @@ export default function App() {
   const [notifyStatus, setNotifyStatus] = useState<string | null>(null);
   /** Owner action: sign every member out at once (Phase 14). */
   const [logoutAllStatus, setLogoutAllStatus] = useState<string | null>(null);
+  /** The notification system (Phase 15). */
+  const [loginHistory, setLoginHistory] = useState<LoginEntry[]>([]);
+  const [signedInElsewhere, setSignedInElsewhere] = useState<{
+    browser?: string | null;
+    os?: string | null;
+    at?: string | null;
+  } | null>(null);
+  const [tourToStart, setTourToStart] = useState<string | null>(null);
   const [resendKey, setResendKey] = useState("");
   const [itemForm, setItemForm] = useState<{ id: number | null; name: string; unit: string; category: string; hsnCode: string; minStock: string; imageUrl: string } | null>(null);
   const [itemsMsg, setItemsMsg] = useState<string | null>(null);
@@ -399,17 +413,68 @@ export default function App() {
 
   useEffect(() => {
     api
+      .loginHistory()
+      .then((result) => setLoginHistory(result.logins))
+      .catch(() => setLoginHistory([]));
+  }, [user]);
+
+  useEffect(() => {
+    api
       .me()
-      .then(({ user }) => setUser(user))
+      .then(({ user }) => {
+        setUser(user);
+        showToast(`Logged in successfully — welcome, ${user.name.split(" ")[0]}`, "success");
+      })
       .catch(() => setUser(null))
       .finally(() => setChecking(false));
   }, []);
+
+  /**
+   * The session warning: five minutes before the half-hour idle timeout the
+   * member gets a toast (the server signs them out after that).
+   */
+  useEffect(() => {
+    if (!user) return;
+    let lastActivity = Date.now();
+    const mark = () => {
+      lastActivity = Date.now();
+    };
+    const events = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
+    for (const name of events) window.addEventListener(name, mark, { passive: true });
+    const timer = window.setInterval(() => {
+      const idle = Date.now() - lastActivity;
+      if (idle >= 25 * 60_000) {
+        showToast("Your session expires in 5 minutes — save what you are doing", "warning", 8000);
+      }
+    }, 60_000);
+    return () => {
+      window.clearInterval(timer);
+      for (const name of events) window.removeEventListener(name, mark);
+    };
+  }, [user]);
 
   useEffect(() => watchSystemTheme(), []);
 
   /** Sign out when the backend reports session expiry (inactivity / token expiry). */
   useEffect(() => {
     const onUnauthorized = () => setUser(null);
+    window.addEventListener("sdhhe:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("sdhhe:unauthorized", onUnauthorized);
+  }, []);
+
+  /**
+   * The session ended because the member signed in on another device — the
+   * backend says so in the error, and the window explains it.
+   */
+  useEffect(() => {
+    const onUnauthorized = (event: Event) => {
+      const reason = (event as CustomEvent<{ reason?: string }>).detail?.reason;
+      if (reason === "signed-in-elsewhere") {
+        setSignedInElsewhere({});
+        return;
+      }
+      setUser(null);
+    };
     window.addEventListener("sdhhe:unauthorized", onUnauthorized);
     return () => window.removeEventListener("sdhhe:unauthorized", onUnauthorized);
   }, []);
@@ -1537,7 +1602,20 @@ export default function App() {
     .filter((group) => group.links.length > 0);
 
   return (
-    <div className="min-h-screen md:flex">
+    <>
+      {/* The toast host is always there (it is the global way of telling the
+          member that something happened). */}
+      <ToastHost />
+      {/* Everything that is due after a sign-in — one thing at a time. The
+          banners sit above the app shell so they are full width. */}
+      <div className="px-3 pt-3 md:px-6">
+        <NotificationsHost
+          signedInElsewhere={signedInElsewhere}
+          startTour={tourToStart}
+          onTourStarted={() => setTourToStart(null)}
+        />
+      </div>
+      <div className="min-h-screen md:flex">
       {/* Desktop: the rail is sticky and exactly one viewport tall, so it stays put
           while only the main content scrolls. The nav scrolls internally when the
           links outgrow the screen; the footer stays pinned at the bottom. */}
@@ -1564,6 +1642,7 @@ export default function App() {
                 {group.links.map((link) => (
                   <button
                     key={link.key}
+                    data-tour={link.key === "team-chat" ? "team-chat" : undefined}
                     className={`flex items-center gap-2.5 rounded-lg border-l-2 px-3 py-2 text-left text-sm transition-colors ${
                       view === link.key
                         ? "border-accent bg-nav-active font-medium text-nav-text shadow-sm"
@@ -1654,6 +1733,7 @@ export default function App() {
                       {group.links.map((link) => (
                         <button
                           key={link.key}
+                          data-tour={link.key === "team-chat" ? "team-chat" : undefined}
                           className={`flex items-center gap-2.5 rounded-lg border-l-2 px-3 py-2.5 text-left text-sm transition-colors ${
                             view === link.key
                               ? "border-accent bg-nav-active font-medium text-nav-text shadow-sm"
@@ -3989,6 +4069,60 @@ export default function App() {
 
         {view === "team-chat" && can("chat", "view") && <TeamChat user={user} />}
 
+        {view === "settings" && (
+          <section className="space-y-3 card p-4">
+            <div>
+              <h2 className="text-sm font-medium">Help</h2>
+              <p className="text-sm text-muted">Take a short tour of the app.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {TOURS.map((tour) => (
+                <button
+                  key={tour.id}
+                  type="button"
+                  className="btn-mini"
+                  onClick={() => setTourToStart(tour.id)}
+                >
+                  {tour.name}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {view === "settings" && user?.role === "owner" && (
+          <AnnouncementsAdmin />
+        )}
+
+        {view === "settings" && (
+          <section className="space-y-3 card p-4">
+            <div>
+              <h2 className="text-sm font-medium">Recent logins</h2>
+              <p className="text-sm text-muted">
+                The last 10 sign-ins of your account. One device at a time: signing in somewhere else closes
+                the old session.
+              </p>
+            </div>
+            <ul className="divide-y divide-line text-sm">
+              {loginHistory.length === 0 && (
+                <li className="py-2 text-muted">No logins yet.</li>
+              )}
+              {loginHistory.map((entry) => (
+                <li key={entry.id} className="flex flex-wrap items-center gap-2 py-2">
+                  <span className="font-medium text-ink">
+                    {entry.browser ?? "Unknown browser"}
+                    {entry.os ? ` · ${entry.os}` : ""}
+                  </span>
+                  {entry.current && <span className="badge badge-ok">this device</span>}
+                  <span className="text-xs text-muted">
+                    {new Date(entry.createdAt).toLocaleString("en-IN")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {view === "settings" && user?.role === "owner" && (
           <section className="space-y-3 card p-4">
             <div>
@@ -4101,5 +4235,6 @@ export default function App() {
         })()}
       </main>
     </div>
+    </>
   );
 }

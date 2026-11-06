@@ -44,7 +44,7 @@ import {
 } from "../logic/chat";
 import { formatRupees } from "../logic/units";
 import { exportFileName } from "../logic/chatPrivacy";
-import { groupMessages, initials, messageTick } from "../logic/chatView";
+import { groupMessages, initials, messageTick, readCount } from "../logic/chatView";
 
 type StoredToken = { token: string; expiresAt: number };
 
@@ -566,6 +566,7 @@ export default function TeamChat() {
             {groups.map((group) => {
               const last = group.messages[group.messages.length - 1]!;
               const tick = group.mine ? messageTick(last, otherMemberIds) : null;
+              const counts = readCount(last, otherMemberIds);
               return (
                 <div
                   key={group.key}
@@ -649,6 +650,12 @@ export default function TeamChat() {
                           }
                         >
                           {tick === "read" ? "✓✓✓" : tick === "delivered" ? "✓✓" : "✓"}
+                        </span>
+                      )}
+                      {/* How many of the others have read it. */}
+                      {group.mine && counts.total > 1 && (
+                        <span title={`Read by ${counts.read} of ${counts.total}`}>
+                          Read by {counts.read}
                         </span>
                       )}
                     </span>

@@ -32,7 +32,8 @@ import {
 } from "../../../src/logic/chat";
 import { formatRupees } from "../../../src/logic/units";
 import { exportFileName } from "../../../src/logic/chatPrivacy";
-import { groupMessages, initials, messageTick } from "../../../src/logic/chatView";
+import { showToast } from "./notifications/toastStore";
+import { groupMessages, initials, messageTick, readCount } from "../../../src/logic/chatView";
 
 type Props = { user: User | null };
 
@@ -352,6 +353,7 @@ export default function TeamChat({ user }: Props) {
       setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       setDraft("");
       scrollToBottom();
+      showToast("Message sent", "success", 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -396,6 +398,7 @@ export default function TeamChat({ user }: Props) {
       setNote("");
       setShowReceiptForm(false);
       setNotice("Receipt sent — it is waiting for approval.");
+      showToast("Receipt sent for approval", "success");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -409,6 +412,10 @@ export default function TeamChat({ user }: Props) {
     try {
       await api.decideChatReceipt(receipt.id, decision);
       setNotice(`Receipt #${receipt.id} ${decision === "approve" ? "approved" : "rejected"}.`);
+      showToast(
+        `Approval sent — receipt #${receipt.id} ${decision === "approve" ? "approved" : "rejected"}`,
+        "success",
+      );
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -596,6 +603,7 @@ export default function TeamChat({ user }: Props) {
             {groups.map((group) => {
               const last = group.messages[group.messages.length - 1]!;
               const tick = group.mine ? messageTick(last, otherMemberIds) : null;
+              const counts = readCount(last, otherMemberIds);
               return (
                 <div
                   key={group.key}
@@ -683,6 +691,12 @@ export default function TeamChat({ user }: Props) {
                           }
                         >
                           {tick === "read" ? "✓✓✓" : tick === "delivered" ? "✓✓" : "✓"}
+                        </span>
+                      )}
+                      {/* How many of the others have read it. */}
+                      {group.mine && counts.total > 1 && (
+                        <span title={`Read by ${counts.read} of ${counts.total}`}>
+                          Read by {counts.read}
                         </span>
                       )}
                     </span>

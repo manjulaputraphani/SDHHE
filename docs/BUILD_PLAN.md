@@ -417,3 +417,38 @@ Reconciliation with the interim work of 2026-10-30:
   does not slide the window, a session from an older epoch is refused, only the owner can sign everybody out.
   (2026-11-06: `scripts/local-session-check.mjs` — **10/10 green**. The epoch was bumped to 3 on 2026-11-06,
   so every member who was signed in is signed out now and has to sign in again.)
+
+## Phase 15 — The in-app notification system (added 2026-11-06 on request)
+> Seven components, all in the web app, all in the existing Neon database:
+> the welcome banner, the onboarding checklist, the announcement bar, the toasts,
+> the "what's new" window, the product tour and the login alert.
+> Plus: the sessions (30-minute idle logout, one device at a time, "sign out
+> everybody") and the read counts in the chat.
+- [x] **T-15.1 Sessions** — the idle logout is **30 minutes** (both the web and
+  the desktop app), a **session epoch** ("sign out everybody"), the **one-device
+  rule** (a new sign-in closes the old session and the old device gets the
+  "signed in somewhere else" window), the **login history** (the last 10
+  sign-ins with browser, OS and IP), the "expires in 5 minutes" warning toast.
+  Acceptance: an idle session is refused after 30 minutes, the background chat
+  refresh does not slide the window, an older epoch is refused, only the owner can
+  sign everybody out. → `scripts/local-session-check.mjs` **10/10**.
+- [x] **T-15.2 The database** — `drizzle/0009_notifications.sql`: `announcements`,
+  `announcement_dismissals`, `releases`, `user_releases_seen`, `user_tours`,
+  `login_history` + the columns `app_users.onboarding_completed`,
+  `app_users.last_seen_release`, `app_users.last_login_at` and the device columns
+  on `user_sessions`. Applied to Neon ✓.
+- [x] **T-15.3 The API** — `GET /api/notifications` (everything that is due),
+  the announcement actions (dismiss / create / edit / deactivate), the release
+  actions (publish → **signs everybody out**, mark as seen), the onboarding and
+  tour actions and the login history. Owner-only where it makes sense.
+  → `scripts/local-notifications-check.mjs` **18/18**.
+- [x] **T-15.4 The components** — `web/src/components/notifications/`: the toast
+  store + host, the welcome banner, the onboarding banner, the announcement
+  banner, the "what's new" window, the product tour (a spotlight written from
+  scratch — **no new dependency**), the login alert and the host that shows them
+  one at a time in the right order. Plus the announcement admin page in the
+  Settings and the "Recent logins" list.
+  Acceptance: Playwright covers the welcome banner, the toast, the announcement
+  bar, the "what's new" window and the checklist → **17/17** in the web suite.
+- [x] **T-15.5 The chat reads** — everybody can see **how many** of the others
+  have read a message ("Read by 3") and the group can be renamed by the owner.

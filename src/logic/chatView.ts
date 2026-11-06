@@ -77,6 +77,28 @@ export function messageTick(
   return tickState(messageStates(message), otherMemberIds);
 }
 
+/**
+ * "Read by 3" — how many of the other members have read the message.
+ *
+ * Everyone in the room can see it, so the sender knows how many people have
+ * seen the message (and the members can see that it was read).
+ */
+export function readCount(
+  message: ViewMessage,
+  otherMemberIds: number[],
+): { read: number; delivered: number; total: number } {
+  const delivered = message.deliveredBy ?? [];
+  const read = message.readBy ?? [];
+  const others = otherMemberIds.filter((id) => id > 0);
+  let deliveredCount = 0;
+  let readCountValue = 0;
+  for (const id of others) {
+    if (delivered.includes(id)) deliveredCount += 1;
+    if (read.includes(id)) readCountValue += 1;
+  }
+  return { read: readCountValue, delivered: deliveredCount, total: others.length };
+}
+
 /** The first letter of a name (for the avatar). */
 export function initials(name: string): string {
   const clean = name.trim();

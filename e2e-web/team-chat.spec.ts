@@ -150,6 +150,7 @@ async function mockChat(
           low_stock: 0,
         },
         rotation: {
+          daily: [],
           asOfDate: "2026-11-06",
           investmentPaise: 0,
           stockValuePaise: 0,
@@ -164,12 +165,31 @@ async function mockChat(
           rotationTimes: 0,
           daysToRotate: null,
           inventoryTurnover: 0,
+          daily: [],
+          trend: [],
         },
       },
     }),
   );
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({ json: { user: member } }),
+  );
+  // The notification system (Phase 15) — nothing is due in the chat tests.
+  await page.route("**/api/notifications", (route) =>
+    route.fulfill({
+      json: {
+        user: { id: member.id, name: member.name, role: member.role, lastLoginAt: null },
+        announcements: [],
+        release: null,
+        onboarding: { steps: [], done: 0, total: 0, completed: true },
+        tours: [],
+        loginHistory: [],
+        session: { expiresAt: new Date(Date.now() + 1800_000).toISOString() },
+      },
+    }),
+  );
+  await page.route("**/api/notifications/login-history", (route) =>
+    route.fulfill({ json: { logins: [] } }),
   );
   await page.route("**/api/chat/conversations**", (route) => {
     if (route.request().method() === "POST") {

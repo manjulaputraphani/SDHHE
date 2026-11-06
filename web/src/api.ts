@@ -71,6 +71,51 @@ export type ChatConversation = {
 /** A member of the shop (who may be chatted with). */
 export type ChatMember = { id: number; name: string; role: string };
 
+// ---- The notification system (Phase 15) ----
+export type AnnouncementKind = "info" | "success" | "warning" | "critical";
+
+export type Announcement = {
+  id: number;
+  title: string;
+  message: string;
+  kind: AnnouncementKind;
+  linkLabel: string | null;
+  linkUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type Release = {
+  id: number;
+  version: string;
+  title: string;
+  items: string[];
+  imageUrl: string | null;
+  releaseDate: string;
+};
+
+export type OnboardingStep = { key: string; label: string; done: boolean };
+
+export type LoginEntry = {
+  id: number;
+  device: string | null;
+  browser: string | null;
+  os: string | null;
+  ip: string | null;
+  createdAt: string;
+  current: boolean;
+};
+
+export type NotificationBootstrap = {
+  user: { id: number; name: string; role: string; lastLoginAt: string | null };
+  announcements: Announcement[];
+  release: Release | null;
+  onboarding: { steps: OnboardingStep[]; done: number; total: number; completed: boolean };
+  tours: string[];
+  loginHistory: LoginEntry[];
+  session: { expiresAt: string };
+};
+
 export type Item = {
   id: number;
   name: string;
@@ -346,14 +391,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: { "content-type": "application/json", ...(init.headers ?? {}) },
   });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string; reason?: string };
   if (res.status === 401) {
-    // Session expired (inactivity or token expiry) — notify the app to sign out.
+    // Session expired (inactivity, token expiry or a sign-in on another device).
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("sdhhe:unauthorized"));
+      const reason = (data as { reason?: string }).reason;
+      window.dispatchEvent(new CustomEvent("sdhhe:unauthorized", { detail: { reason } }));
     }
     throw new Error("Session expired — please sign in again");
   }
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data;
 }
@@ -532,6 +578,41 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ room, messageId }),
     }),
+  // ---- The notification system (Phase 15) ----
+  notifications: () => request<NotificationBootstrap>("/api/notifications"),
+  dismissAnnouncement: (id: number) =>
+    request<{ ok: boolean }>(`/api/notifications/announcements/${id}/dismiss`, { method: "POST" }),
+  completeOnboarding: () =>
+    request<{ ok: boolean }>("/api/notifications/onboarding/complete", { method: "POST" }),
+  markReleaseSeen: (id: number) =>
+    request<{ ok: boolean }>(`/api/notifications/releases/${id}/seen`, { method: "POST" }),
+  completeTour: (tourId: string) =>
+    request<{ ok: boolean }>(`/api/notifications/tours/${tourId}`, { method: "POST" }),
+  listAnnouncements: () => request<{ announcements: Announcement[] }>("/api/notifications/announcements"),
+  createAnnouncement: (body: {
+    title: string;
+    message: string;
+    kind: AnnouncementKind;
+    linkLabel?: string;
+    linkUrl?: string;
+  }) => request<{ announcement: Announcement }>("/api/notifications/announcements", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  updateAnnouncement: (id: number, body: { title?: string; message?: string; kind?: AnnouncementKind; isActive?: boolean }) =>
+    request<{ ok: boolean }>(`/api/notifications/announcements/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deactivateAnnouncement: (id: number) =>
+    request<{ ok: boolean }>(`/api/notifications/announcements/${id}/deactivate`, { method: "POST" }),
+  publishRelease: (body: { version: string; title: string; items: string[] }) =>
+    request<{ release: Release; epoch: number }>("/api/notifications/releases", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  loginHistory: () => request<{ logins: LoginEntry[] }>("/api/notifications/login-history"),
+
   renameChatConversation: (room: string, title: string) =>
     request<{ ok: boolean; room: string; title: string }>("/api/chat/rename", {
       method: "POST",

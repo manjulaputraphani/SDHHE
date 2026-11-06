@@ -107,3 +107,12 @@
   owner bumps it (`POST /api/auth/logout-all`, or the "Sign out everybody now" button in the web Settings) and
   every session of the old epoch is refused at once · the desktop app (which has no server session) now signs
   itself out after an hour of inactivity
+- 2026-11-06 · The **idle logout is 30 minutes** (the owner asked for half an hour) — the web session and the
+  desktop app both use it; the chat token of the web follows the same rule
+- 2026-11-06 · **One device at a time**: a new sign-in closes the older sessions of that member and the old
+  device gets the "you were signed out" window; every sign-in is written to `login_history` (browser, OS, IP)
+- 2026-11-06 · The **product tour is written from scratch** (a spotlight + tooltip) instead of adding
+  Driver.js or Shepherd.js — the rule is to ask before a new dependency, so the tour works without one and
+  can be swapped later
+- 2026-11-06 · The **read count is public**: everybody in the conversation sees how many of the others have
+  read a message ("Read by 3"), while the **text** of a private chat stays private
