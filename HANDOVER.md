@@ -5,7 +5,7 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat) and Phase 13 (Direct chat) are code-complete AND deployed.**
-Live worker version `cb638c5a-2cfb-4dd4-bc76-86c2c9467797` (2026-11-06 12:02) — web bundle `index-BQ83qNYG.js`.
+Live worker version `8fa63ad3-d5a8-4ce8-a377-e5e288ca857c` (2026-11-06 12:07) — web bundle `index-C3RLlt5k.js`.
 Live: https://sdhhe-api.blvphani.workers.dev/team-chat (shop room + private chats).
 **The live build has NO R2 binding** (R2 is not enabled on the account) → attaching a receipt file answers
 503 "Receipt storage is not configured"; everything else works.
@@ -15,6 +15,13 @@ Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
 Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 rows).
 
 ## Done
+- **The sessions are fixed** (committed, deployed `8fa63ad3`): the chat screen's 30-minute token refresh was
+  **sliding the one-hour idle window**, so the members sitting on the chat screen were never signed out — a
+  background call now carries `X-Chat-Refresh: 1` and the Worker does not re-issue the cookie for it. The
+  desktop app had **no timeout at all** → it now signs itself out after an hour of inactivity. New: the
+  **session epoch** (`session_epoch` in the settings) — the owner can **sign everybody out** at once
+  (`POST /api/auth/logout-all`, the web Settings has a "Sign out everybody now" button). **The epoch was
+  bumped to 3 on 2026-11-06 → every member who was signed in is signed out now.** Local session check 10/10.
 - **Group rename (owner only)** (committed, deployed `cb638c5a`): the admin renames the shop room inline in the
   room header (`POST /api/chat/rename`, role `owner`; staff get 403). The name is pushed into the room as a
   "rename" frame, so every member sees it at once; a private chat keeps the name of the person. Local check
