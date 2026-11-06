@@ -72,11 +72,14 @@ To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `
 ## Owner steps that are still open
 1. ~~Enable R2~~ ✅ **done** — the bucket `sdhhe-receipts` is created and the binding is live. Verify it in the
    browser: Team Chat → Attach receipt → the photo appears in the room and in the approvals panel.
-2. **Zero Trust (dashboard)**: to put the app behind Cloudflare Access, the owner has to create a Zero Trust
-   team in the dashboard (Zero Trust → Get started → a team name) — the free plan covers 50 users. Everything
-   code-side is already done: HTTPS-only, HSTS + CSP + no framing on every response, HttpOnly signed cookies,
-   the 30-minute idle logout, one device at a time, "sign out everybody", the per-route permissions, the audit
-   log and the private chats.
+2. ~~Zero Trust~~ ✅ **done 2026-11-06** — Cloudflare Access is LIVE on `sdhhe-api.blvphani.workers.dev`
+   (team `royal-shadow-9e0b.cloudflareaccess.com`, enabled from Worker → Settings → Domains & Routes →
+   workers.dev). Verified: `/`, `/api/health`, `/team-chat` → 302 to the Access login. A plain self-hosted
+   app with a "subdomain" did NOT work — workers.dev is not a zone; use the Worker toggle.
+   ⚠️ **Side effect**: everything that calls the Worker without a browser is now blocked by Access — the
+   desktop chat client (`src/lib/chatClient.ts`), the WebSocket, ntfy/cron callbacks and
+   `scripts/live-chat-check.mjs`. Fix = an Access **service token** (Service Auth policy) and send
+   `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers from the desktop app (secret in secure storage).
 3. **Set the mail secrets**: `cd web-worker && npx wrangler secret put SMTP_USER` · `SMTP_PASS` (a Gmail **App
    Password** — only the owner can create it, and it must be typed into the terminal, never into the chat).
    ✅ `NTFY_TOPIC` is already set (the push topic `sdhhe-team-683c7d880f68`).
@@ -87,6 +90,7 @@ To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `
    cannot sign in to the live worker — copy the deployed value into `.dev.vars` if that is wanted.
 
 ## Next tasks
+0. **Access service token for the desktop app** (owner creates it in Zero Trust → Access → Service Auth).
 1. **Desktop 1-hour auto-logout** — the desktop app still only locks via *Lock now* (the web signs out on its
    own). The owner has not answered yet.
 2. The Roasting screen is still missing in the desktop app (only the web has it).
@@ -101,8 +105,7 @@ To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `
 - Deploy: `cd web-worker && ./node_modules/.bin/wrangler deploy` (ask the owner first)
 
 ## Blockers
-- R2 is not enabled on the Cloudflare account (the control plane also answered 503 "no healthy upstream" for a
-  while on 2026-11-06).
+- Desktop chat → Worker is blocked by Cloudflare Access until a service token is added (see Owner steps 2).
 - The three mail secrets are **not** on the worker (`wrangler secret list` shows only DATABASE_URL,
   OLLAMA_API_KEY, RESEND_API_KEY, SESSION_SECRET).
 - `prompts/TEAM_CHAT_ALL.md` and `docs/chat-in-app-preview.html` were missing from the repo; both were written.
