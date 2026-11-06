@@ -3392,7 +3392,7 @@ export default function App() {
                       <span className="flex items-center gap-1">
                         Margin
                         <input
-                          className="input h-7 w-16 px-2 text-xs"
+                          className="input h-7 w-16 px-2 text-base sm:text-xs"
                           type="number"
                           value={billMargin}
                           onChange={(e) => setBillMargin(e.currentTarget.value)}
