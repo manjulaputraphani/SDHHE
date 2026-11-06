@@ -82,6 +82,16 @@ const DECIDED_RECEIPT = {
   decidedAt: "2026-11-06T08:02:00.000Z",
 };
 
+let conversationsState: Array<{
+  id: number;
+  room: string;
+  kind: "group" | "direct";
+  title: string | null;
+  other: { id: number; name: string; role: string } | null;
+  unread: number;
+  lastMessageAt: string | null;
+}> = [];
+
 const CONVERSATIONS = [
   {
     id: 1,
@@ -195,7 +205,7 @@ async function mockChat(
     if (route.request().method() === "POST") {
       return route.fulfill({ json: { conversation: CONVERSATIONS[1] } });
     }
-    return route.fulfill({ json: { conversations: CONVERSATIONS } });
+    return route.fulfill({ json: { conversations: conversationsState } });
   });
   await page.route("**/api/chat/members**", (route) =>
     route.fulfill({ json: { members: MEMBERS } }),
@@ -203,9 +213,15 @@ async function mockChat(
   await page.route("**/api/chat/read**", (route) =>
     route.fulfill({ json: { ok: true, unread: 0 } }),
   );
-  await page.route("**/api/chat/rename**", (route) =>
-    route.fulfill({ json: { ok: true, room: "main", title: "Morning team" } }),
-  );
+  await page.route("**/api/chat/rename**", (route) => {
+    // The server is the single source of the name: the list now carries it.
+    conversationsState = conversationsState.map((entry) =>
+      entry.room === "main" ? { ...entry, title: "Morning team" } : entry,
+    );
+    return route.fulfill({ json: { ok: true, room: "main", title: "Morning team" } });
+  });
+  // Start every test from the default conversation list.
+  conversationsState = CONVERSATIONS;
   await page.route("**/api/auth/logout-all", (route) =>
     route.fulfill({ json: { ok: true, epoch: 2 } }),
   );
@@ -327,8 +343,8 @@ test.describe("Team Chat", () => {
     await page.goto("/team-chat");
 
     await expect(page.getByText("₹96/kg — kal 20 kg laya tha")).toBeVisible();
-    // Read by the other member → the three ticks.
-    await expect(page.getByText("✓✓✓")).toBeVisible();
+    // Read by the other member → the two ticks, plus who read it.
+    await expect(page.getByText("✓✓").first()).toBeVisible();
   });
 
   test("shows who is typing", async ({ page }) => {

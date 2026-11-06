@@ -5,7 +5,7 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat) and Phase 13 (Direct chat) are code-complete AND deployed.**
-Live worker version `469fd112-8ed8-45be-a945-c05e0935148c` (2026-11-06 12:51) — web bundle `index-0zs2fwLa.js`.
+Live worker version `eb23815a-12ad-4da9-8e53-1bb39e3df6e1` (2026-11-06 13:0x) — web bundle `index--dT6aHq4.js`.
 Live: https://sdhhe-api.blvphani.workers.dev/team-chat (shop room + private chats).
 **R2 is LIVE**: the bucket `sdhhe-receipts` exists and the binding `env.RECEIPTS` is deployed — the receipt
 upload/download works. The Worker also sends the security headers (HSTS, CSP, no framing) on every response.
@@ -15,6 +15,13 @@ Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
 Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 rows).
 
 ## Done
+- **Chat Phase 1** (committed, deployed `eb23815a`): the rename is stored in ONE place
+  (`chat_conversations.title`, the list read from the server) and posts a system message
+  "X renamed the group to …"; presence (a 30 s heartbeat over the socket + `POST /api/chat/heartbeat`,
+  offline after 60 s, a green/grey dot, "Online / Last seen today at 16:20", "N members · M online"
+  with a member list); read receipts (avatars of the readers, max 3 + "+N", a popup with the read and
+  "delivered, not read" names, the two ticks ✓/✓✓, "Seen 16:08" in a private chat). Migration
+  `0011_chat_presence.sql` (applied). **Phase 2–4 not started (the owner tests Phase 1 first).**
 - **Phase 15 — the in-app notification system** (committed, deployed `22af8463`): the 7 components (welcome
   banner, onboarding checklist, announcement bar, toasts, "what's new" window, product tour, login alert) +
   the sessions (30-minute idle logout, one device at a time, "sign out everybody", the login history, the
