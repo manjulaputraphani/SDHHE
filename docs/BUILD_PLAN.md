@@ -347,3 +347,30 @@ Reconciliation with the interim work of 2026-10-30:
   "the activity log holds no message text".
 - [x] **T-13.7 Tests + deploy** — unit tests for the new logic, Playwright for the conversation list and a
   direct chat, the migration applied to Neon, the worker deployed, the handover updated.
+
+## Phase 14 — Modern chat + delivery/read receipts (added 2026-11-06 on request)
+> The room gets the modern chat look (grouped bubbles, avatars, typing indicator, scroll-to-bottom with an
+> unread pill) and every message carries **sent / delivered / read** ticks — like WhatsApp: ✓ sent,
+> ✓✓ delivered to the other device, ✓✓✓ read (blue).
+- [ ] **T-14.1 Delivery/read state** — `chat_message_states` table (message_id, user_id, delivered_at, read_at)
+  + `src/db/chatStates.ts` (markDelivered, markRead, statesForMessages, summarise) + migration
+  `drizzle/0008_message_states.sql`.
+  Acceptance: one row per (message, member), a member can be delivered but not read, the summary counts the
+  other members, tsc + tests green.
+- [ ] **T-14.2 The API** — `POST /api/chat/delivered` (the client confirms it got the message),
+  `POST /api/chat/read` now also writes the read marks and **pushes a "read" frame into the room** (the
+  sender sees the tick turn blue live), and `GET /api/chat/messages` returns `deliveredBy` / `readBy` per
+  message.
+  Acceptance: a delivered mark is stored for the receiver only, a read mark is stored and broadcast, the
+  history carries the marks, 401/403 still hold.
+- [ ] **T-14.3 Typing + read frames in the room** — the Durable Object relays the "typing" frame to the
+  other members and the "read" frame from the Worker.
+  Acceptance: a typing indicator appears for the other member only, the read tick arrives live.
+- [ ] **T-14.4 The modern chat screen** (web + desktop) — grouped bubbles (tight on the sender's side),
+  the author name on the first message of a group, the time + ticks on the last one, the ✓ / ✓✓ / ✓✓✓ ticks
+  (blue when read), the typing indicator in the header, a scroll-to-bottom button with the unread pill,
+  a lighter, roomier layout.
+  Acceptance: the screen matches the new look, the ticks follow the real state, the scroll button appears
+  when the reader is scrolled up.
+- [ ] **T-14.5 Tests + deploy** — unit tests for the state logic, a local end-to-end check (send → delivered →
+  read → the sender sees the blue tick), the Playwright spec for the ticks, the worker deployed.
