@@ -493,7 +493,13 @@ export const api = {
     request<{ ok: boolean; method: string }>("/api/settings/costing", { method: "POST", body: JSON.stringify({ method }) }),
 
   // ---- Team Chat (Phase 12) ----
-  chatToken: () => request<{ token: string; expiresAt: number; user: User }>("/api/chat/token"),
+  // A background call: it must NOT slide the one-hour idle window.
+  chatToken: () =>
+    request<{ token: string; expiresAt: number; user: User }>("/api/chat/token", {
+      headers: { "x-chat-refresh": "1" },
+    }),
+  logoutEveryone: () =>
+    request<{ ok: boolean; epoch: number }>("/api/auth/logout-all", { method: "POST" }),
   chatMessages: (room?: string) =>
     request<{ messages: ChatMessage[] }>(
       `/api/chat/messages${room ? `?room=${encodeURIComponent(room)}` : ""}`,

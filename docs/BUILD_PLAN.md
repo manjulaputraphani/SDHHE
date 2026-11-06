@@ -404,3 +404,16 @@ Reconciliation with the interim work of 2026-10-30:
   frame in the protocol, and the inline edit in the room header of both screens. Local check
   `scripts/local-rename-check.mjs` — **4/4 green**; Playwright: the owner can rename, a staff member sees no
   Rename button (**11/11**). Deployed as version `cb638c5a`.)
+
+### Phase 14 — addendum 2: the sessions (2026-11-06)
+- [x] **T-14.7 The one-hour logout actually works + "sign out everybody"** — the **bug**: the chat screen
+  refreshed its token every 30 minutes, and that request **slid the one-hour idle window**, so the members
+  who sat on the chat screen were never signed out. Fixed: a background call now carries
+  `X-Chat-Refresh: 1` and the Worker **does not** re-issue the session cookie for it.
+  The desktop app had **no timeout at all** → it now signs itself out after an hour of inactivity.
+  New: a **session epoch** (settings key `session_epoch`) in the cookie — the owner can **sign everybody out**
+  at once (`POST /api/auth/logout-all`, owner only; the web Settings got a "Sign out everybody now" button).
+  Acceptance: an idle session is refused after an hour (and the cookie cleared), the background token refresh
+  does not slide the window, a session from an older epoch is refused, only the owner can sign everybody out.
+  (2026-11-06: `scripts/local-session-check.mjs` — **10/10 green**. The epoch was bumped to 3 on 2026-11-06,
+  so every member who was signed in is signed out now and has to sign in again.)

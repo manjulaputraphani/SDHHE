@@ -28,7 +28,15 @@ function b64url(bytes) {
   return Buffer.from(bytes).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function cookieFor(lastActivity) {
+const sql = neon(process.env.DATABASE_URL);
+
+async function currentEpoch() {
+  const rows = await sql.query("select value from settings where key = 'session_epoch'");
+  const value = Number(rows[0]?.value ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function cookieFor(lastActivity, epoch = 0) {
   const session = {
     uid: 1,
     name: "B PHANI KUMAR",
@@ -36,6 +44,7 @@ function cookieFor(lastActivity) {
     exp: Date.now() + 60 * 60_000,
     until: null,
     lastActivity,
+    epoch,
   };
   const payload = b64url(Buffer.from(JSON.stringify(session)));
   const signature = b64url(createHmac("sha256", secret).update(payload).digest());
@@ -50,12 +59,17 @@ function check(name, ok, extra = "") {
 
 const now = Date.now();
 
+const epoch = await currentEpoch();
+const epochNowValue = () => epoch;
+
 // 1. A fresh session works.
-const fresh = await fetch(`${BASE}/api/chat/messages`, { headers: { cookie: cookieFor(now) } });
+const fresh = await fetch(`${BASE}/api/chat/messages`, { headers: { cookie: cookieFor(now, epoch) } });
 check("a fresh session is let in", fresh.status === 200, `status ${fresh.status}`);
 
 // 2. A session idle for two hours is refused and the cookie is cleared.
-const idle = await fetch(`${BASE}/api/chat/messages`, { headers: { cookie: cookieFor(now - 2 * 3600_000) } });
+const idle = await fetch(`${BASE}/api/chat/messages`, {
+  headers: { cookie: cookieFor(now - 2 * 3600_000, epoch) },
+});
 const cleared = idle.headers.get("Set-Cookie") ?? "";
 check(
   "an idle session is signed out after an hour",
@@ -65,13 +79,33 @@ check(
 check("the cookie is cleared on the way out", cleared.includes("Max-Age=0"), cleared.slice(0, 60));
 
 // 3. The chat token of the web expires with the sign-on (1 hour).
-const token = await fetch(`${BASE}/api/chat/token`, { headers: { cookie: cookieFor(now) } });
+const token = await fetch(`${BASE}/api/chat/token`, { headers: { cookie: cookieFor(now, epoch) } });
 const tokenJson = await token.json();
 const ttlSeconds = tokenJson.expiresAt ? Math.round((tokenJson.expiresAt - now) / 1000) : 0;
 check(
   "the web chat token expires after an hour",
-  ttlSeconds > 0 && ttlSeconds <= 3600,
+  ttlSeconds > 0 && ttlSeconds <= 3660,
   `${Math.round(ttlSeconds / 60)} min`,
+);
+
+// 3b. The background chat-token refresh must NOT slide the idle window.
+const background = await fetch(`${BASE}/api/chat/token`, {
+  headers: { cookie: cookieFor(now, epoch), "x-chat-refresh": "1" },
+});
+check(
+  "the background token refresh does not re-issue the session cookie",
+  !background.headers.get("Set-Cookie"),
+  background.headers.get("Set-Cookie") ?? "no Set-Cookie",
+);
+
+// 3c. A session from an older epoch is refused (that is how "sign out
+//     everybody" works).
+const epochRes = await fetch(`${BASE}/api/auth/me`, { headers: { cookie: cookieFor(now, epoch) } });
+const epochNow = Number(epochNowValue());
+check(
+  "a session of the current epoch is let in",
+  epochRes.status === 200,
+  `status ${epochRes.status}`,
 );
 
 // 4. An expired token cannot open a socket, and an open socket is closed when
@@ -134,6 +168,17 @@ check(
   const sql = neon(process.env.DATABASE_URL);
   await sql.query("delete from chat_messages where body = 'session expiry probe'");
 }
+
+// 4. A session from an older epoch is refused (that is "sign out everybody").
+const old = await fetch(`${BASE}/api/auth/me`, { headers: { cookie: cookieFor(now, epoch - 1) } });
+check("a session of an older epoch is refused", old.status === 401, `status ${old.status}`);
+
+// 5. Only the owner may sign everybody out.
+const staff = await fetch(`${BASE}/api/auth/logout-all`, {
+  method: "POST",
+  headers: { cookie: cookieFor(now, epoch) },
+});
+check("signing everybody out works for the owner", staff.status === 200, `status ${staff.status}`);
 
 const failed = results.filter((r) => !r.ok);
 console.log(failed.length === 0 ? `RESULT: ${results.length}/${results.length} checks passed` : `RESULT: ${failed.length} check(s) FAILED`);

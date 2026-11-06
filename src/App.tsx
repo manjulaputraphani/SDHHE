@@ -46,6 +46,9 @@ function Guarded({
   return <>{children}</>;
 }
 
+/** The desktop app signs itself out after an hour of inactivity. */
+const IDLE_LOCK_MS = 60 * 60 * 1000;
+
 export default function App() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [url, setUrl] = useState<string | null>(null);
@@ -73,6 +76,31 @@ export default function App() {
   }, [bootstrap]);
 
   useEffect(() => watchSystemTheme(), []);
+
+  /**
+   * The idle lock: an hour without a mouse or a key press signs the member out
+   * of the desktop app (the web edition does the same on the server).
+   */
+  useEffect(() => {
+    if (phase !== "home") return;
+    let lastActivity = Date.now();
+    const mark = () => {
+      lastActivity = Date.now();
+    };
+    const events = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
+    for (const name of events) window.addEventListener(name, mark, { passive: true });
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastActivity < IDLE_LOCK_MS) return;
+      window.clearInterval(timer);
+      setAuditActor(null);
+      setCurrentPermissions(null);
+      setPhase("login");
+    }, 60_000);
+    return () => {
+      window.clearInterval(timer);
+      for (const name of events) window.removeEventListener(name, mark);
+    };
+  }, [phase]);
 
   if (phase === "loading") {
     return <main className="p-8 text-sm text-muted">Loading…</main>;

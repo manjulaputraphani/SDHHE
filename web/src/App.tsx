@@ -282,6 +282,8 @@ export default function App() {
   const [notifyBill, setNotifyBill] = useState(true);
   const [emailConfigured, setEmailConfigured] = useState(false);
   const [notifyStatus, setNotifyStatus] = useState<string | null>(null);
+  /** Owner action: sign every member out at once (Phase 14). */
+  const [logoutAllStatus, setLogoutAllStatus] = useState<string | null>(null);
   const [resendKey, setResendKey] = useState("");
   const [itemForm, setItemForm] = useState<{ id: number | null; name: string; unit: string; category: string; hsnCode: string; minStock: string; imageUrl: string } | null>(null);
   const [itemsMsg, setItemsMsg] = useState<string | null>(null);
@@ -3986,6 +3988,36 @@ export default function App() {
         )}
 
         {view === "team-chat" && can("chat", "view") && <TeamChat user={user} />}
+
+        {view === "settings" && user?.role === "owner" && (
+          <section className="space-y-3 card p-4">
+            <div>
+              <h2 className="text-sm font-medium">Sign out everybody</h2>
+              <p className="text-sm text-muted">
+                Every signed-in member is signed out at once — the web sessions die immediately and every
+                member has to sign in again. Use it when a phone or a computer may be left open.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  if (!window.confirm("Sign out every member now?")) return;
+                  void api
+                    .logoutEveryone()
+                    .then(() => {
+                      setLogoutAllStatus("Everybody is signed out ✓");
+                      setUser(null);
+                    })
+                    .catch((err) => setLogoutAllStatus(err instanceof Error ? err.message : String(err)));
+                }}
+              >
+                Sign out everybody now
+              </button>
+              {logoutAllStatus && <p role="status" className="text-sm text-muted">{logoutAllStatus}</p>}
+            </div>
+          </section>
+        )}
 
         {view === "activity" && (() => {          const actors = [...new Set(activity.map((row) => row.actor))].sort();
           const shown = activity.filter((row) => !activityFilter || row.actor === activityFilter);

@@ -99,3 +99,11 @@
   member gets 403) · the shop room can be called "Morning team" instead of "Shop room"; a **private chat is
   never renamed** (it is named after the person) · the new name travels through the room as a "rename" frame,
   so the header of every member changes at once
+- 2026-11-06 · The one-hour idle logout must not be **slid by a background call**: the chat screen refreshes
+  its token every 30 minutes and that request used to re-issue the session cookie, so the members sitting on
+  the chat screen were never signed out · a background call now carries `X-Chat-Refresh: 1` and the Worker
+  leaves the session window alone for it
+- 2026-11-06 · **Sign out everybody** = a `session_epoch` in the settings table, carried in the cookie; the
+  owner bumps it (`POST /api/auth/logout-all`, or the "Sign out everybody now" button in the web Settings) and
+  every session of the old epoch is refused at once · the desktop app (which has no server session) now signs
+  itself out after an hour of inactivity

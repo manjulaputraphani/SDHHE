@@ -186,6 +186,9 @@ async function mockChat(
   await page.route("**/api/chat/rename**", (route) =>
     route.fulfill({ json: { ok: true, room: "main", title: "Morning team" } }),
   );
+  await page.route("**/api/auth/logout-all", (route) =>
+    route.fulfill({ json: { ok: true, epoch: 2 } }),
+  );
   await page.route("**/api/chat/token", (route) =>
     route.fulfill({ json: { token: "test-token", expiresAt: Date.now() + 3_600_000, user: member } }),
   );

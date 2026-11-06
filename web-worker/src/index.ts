@@ -124,7 +124,16 @@ function currentFinYear(): string {
   return `${year}-${String(year + 1).slice(-2)}`;
 }
 
-type Session = { uid: number; name: string; role: Role; exp: number; until?: string | null; lastActivity: number };
+type Session = {
+  uid: number;
+  name: string;
+  role: Role;
+  exp: number;
+  until?: string | null;
+  lastActivity: number;
+  /** Bumped by "sign out everyone" — an older epoch is refused. */
+  epoch?: number;
+};
 
 function normalizeRole(value: unknown): Role {
   return value === "owner" ? "owner" : value === "ca" ? "ca" : "staff";
@@ -446,6 +455,31 @@ async function broadcastToChat(env: Env, frame: ChatFrame, room: string = SHARED
  * The web app sends its session cookie; the desktop app sends a short-lived
  * chat token (bearer) because it has no cookie.
  */
+/** The session epoch — "sign out everyone" bumps it and every session dies. */
+async function sessionEpoch(env: Env): Promise<number> {
+  const rows = await sqlQuery(env, "select value from settings where key = 'session_epoch'");
+  const value = Number(rows[0]?.value ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+/** Is this session from an older epoch (i.e. "sign out everybody")? */
+async function epochRefused(env: Env, session: Session): Promise<boolean> {
+  const epoch = await sessionEpoch(env);
+  return (session.epoch ?? 0) !== epoch;
+}
+
+/** Bump the epoch — every signed-in member is signed out at once. */
+async function bumpSessionEpoch(env: Env): Promise<number> {
+  const current = await sessionEpoch(env);
+  const next = current + 1;
+  await sqlQuery(
+    env,
+    "insert into settings (key, value) values ('session_epoch', $1) on conflict (key) do update set value = excluded.value",
+    [String(next)],
+  );
+  return next;
+}
+
 async function chatActor(request: Request, env: Env): Promise<Session | null> {
   const secret = env.SESSION_SECRET as string;
   const session = await readSession(request, secret);
@@ -579,7 +613,8 @@ async function login(request: Request, env: Env, url: URL): Promise<Response> {
     until: user.access_until ?? null,
     lastActivity: Date.now(),
   };
-  const token = await createToken(session, env.SESSION_SECRET as string);
+  const epoch = await sessionEpoch(env);
+  const token = await createToken({ ...session, epoch }, env.SESSION_SECRET as string);
   // Track the session so the activity log knows who was in and for how long.
   await startSession(getDb(env.DATABASE_URL as string), session.uid, "web", session.name);
   const permissions = await loadPermissionsForRole(getDb(env.DATABASE_URL as string), session.role);
@@ -725,9 +760,29 @@ export default {
       return json({ ok: true }, { headers: { "Set-Cookie": `${COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}` } });
     }
 
+    if (url.pathname === "/api/auth/logout-all" && request.method === "POST") {
+      const session = await readSession(request, env.SESSION_SECRET);
+      if (!session) return json({ error: "Not signed in" }, { status: 401 });
+      if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+      const next = await bumpSessionEpoch(env);
+      // The open sessions of the usage log are closed as well.
+      await sqlQuery(env, "update user_sessions set ended_at = now(), duration_seconds = 0 where ended_at is null");
+      return json({ ok: true, epoch: next });
+    }
+
     if (url.pathname === "/api/auth/me" && request.method === "GET") {
       const session = await readSession(request, env.SESSION_SECRET);
       if (!session) return json({ error: "Not signed in" }, { status: 401 });
+      if (await epochRefused(env, session)) {
+        const secure = url.protocol === "https:" ? "; Secure" : "";
+        return json(
+          { error: "Signed out — please sign in again" },
+          {
+            status: 401,
+            headers: { "Set-Cookie": `${COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}` },
+          },
+        );
+      }
       const today = new Date().toISOString().slice(0, 10);
       if (session.until && session.until < today) {
         return json({ error: "Access expired — ask the owner" }, { status: 401 });
@@ -868,6 +923,19 @@ export default {
       return json({ error: "Access expired — ask the owner" }, { status: 401 });
     }
 
+    // "Sign out everyone": a session from an older epoch is refused.
+    const epoch = await sessionEpoch(env);
+    if ((session.epoch ?? 0) !== epoch) {
+      const secure = url.protocol === "https:" ? "; Secure" : "";
+      return json(
+        { error: "Signed out — please sign in again" },
+        {
+          status: 401,
+          headers: { "Set-Cookie": `${COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}` },
+        },
+      );
+    }
+
     const db = getDb(env.DATABASE_URL as string);
     const permissions = await loadPermissionsForRole(db, session.role);
     const needed = routePermission(url.pathname, request.method);
@@ -879,7 +947,10 @@ export default {
     }
 
     // Refresh the session cookie on every authenticated response (sliding 1-hour window).
-    if (cookieSession) {
+    // A background call (the chat token refresh) must NOT slide it — otherwise the
+    // hour-long idle logout would never happen while the chat screen is open.
+    const isBackground = Boolean(request.headers.get("x-chat-refresh"));
+    if (cookieSession && !isBackground) {
       const refreshedSession: Session = { ...cookieSession, lastActivity: Date.now() };
       const refreshToken = await createToken(refreshedSession, env.SESSION_SECRET as string);
       pendingSetCookie = sessionCookie(refreshToken, url);
