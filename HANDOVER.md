@@ -5,7 +5,7 @@ Tool: OpenCode
 
 ## Current state
 **Phase 12 (Team Chat) and Phase 13 (Direct chat) are code-complete AND deployed.**
-Live worker version `63e9d95f-542e-4812-be10-72743246dc72` (2026-11-06 11:18) — web bundle `index-C5y3EWZo.js`.
+Live worker version `7c4965bb-de0d-4c8b-bc11-d9b33e77ccf9` (2026-11-06 11:49) — web bundle `index-Db9EQ5UO.js`.
 Live: https://sdhhe-api.blvphani.workers.dev/team-chat (shop room + private chats).
 **The live build has NO R2 binding** (R2 is not enabled on the account) → attaching a receipt file answers
 503 "Receipt storage is not configured"; everything else works.
@@ -15,6 +15,12 @@ Same Neon DB as the local `.env`; owner account id=1 (7569208757) active.
 Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 rows).
 
 ## Done
+- **Phase 14 — modern chat + delivered/read ticks** (committed, deployed `7c4965bb`): grouped bubbles with
+  avatars and tails, ✓ / ✓✓ / ✓✓✓ ticks (gold = read) on my own messages, a typing indicator in the room
+  header, a jump-to-bottom button with the missed count, a friendly empty state — the drawing rules are shared
+  (`src/logic/chatView.ts`) so the web and the desktop look the same. The state lives in
+  `chat_message_states` (migration `0008_message_states.sql`); `POST /api/chat/delivered` and `/api/chat/read`
+  write the marks and push a frame into the room. Local tick check 7/7, Playwright 9/9.
 - **Phase 13 — direct chat** (committed, deployed): T-13.1 conversations + unread (`chat_conversations`,
   `chat_conversation_members`), T-13.2 room-scoped API (conversations/members/read/messages, membership → 403),
   T-13.3 one Durable Object per room, T-13.4 web conversation list + New chat + Export, T-13.5 desktop the same,
@@ -22,6 +28,8 @@ Neon migrations applied: `0001`…`0007_direct_chat.sql` (chat tables exist, 0 r
   T-13.7 tests + deploy. **433 unit tests, tsc clean (app/web/worker), Playwright 7/7.**
 - **Phase 12 — Team Chat** (committed, deployed): T-12.0…T-12.8 (tables, shared logic, R2 receipts,
   the Durable Object room, the worker API, the web screen, Gmail SMTP + ntfy, the desktop screen + Playwright).
+- **CI** (green, run `42210397381`): the two flaky Settings tests are fixed (timeout 30 s + `waitFor` after the
+  click) and the workflow now typechecks the web app and the worker too.
 - The **sign-on rule**: the web signs out after an hour of inactivity and the chat follows it (the web chat
   token lives 1 h, refreshed every 30 min; an expired token is refused at the door; an open socket is closed
   when its token runs out). The desktop token lives 12 h (the desktop session has no timeout).
@@ -47,7 +55,8 @@ To read the runs: `python3 scripts/gh-runs.py [jobs <run id>]` · the job log: `
    Dashboard" (code 10042). Then `cd web-worker && npx wrangler r2 bucket create sdhhe-receipts` and
    `npx wrangler deploy` again (the binding is already in `web-worker/wrangler.toml`).
 2. **Set the mail secrets**: `cd web-worker && npx wrangler secret put SMTP_USER` · `SMTP_PASS` (a Gmail **App
-   Password**) · `NTFY_TOPIC`. (The mail is skipped quietly until they are set.)
+   Password** — only the owner can create it, and it must be typed into the terminal, never into the chat).
+   ✅ `NTFY_TOPIC` is already set (the push topic `sdhhe-team-683c7d880f68`).
 3. **Desktop**: Settings → Team Chat → paste `https://sdhhe-api.blvphani.workers.dev`, sign out, sign in again.
 4. **Role check**: Team → Roles & permissions → the new **Team Chat** module (staff view+create, CA
    view+create+edit, owner all).
