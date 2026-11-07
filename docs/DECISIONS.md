@@ -157,3 +157,9 @@
    author-only and only within 15 minutes (`withinEditWindow` in src/logic/chat, shared by the web client and the worker); deleting is author-only
    (the owner may delete any), a receipt only while Pending. The delete route asks for the `chat create` permission so any member can remove their
    own message; ownership is checked in `deleteMessage`. Reply / React / Pin actions were deferred to T-16.4 (they need their own tables).
+- 2026-11-07 · **Chat features (T-16.4): replies, reactions, pins** — replies store only `reply_to_id` (the quoted preview is found in the loaded
+   history, nothing duplicated); reactions are one row per member per message (`chat_reactions`, unique message+user — the same emoji removes it,
+   a new one replaces it, no emoji library needed); pins live in `chat_pinned_messages` (unique per message, at most three per room — the 4th is
+   refused). All three broadcast live through the Durable Object (`reaction` / `pins` frames) and every route first checks the room membership;
+   pinning is owner-only. @mentions are computed on the client from the room roster and travel as ids in the send payload — the worker pushes
+   "X mentioned you" to exactly those members, so a mention notifies even when the room would not push that member.
