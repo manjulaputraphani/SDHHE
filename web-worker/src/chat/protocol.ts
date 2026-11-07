@@ -32,6 +32,10 @@ export type ChatFrame =
   | { type: "members"; room: string }
   /** A room setting changed (e.g. AI polish was switched) — reload the lists. */
   | { type: "settings"; room: string }
+  /** The reactions of a message changed (T-16.4). */
+  | { type: "reaction"; messageId: number; reactions: unknown }
+  /** The pinned messages of a room changed (T-16.4). */
+  | { type: "pins"; room: string }
   | { type: "error"; message: string };
 
 export const CHAT_FRAME_TYPES = [
@@ -46,6 +50,8 @@ export const CHAT_FRAME_TYPES = [
   "rename",
   "members",
   "settings",
+  "reaction",
+  "pins",
   "error",
 ] as const;
 

@@ -70,6 +70,13 @@ describe("parseMessageInput", () => {
       false,
     );
   });
+
+  it("carries the reply target of a message (T-16.4)", () => {
+    const parsed = parseMessageInput({ kind: "text", body: "Yes sir", replyToId: 42 });
+    expect(parsed.replyToId).toBe(42);
+    expect(parseMessageInput({ kind: "text", body: "No reply" }).replyToId).toBeUndefined();
+    expect(() => parseMessageInput({ kind: "text", body: "bad", replyToId: "x" })).toThrow();
+  });
 });
 
 describe("parseReceiptInput", () => {
@@ -169,6 +176,7 @@ describe("row mapping", () => {
         editedAt: at,
         aiPolished: false,
         deletedAt: null,
+        replyToId: null,
       }),
     ).toEqual({
       id: 7,
@@ -201,6 +209,7 @@ describe("row mapping", () => {
         editedAt: at,
         aiPolished: false,
         deletedAt: new Date("2026-11-07T10:00:00.000Z"),
+        replyToId: null,
       }).deleted,
     ).toBe(true);
   });
@@ -221,6 +230,7 @@ describe("row mapping", () => {
         editedAt: at,
         aiPolished: true,
         deletedAt: null,
+        replyToId: null,
       }).aiPolished,
     ).toBe(true);
   });

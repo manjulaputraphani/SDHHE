@@ -9,6 +9,7 @@ import {
   filterConversations,
   filterMessages,
   formatChatListTimeRow as formatChatListTime,
+  groupReactions,
   type ConversationListEntry,
   type ViewMessage,
 } from "./chatView";
@@ -71,8 +72,32 @@ describe("chatDaySections", () => {
   });
 });
 
-describe("conversationName", () => {
-  it("names a group by its title, falling back to Shop room", () => {
+describe("groupReactions (T-16.4)", () => {
+  const reactions = [
+    { emoji: "👍", userId: 4, name: "RAJU" },
+    { emoji: "👍", userId: 1, name: "OWNER" },
+    { emoji: "🔥", userId: 4, name: "RAJU" },
+  ];
+
+  it("groups by emoji with counts, most-used first", () => {
+    const chips = groupReactions(reactions, 1);
+    expect(chips).toEqual([
+      { emoji: "👍", count: 2, mine: true },
+      { emoji: "🔥", count: 1, mine: false },
+    ]);
+  });
+
+  it("marks which chips are mine", () => {
+    expect(groupReactions(reactions, 4)[0]).toEqual({ emoji: "👍", count: 2, mine: true });
+  });
+
+  it("returns nothing without reactions", () => {
+    expect(groupReactions(undefined)).toEqual([]);
+    expect(groupReactions([])).toEqual([]);
+  });
+});
+
+describe("conversationName", () => {  it("names a group by its title, falling back to Shop room", () => {
     expect(conversationName({ room: "main", kind: "group", title: "Morning team" })).toBe(
       "Morning team",
     );

@@ -8,10 +8,10 @@
  * Money is integer paise. The receipt file itself lives in R2 — only its key
  * is stored here.
  */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, TxDb } from "./client";
-import { chatMessageEdits, chatMessages, receiptRequests } from "./schema";
+import { appUsers, chatMessageEdits, chatMessages, chatPinnedMessages, chatReactions, receiptRequests } from "./schema";
 import { logActivity } from "./activity";
 import {
   CHAT_ROOM_DEFAULT,
@@ -24,6 +24,9 @@ export const CHAT_ROOM = CHAT_ROOM_DEFAULT;
 
 export type ChatMessageKind = "text" | "receipt" | "system";
 export type ReceiptStatus = "pending" | "approved" | "rejected";
+
+/** One reaction of a message (T-16.4). */
+export type ChatReaction = { emoji: string; userId: number; name: string };
 
 export type ChatMessage = {
   id: number;
@@ -41,6 +44,10 @@ export type ChatMessage = {
   aiPolished?: boolean;
   /** Soft-deleted (T-16.2) — the bubble shows a tombstone, the body stays. */
   deleted?: boolean;
+  /** The message this one quotes (T-16.4 — replies). */
+  replyToId?: number;
+  /** The reactions of the team (T-16.4) — chips under the bubble. */
+  reactions?: ChatReaction[];
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */
@@ -116,6 +123,8 @@ const messageInputSchema = z.object({
   receipt: receiptPayloadSchema.optional(),
   /** The sender accepted the AI polish suggestion (Phase 15) — text only. */
   aiPolished: z.boolean().optional().catch(false),
+  /** The message this one quotes (T-16.4 — replies). */
+  replyToId: z.number({ error: "Reply target must be a message id" }).int().positive().optional(),
 });
 
 export type MessageInput = {
@@ -123,6 +132,7 @@ export type MessageInput = {
   body: string;
   receipt?: ReceiptPayload;
   aiPolished?: boolean;
+  replyToId?: number;
 };
 
 /** Validate a message that a member sent. Throws with a user-facing message. */
@@ -134,7 +144,12 @@ export function parseMessageInput(input: unknown): MessageInput {
   const data = result.data;
   if (data.kind === "text") {
     if (!data.body) throw new Error("Message cannot be empty");
-    return { kind: "text", body: data.body, aiPolished: data.aiPolished === true };
+    return {
+      kind: "text",
+      body: data.body,
+      aiPolished: data.aiPolished === true,
+      replyToId: data.replyToId,
+    };
   }
   if (!data.receipt) throw new Error("Receipt details are required");
   if (!data.receipt.mime || !isReceiptMimeAllowed(data.receipt.mime)) {
@@ -215,6 +230,7 @@ type MessageRow = {
   editedAt: Date;
   aiPolished: boolean;
   deletedAt: Date | null;
+  replyToId: number | null;
 };
 
 type ReceiptRow = {
@@ -252,6 +268,7 @@ export function toMessage(row: MessageRow): ChatMessage {
     editedAt: row.editedAt.getTime() > row.createdAt.getTime() ? row.editedAt.toISOString() : undefined,
     aiPolished: Boolean(row.aiPolished),
     deleted: Boolean(row.deletedAt),
+    replyToId: row.replyToId ?? undefined,
   };
 }
 
@@ -312,6 +329,8 @@ export async function insertMessage(
     receiptId?: number | null;
     /** The sender accepted the AI polish suggestion (Phase 15). */
     aiPolished?: boolean;
+    /** The message this one quotes (T-16.4 — replies). */
+    replyToId?: number;
   },
 ): Promise<ChatMessage> {
   const [created] = (await db
@@ -325,6 +344,7 @@ export async function insertMessage(
       body: input.body,
       receiptId: input.receiptId ?? null,
       aiPolished: input.aiPolished === true,
+      replyToId: input.replyToId ?? null,
     })
     .returning()) as MessageRow[];
   return toMessage(created);
@@ -467,6 +487,139 @@ export async function linkReceiptMessage(
     .update(receiptRequests)
     .set({ messageId })
     .where(eq(receiptRequests.id, receiptId));
+}
+
+// ---- Reactions and pins (T-16.4) ----
+
+/**
+ * Set or remove my reaction on a message. `emoji` null removes it; a new
+ * emoji replaces the old one (one reaction per member per message).
+ * Returns the message's fresh reaction list.
+ */
+export async function setReaction(
+  db: Db | TxDb,
+  messageId: number,
+  userId: number,
+  emoji: string | null,
+): Promise<ChatReaction[]> {
+  if (emoji === null) {
+    await db
+      .delete(chatReactions)
+      .where(and(eq(chatReactions.messageId, messageId), eq(chatReactions.userId, userId)));
+  } else {
+    await db
+      .insert(chatReactions)
+      .values({ messageId, userId, emoji })
+      .onConflictDoUpdate({
+        target: [chatReactions.messageId, chatReactions.userId],
+        set: { emoji },
+      });
+  }
+  return listReactionsForMessage(db, messageId);
+}
+
+/** The reactions of one message, with the names of the members. */
+export async function listReactionsForMessage(
+  db: Db | TxDb,
+  messageId: number,
+): Promise<ChatReaction[]> {
+  const rows = await db
+    .select({
+      emoji: chatReactions.emoji,
+      userId: chatReactions.userId,
+      name: appUsers.name,
+    })
+    .from(chatReactions)
+    .innerJoin(appUsers, eq(appUsers.id, chatReactions.userId))
+    .where(eq(chatReactions.messageId, messageId))
+    .orderBy(desc(chatReactions.id));
+  return rows;
+}
+
+/** The reactions of many messages at once (the history payload). */
+export async function listReactionsForMessages(
+  db: Db | TxDb,
+  messageIds: number[],
+): Promise<Map<number, ChatReaction[]>> {
+  const map = new Map<number, ChatReaction[]>();
+  if (messageIds.length === 0) return map;
+  const rows = await db
+    .select({
+      messageId: chatReactions.messageId,
+      emoji: chatReactions.emoji,
+      userId: chatReactions.userId,
+      name: appUsers.name,
+    })
+    .from(chatReactions)
+    .innerJoin(appUsers, eq(appUsers.id, chatReactions.userId))
+    .where(inArray(chatReactions.messageId, messageIds))
+    .orderBy(desc(chatReactions.id));
+  for (const row of rows) {
+    const list = map.get(row.messageId) ?? [];
+    list.push({ emoji: row.emoji, userId: row.userId, name: row.name });
+    map.set(row.messageId, list);
+  }
+  return map;
+}
+
+/** The messages the owner pinned in a room (at most three, T-16.4). */
+export type PinnedMessage = {
+  id: number;
+  messageId: number;
+  author: string;
+  body: string;
+  pinnedAt: string;
+};
+
+export const MAX_PINNED_MESSAGES = 3;
+
+/** Pin a message (the Worker checks that the owner asked). */
+export async function pinMessage(
+  db: Db | TxDb,
+  room: string,
+  messageId: number,
+  pinnedBy: number,
+): Promise<PinnedMessage[]> {
+  const [count] = await db
+    .select({ total: sql<number>`count(*)::int`.mapWith(Number) })
+    .from(chatPinnedMessages)
+    .where(eq(chatPinnedMessages.room, room));
+  if ((count?.total ?? 0) >= MAX_PINNED_MESSAGES) {
+    throw new Error(`Only ${MAX_PINNED_MESSAGES} messages can be pinned`);
+  }
+  await db
+    .insert(chatPinnedMessages)
+    .values({ room, messageId, pinnedBy })
+    .onConflictDoNothing({ target: chatPinnedMessages.messageId });
+  return listPinnedMessages(db, room);
+}
+
+/** Unpin a message. */
+export async function unpinMessage(db: Db | TxDb, messageId: number): Promise<void> {
+  await db.delete(chatPinnedMessages).where(eq(chatPinnedMessages.messageId, messageId));
+}
+
+/** The pinned messages of a room, oldest pin first. */
+export async function listPinnedMessages(db: Db | TxDb, room: string): Promise<PinnedMessage[]> {
+  const rows = await db
+    .select({
+      id: chatPinnedMessages.id,
+      messageId: chatPinnedMessages.messageId,
+      author: chatMessages.author,
+      body: chatMessages.body,
+      pinnedAt: chatPinnedMessages.pinnedAt,
+    })
+    .from(chatPinnedMessages)
+    .innerJoin(chatMessages, eq(chatMessages.id, chatPinnedMessages.messageId))
+    .where(and(eq(chatPinnedMessages.room, room), isNull(chatMessages.deletedAt)))
+    .orderBy(desc(chatPinnedMessages.id));
+  return rows.map((row) => ({
+    id: row.id,
+    messageId: row.messageId,
+    author: row.author,
+    body: row.body,
+    pinnedAt: new Date(row.pinnedAt).toISOString(),
+  }));
 }
 
 // ------------------------------------------------------------------ receipts

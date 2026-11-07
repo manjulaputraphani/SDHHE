@@ -93,6 +93,9 @@ export function chatMessagePreview(message: { author: string; body: string }): s
 /** The edit window (T-16.2): a message can be fixed within 15 minutes. */
 export const EDIT_WINDOW_MS = 15 * 60_000;
 
+/** The reactions a member can leave (T-16.4). */
+export const REACTION_EMOJIS = ["👍", "❤️", "😂", "🙏", "✅", "🔥"] as const;
+
 /** Is the message still inside the 15-minute edit window? */
 export function withinEditWindow(createdAtMs: number, nowMs: number = Date.now()): boolean {
   return nowMs - createdAtMs <= EDIT_WINDOW_MS;

@@ -8,8 +8,12 @@ import {
   insertMessage,
   linkReceiptMessage,
   listMessages,
+  listPinnedMessages,
   listReceipts,
   pendingReceiptCount,
+  pinMessage,
+  setReaction,
+  unpinMessage,
   updateMessage,
 } from "./chat";
 import { sql } from "drizzle-orm";
@@ -80,6 +84,44 @@ suite("Team Chat — messages and receipt approvals", () => {
     );
     const byOwner = await deleteMessage(db!, other.id, { userId: 1, role: "owner" });
     expect(byOwner.deleted).toBe(true);
+  });
+
+  it("stores and returns the reply target of a message (T-16.4)", async () => {
+    const original = await insertMessage(db!, { userId: 7, author: "ANITA", kind: "text", body: "First" });
+    const reply = await insertMessage(db!, {
+      userId: 8,
+      author: "RAJU",
+      kind: "text",
+      body: "Reply",
+      replyToId: original.id,
+    });
+    expect(reply.replyToId).toBe(original.id);
+    const [loaded] = await listMessages(db!);
+    expect(loaded.replyToId).toBe(original.id);
+  });
+
+  it("adds, replaces and removes one reaction per member (T-16.4)", async () => {
+    const message = await insertMessage(db!, { userId: 7, author: "ANITA", kind: "text", body: "Nice" });
+    expect((await setReaction(db!, message.id, 7, "👍")).map((r) => r.emoji)).toEqual(["👍"]);
+    expect((await setReaction(db!, message.id, 8, "👍")).map((r) => r.emoji)).toEqual(["👍", "👍"]);
+    // A new emoji replaces the old one.
+    expect((await setReaction(db!, message.id, 7, "🔥")).map((r) => r.emoji).sort()).toEqual(["🔥", "👍"]);
+    // The same member again removes it.
+    expect((await setReaction(db!, message.id, 7, null)).map((r) => r.emoji)).toEqual(["👍"]);
+  });
+
+  it("pins at most three messages per room (T-16.4)", async () => {
+    const make = () => insertMessage(db!, { userId: 7, author: "ANITA", kind: "text", body: "pin me" });
+    const a = await make();
+    const b = await make();
+    const c = await make();
+    const d = await make();
+    expect(await pinMessage(db!, "main", a.id, 1)).toHaveLength(1);
+    expect(await pinMessage(db!, "main", b.id, 1)).toHaveLength(2);
+    expect(await pinMessage(db!, "main", c.id, 1)).toHaveLength(3);
+    await expect(pinMessage(db!, "main", d.id, 1)).rejects.toThrow(/Only 3/);
+    await unpinMessage(db!, a.id);
+    expect(await listPinnedMessages(db!, "main")).toHaveLength(2);
   });
 
   it("returns only the newest messages when a limit is given", async () => {

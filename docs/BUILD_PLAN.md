@@ -607,11 +607,18 @@ inline SVG. Existing tokens only; light + dark. Old messages in the DB are never
   auto-open on a new receipt via the socket; open/closed remembered per user (localStorage,
   try/catch); staff never see the panel, the tab or the button. e2e: staff lockout, hidden with 0
   pending, gold badge, 768/1280 layouts (responsive mock now carries one pending receipt).
-- [ ] **T-16.4 Chat features** — reply/quote with scroll-to-original; reactions (👍 ❤️ 😂 🙏 ✅ 🔥,
-  click own to remove); ticks INSIDE the bubble bottom-right with time; "Seen by" info; typing
-  indicator (exists); @mentions with member list + notification override; group search with
-  highlight + jump; pinned messages bar (owner, max 3); floating ↓ + unread count (exists);
-  "New messages" divider; emoji picker (exists, small built-in list); copy keeps line breaks.
+- [x] **T-16.4 Chat features** — reply/quote: `chat_messages.reply_to_id` + quoted preview in
+  the bubble, click scrolls (flash highlight); reactions: `chat_reactions` (one per member per
+  message, same emoji removes, new one replaces) + chips under the bubble + 😊 picker +
+  POST/DELETE routes + `reaction` frame; ticks INSIDE the bubble bottom-right with the time
+  (✓ ✓✓, accent = read by all) + Info modal (T-16.2) lists seen-by; typing indicator (existed);
+  @mentions: composer shows the member list while typing @, picked members get a personal push
+  ("X mentioned you"); search: matches highlighted (<mark>) + ↑↓ jump buttons; pinned messages:
+  `chat_pinned_messages` (owner, max 3, error beyond) + 📌 action + bar above the list +
+  `pins` frame + routes; "New messages" divider marks what arrived while scrolled up; emoji
+  picker + line-break copy existed. Migration **0019** (additive). Unit: groupReactions +
+  replyToId parsing; int: reply round-trip, reaction add/replace/remove, pin max-3; e2e in
+  T-16.6.
 - [ ] **T-16.5 Look and spacing** — bubbles ≤70% width, 10px 14px padding, 14px font, 1.5 line
   height; same-sender groups (name once, 2px gap, 12px between senders); avatar initials +
   accent-ink names for others, bg-primary own; composer row 📎 🧾 😊 textarea send; 360px + both

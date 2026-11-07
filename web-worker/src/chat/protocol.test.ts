@@ -79,6 +79,11 @@ describe("isChatFrame", () => {
     expect(isChatFrame(frame)).toBe(true);
     expect(parseFrame(encodeFrame(frame))).toEqual(frame);
   });
+
+  it("knows the reaction and pins frames (T-16.4)", () => {
+    expect(isChatFrame({ type: "reaction", messageId: 7, reactions: [] })).toBe(true);
+    expect(isChatFrame({ type: "pins", room: "main" })).toBe(true);
+  });
 });
 
 describe("errorFrame", () => {

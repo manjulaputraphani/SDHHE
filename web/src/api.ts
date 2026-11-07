@@ -19,6 +19,10 @@ export type ChatMessage = {
   aiPolished?: boolean;
   /** Soft-deleted (T-16.2) — the bubble shows a tombstone. */
   deleted?: boolean;
+  /** The message this one quotes (T-16.4 — replies). */
+  replyToId?: number;
+  /** The team's reactions (T-16.4) — chips under the bubble. */
+  reactions?: { emoji: string; userId: number; name: string }[];
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */
@@ -80,6 +84,15 @@ export type ChatConversation = {
 
 /** A member of the shop (who may be chatted with). */
 export type ChatMember = { id: number; name: string; role: string; lastSeenAt?: string | null };
+
+/** A pinned message of a room (T-16.4). */
+export type PinnedMessage = {
+  id: number;
+  messageId: number;
+  author: string;
+  body: string;
+  pinnedAt: string;
+};
 
 // ---- The notification system (Phase 15) ----
 export type AnnouncementKind = "info" | "success" | "warning" | "critical";
@@ -567,11 +580,31 @@ export const api = {
     request<{ messages: ChatMessage[] }>(
       `/api/chat/messages${room ? `?room=${encodeURIComponent(room)}` : ""}`,
     ),
-  sendChatMessage: (body: { kind: "text" | "receipt"; body: string; room?: string; receipt?: ChatReceiptInput; aiPolished?: boolean }) =>
+  sendChatMessage: (body: { kind: "text" | "receipt"; body: string; room?: string; receipt?: ChatReceiptInput; aiPolished?: boolean; replyToId?: number; mentions?: number[] }) =>
     request<{ message: ChatMessage; receipt?: ChatReceipt }>("/api/chat/messages", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  reactChatMessage: (messageId: number, emoji: string) =>
+    request<{ reactions: ChatMessage["reactions"] }>(`/api/chat/reactions/${messageId}`, {
+      method: "POST",
+      body: JSON.stringify({ emoji }),
+    }),
+  unreactChatMessage: (messageId: number) =>
+    request<{ reactions: ChatMessage["reactions"] }>(`/api/chat/reactions/${messageId}`, {
+      method: "DELETE",
+    }),
+  chatPins: (room: string) =>
+    request<{ pins: { id: number; messageId: number; author: string; body: string; pinnedAt: string }[] }>(
+      `/api/chat/pins?room=${encodeURIComponent(room)}`,
+    ),
+  pinChatMessage: (room: string, messageId: number) =>
+    request<{ pins: unknown[] }>("/api/chat/pins", {
+      method: "POST",
+      body: JSON.stringify({ room, messageId }),
+    }),
+  unpinChatMessage: (messageId: number) =>
+    request<{ ok: boolean }>(`/api/chat/pins/${messageId}`, { method: "DELETE" }),
   editChatMessage: (id: number, body: string) =>
     request<{ message: ChatMessage }>(`/api/chat/messages/${id}`, {
       method: "PATCH",

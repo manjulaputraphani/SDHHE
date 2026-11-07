@@ -568,6 +568,20 @@
   opacity: 1;
 }
 
+/* A message that was jumped to (T-16.4 — replies, pins, search) flashes once. */
+.msg-flash {
+  animation: msg-flash 1.6s ease;
+}
+@keyframes msg-flash {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  30% {
+    box-shadow: 0 0 0 3px var(--c-accent);
+  }
+}
+
 /* The auto-growing composer textarea — one rounded bar. */
 .chat-composer {
   field-sizing: content;

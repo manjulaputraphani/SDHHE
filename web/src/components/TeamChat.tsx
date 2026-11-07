@@ -11,7 +11,7 @@
  *
  * Colours: only the tokens from styles.css — no new colours (Phase 2).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   api,
   chatReceiptUrl,
@@ -21,6 +21,7 @@ import {
   type ChatMessage,
   type ChatReceipt,
   type ChatUser,
+  type PinnedMessage,
   type User,
 } from "../api";
 import {
@@ -29,6 +30,7 @@ import {
   formatChatTime,
   receiptStatusLabel,
   receiptStatusTone,
+  REACTION_EMOJIS,
   withinEditWindow,
 } from "../../../src/logic/chat";
 import { polishSkipReason } from "../../../src/logic/aiPolish";
@@ -44,6 +46,7 @@ import {
   filterMessages,
   formatChatListTimeRow,
   groupMessages,
+  groupReactions,
   initials,
   isOnline,
   messageTick,
@@ -198,6 +201,14 @@ export default function TeamChat({ user }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   /** T-16.2: the message whose seen-by info is open. */
   const [infoMessage, setInfoMessage] = useState<ViewMessage | null>(null);
+  /** T-16.4: the message being replied to. */
+  const [replyingTo, setReplyingTo] = useState<{ id: number; author: string; body: string } | null>(null);
+  /** T-16.4: the pinned messages of the open room. */
+  const [pins, setPins] = useState<PinnedMessage[]>([]);
+  /** T-16.4: the message whose reaction picker is open. */
+  const [reactPickerFor, setReactPickerFor] = useState<number | null>(null);
+  /** T-16.4: messages that arrived while the reader was scrolled up. */
+  const [newSinceScroll, setNewSinceScroll] = useState<number[]>([]);
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -414,6 +425,9 @@ export default function TeamChat({ user }: Props) {
             userId?: number;
             name?: string;
             title?: string;
+            messageId?: number;
+            reactions?: ChatMessage["reactions"];
+            room?: string;
           };
           try {
             frame = JSON.parse(String(event.data));
@@ -426,6 +440,10 @@ export default function TeamChat({ user }: Props) {
             );
             if (!atBottomRef.current) {
               setMissed((count) => count + 1);
+              // The "New messages" divider (T-16.4) marks what arrived here.
+              setNewSinceScroll((list) =>
+                list.includes(frame.message!.id) ? list : [...list, frame.message!.id],
+              );
             } else {
               scrollToBottom();
               // It is on screen — that is a "read".
@@ -433,6 +451,15 @@ export default function TeamChat({ user }: Props) {
             }
             // The message reached this device — tell the sender.
             void api.markChatDelivered(frame.message.id).catch(() => undefined);
+          }
+          if (frame.type === "reaction" && typeof frame.messageId === "number") {
+            const reactions = frame.reactions ?? [];
+            setMessages((prev) =>
+              prev.map((m) => (m.id === frame.messageId ? { ...m, reactions } : m)),
+            );
+          }
+          if (frame.type === "pins" && frame.room === room) {
+            void loadPins(room);
           }
           if (frame.type === "update" && frame.message) {
             // Somebody edited their message — swap in the fixed text.
@@ -507,7 +534,11 @@ export default function TeamChat({ user }: Props) {
     const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
     atBottomRef.current = atBottom;
     setAtBottom(atBottom);
-    if (atBottom) setMissed(0);
+    if (atBottom) {
+      setMissed(0);
+      // The reader is caught up — the "New messages" divider goes away (T-16.4).
+      setNewSinceScroll([]);
+    }
   }, []);
 
   /** Jump back to the newest message. */
@@ -722,10 +753,18 @@ export default function TeamChat({ user }: Props) {
     setNotice(null);
     try {
       // The message is shown right away (the socket would send it again).
-      const { message } = await api.sendChatMessage({ kind: "text", body: text, room, aiPolished });
+      const { message } = await api.sendChatMessage({
+        kind: "text",
+        body: text,
+        room,
+        aiPolished,
+        replyToId: replyingTo?.id,
+        mentions: mentionIdsFor(text),
+      });
       setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       setDraft("");
       setPolishCard(null);
+      setReplyingTo(null);
       scrollToBottom();
       showToast("Message sent", "success", 2500);
     } catch (err) {
@@ -805,6 +844,128 @@ export default function TeamChat({ user }: Props) {
     } catch {
       showToast("Copy is not available here", "warning");
     }
+  }
+
+  /** Quote a message — the reply goes out with a preview inside the bubble (T-16.4). */
+  function startReply(message: ViewMessage) {
+    if (message.deleted) return;
+    setActionsMessage(null);
+    setReplyingTo({ id: message.id, author: message.author, body: message.body });
+    composerRef.current?.focus();
+  }
+
+  /** React to a message: the same emoji again removes it (T-16.4). */
+  async function sendReaction(messageId: number, emoji: string) {
+    setReactPickerFor(null);
+    setActionsMessage(null);
+    const message = messages.find((m) => m.id === messageId);
+    const mine = (message?.reactions ?? []).find(
+      (r) => r.userId === user?.id && r.emoji === emoji,
+    );
+    try {
+      const { reactions } = mine
+        ? await api.unreactChatMessage(messageId)
+        : await api.reactChatMessage(messageId, emoji);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, reactions: reactions ?? [] } : m)),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Pin or unpin a message (the owner only, group rooms, max 3 — T-16.4). */
+  async function toggleMessagePin(message: ViewMessage) {
+    setActionsMessage(null);
+    setError(null);
+    try {
+      if (pins.some((pin) => pin.messageId === message.id)) {
+        await api.unpinChatMessage(message.id);
+        setPins((prev) => prev.filter((pin) => pin.messageId !== message.id));
+        showToast("Unpinned", "info", 1500);
+      } else {
+        const result = await api.pinChatMessage(room, message.id);
+        setPins(result.pins as PinnedMessage[]);
+        showToast("Pinned — at most three messages stay pinned", "success", 2000);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** The members named with @ in a draft — they get a personal push (T-16.4). */
+  function mentionIdsFor(text: string): number[] {
+    const ids: number[] = [];
+    const re = /@([^\s@]+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text))) {
+      const name = match[1].toLowerCase();
+      const member = roster.find((entry) => entry.name.toLowerCase() === name);
+      if (member && !ids.includes(member.id)) ids.push(member.id);
+    }
+    return ids;
+  }
+
+  /** The @mention being typed right now (null when none). */
+  const mentionQuery = useMemo(() => {
+    if (editing) return null;
+    const match = /@([^\s@]*)$/.exec(draft);
+    return match ? match[1].toLowerCase() : null;
+  }, [draft, editing]);
+
+  /** Pick a member from the @mention list. */
+  function pickMention(member: ChatMember) {
+    setDraft((current) => current.replace(/@([^\s@]*)$/, `@${member.name} `));
+    composerRef.current?.focus();
+  }
+
+  /** Load the pinned messages of the open room (T-16.4). */
+  const loadPins = useCallback(async (target: string) => {
+    try {
+      setPins((await api.chatPins(target)).pins ?? []);
+    } catch {
+      setPins([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPins(room);
+  }, [room, loadPins]);
+
+  /** Scroll a message into view and flash it (T-16.4 — replies, pins, search). */
+  function scrollToMessage(id: number) {
+    const el = document.getElementById(`msg-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("msg-flash");
+      window.setTimeout(() => el.classList.remove("msg-flash"), 1600);
+    }
+  }
+
+  /** Highlight the search matches inside a message body (T-16.4). */
+  function highlightBody(body: string): ReactNode {
+    const query = roomQuery.trim();
+    if (!query) return body;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const parts = body.split(new RegExp(`(${escaped})`, "gi"));
+    return parts.map((part, index) =>
+      index % 2 === 1 ? (
+        <mark key={index} className="rounded bg-accent-soft px-0.5 text-accent-ink">
+          {part}
+        </mark>
+      ) : (
+        <span key={index}>{part}</span>
+      ),
+    );
+  }
+
+  /** Jump between the search matches (T-16.4). */
+  const searchPos = useRef(0);
+  function jumpMark(direction: number) {
+    const marks = Array.from(document.querySelectorAll<HTMLElement>("mark"));
+    if (marks.length === 0) return;
+    searchPos.current = (searchPos.current + direction + marks.length) % marks.length;
+    marks[searchPos.current]?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   async function send(event: React.FormEvent) {
@@ -932,6 +1093,16 @@ export default function TeamChat({ user }: Props) {
   const roster = useMemo(
     () => (activeConversation?.kind === "group" && room !== SHARED_ROOM ? groupMembers : members),
     [activeConversation, room, groupMembers, members],
+  );
+  /** The members that match the @mention being typed (T-16.4). */
+  const mentionCandidates = useMemo(
+    () =>
+      mentionQuery === null
+        ? []
+        : roster
+            .filter((member) => member.name.toLowerCase().startsWith(mentionQuery))
+            .slice(0, 6),
+    [mentionQuery, roster],
   );
   /** The candidate list of the owner's menu (not in the group yet). */
   const groupOutsiders = useMemo(
@@ -1422,12 +1593,37 @@ export default function TeamChat({ user }: Props) {
                 aria-label="Search in this chat"
                 value={roomQuery}
                 autoFocus
-                onChange={(event) => setRoomQuery(event.currentTarget.value)}
+                onChange={(event) => {
+                  setRoomQuery(event.currentTarget.value);
+                  searchPos.current = 0;
+                }}
               />
               {roomQuery.trim() && (
                 <span className="shrink-0 text-[11px] text-muted">
                   {visibleMessages.length} match{visibleMessages.length === 1 ? "" : "es"}
                 </span>
+              )}
+              {roomQuery.trim() && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Previous match"
+                    title="Jump to the previous match"
+                    className="btn-mini shrink-0"
+                    onClick={() => jumpMark(-1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next match"
+                    title="Jump to the next match"
+                    className="btn-mini shrink-0"
+                    onClick={() => jumpMark(1)}
+                  >
+                    ↓
+                  </button>
+                </>
               )}
               <button
                 type="button"
@@ -1439,6 +1635,25 @@ export default function TeamChat({ user }: Props) {
               >
                 Close
               </button>
+            </div>
+          )}
+          {/* The pinned messages bar (T-16.4) — the owner pins, at most three. */}
+          {pins.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-surface-2 px-3 py-1.5">
+              <span className="text-[11px] font-semibold text-accent-ink" aria-hidden="true">
+                📌
+              </span>
+              {pins.map((pin) => (
+                <button
+                  key={pin.id}
+                  type="button"
+                  aria-label={`Pinned: ${pin.author}: ${pin.body}`}
+                  className="btn-mini max-w-44 truncate"
+                  onClick={() => scrollToMessage(pin.messageId)}
+                >
+                  {pin.author}: {pin.body}
+                </button>
+              ))}
             </div>
           )}
           <div
@@ -1474,38 +1689,25 @@ export default function TeamChat({ user }: Props) {
                       {section.label}
                     </span>
                   </p>
-                  {groupMessages(section.messages, user?.id ?? null).map((group) => {
+                  {groupMessages(section.messages, user?.id ?? null).map((group, groupIndex) => {
                     const last = group.messages[group.messages.length - 1]!;
                     const tick = group.mine ? messageTick(last, otherMemberIds) : null;
-                    const counts = readCount(last, otherMemberIds);
-                    // Who read it and when (Phase 1).
-                    const readers = (last.readBy ?? [])
-                      .map((id) => {
-                        const member = members.find((entry) => entry.id === id);
-                        return {
-                          userId: id,
-                          name: member?.name ?? `#${id}`,
-                          initials: initials(member?.name ?? "?"),
-                          readAt: last.createdAt,
-                        };
-                      })
-                      .filter(() => true);
-                    const pendingReaders = otherMemberIds
-                      .filter((id) => !(last.readBy ?? []).includes(id))
-                      .map((id) => members.find((entry) => entry.id === id)?.name ?? `#${id}`);
+                    const firstNew = newSinceScroll.length > 0 ? Math.min(...newSinceScroll) : null;
                     return (
                       <div
                         key={group.key}
-                        className={`flex items-end gap-2 ${group.mine ? "justify-end" : "justify-start"}`}
+                        className={`flex items-end gap-2 ${group.mine ? "justify-end" : "justify-start"} ${
+                          groupIndex > 0 ? "mt-3" : ""
+                        }`}
                       >
                         {!group.mine && (
-                          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-3 text-[10px] font-semibold text-muted">
+                          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-semibold text-accent-ink">
                             {initials(group.author)}
                           </span>
                         )}
-                        <div className={`flex max-w-[80%] flex-col md:max-w-[65%] ${group.mine ? "items-end" : "items-start"}`}>
+                        <div className={`flex max-w-[70%] flex-col md:max-w-[70%] ${group.mine ? "items-end" : "items-start"}`}>
                           {!group.mine && (
-                            <span className="mb-0.5 px-1 text-[11px] font-medium text-muted">
+                            <span className="mb-0.5 px-1 text-[11px] font-medium text-accent-ink">
                               {group.author}
                             </span>
                           )}
@@ -1568,7 +1770,7 @@ export default function TeamChat({ user }: Props) {
                             return (
                               <div
                                 key={message.id}
-                                className="group/msg relative max-w-[80%] md:max-w-[65%]"
+                                className="group/msg relative max-w-[70%] md:max-w-[70%]"
                                 onPointerDown={() => {
                                   // A long press opens the action row on a phone.
                                   pressTimer.current = window.setTimeout(
@@ -1579,7 +1781,16 @@ export default function TeamChat({ user }: Props) {
                                 onPointerUp={() => window.clearTimeout(pressTimer.current)}
                                 onPointerLeave={() => window.clearTimeout(pressTimer.current)}
                               >
+                                {/* The "New messages" divider (T-16.4). */}
+                                {firstNew === message.id && (
+                                  <p className="my-2 text-center">
+                                    <span className="badge bg-accent-soft text-accent-ink">
+                                      New messages
+                                    </span>
+                                  </p>
+                                )}
                                 <div
+                                  id={`msg-${message.id}`}
                                   tabIndex={0}
                                   aria-label={`${group.author}: ${message.body}`}
                                   className={`chat-bubble outline-none rounded-2xl px-3.5 py-2 text-sm ${
@@ -1593,24 +1804,91 @@ export default function TeamChat({ user }: Props) {
                                       🚫 This message was deleted
                                     </span>
                                   ) : (
-                                    <span>{message.body}</span>
+                                    <>
+                                      {/* The quoted message (T-16.4) — click scrolls to it. */}
+                                      {message.replyToId && (
+                                        <button
+                                          type="button"
+                                          onClick={() => scrollToMessage(message.replyToId!)}
+                                          className="mb-1 block w-full rounded-lg border-l-2 border-accent bg-bg/15 px-2 py-1 text-left"
+                                        >
+                                          <span className="block truncate text-[11px] font-semibold opacity-80">
+                                            {messages.find((m) => m.id === message.replyToId)?.author ?? "Message"}
+                                          </span>
+                                          <span className="block truncate text-[11px] opacity-70">
+                                            {messages.find((m) => m.id === message.replyToId)?.body ?? "…"}
+                                          </span>
+                                        </button>
+                                      )}
+                                      <span>{highlightBody(message.body)}</span>
+                                      {message.aiPolished && (
+                                        <span title="Polished by AI" aria-label="Polished by AI" className="ml-0.5 text-[10px]">
+                                          ✨
+                                        </span>
+                                      )}
+                                      {message.editedAt && (
+                                        <span className="ml-1 text-[9px] italic opacity-70">edited</span>
+                                      )}
+                                      <span
+                                        className={`chat-time ml-2 inline-block align-baseline text-[10px] ${
+                                          group.mine ? "text-on-primary/70" : "text-muted"
+                                        }`}
+                                      >
+                                        {formatChatTime(message.createdAt)}
+                                      </span>
+                                      {/* The ticks live INSIDE the bubble (T-16.4). */}
+                                      {group.mine && isLast && tick && (
+                                        <span
+                                          className={`ml-1 text-[10px] ${
+                                            tick === "read" ? "text-accent-ink" : "opacity-70"
+                                          }`}
+                                          title={
+                                            tick === "read"
+                                              ? "Read by everybody"
+                                              : tick === "delivered"
+                                                ? "Delivered to everybody"
+                                                : "Sent"
+                                          }
+                                        >
+                                          {tick === "sent" ? "✓" : "✓✓"}
+                                        </span>
+                                      )}
+                                    </>
                                   )}
-                                  {!message.deleted && message.aiPolished && (
-                                    <span title="Polished by AI" aria-label="Polished by AI" className="ml-0.5 text-[10px]">
-                                      ✨
-                                    </span>
-                                  )}
-                                  {!message.deleted && message.editedAt && (
-                                    <span className="ml-1 text-[9px] italic opacity-70">edited</span>
-                                  )}
-                                  <span
-                                    className={`chat-time ml-2 inline-block align-baseline text-[10px] ${
-                                      group.mine ? "text-on-primary/70" : "text-muted"
-                                    }`}
-                                  >
-                                    {formatChatTime(message.createdAt)}
-                                  </span>
                                 </div>
+                                {/* The reactions — chips under the bubble (T-16.4). */}
+                                {!message.deleted &&
+                                  groupReactions(message.reactions, user?.id).map((entry) => (
+                                    <button
+                                      key={entry.emoji}
+                                      type="button"
+                                      aria-label={`${entry.count} ${entry.emoji}`}
+                                      onClick={() => void sendReaction(message.id, entry.emoji)}
+                                      className={`${
+                                        entry.mine
+                                          ? "border-accent bg-accent-soft text-accent-ink"
+                                          : "border-line bg-surface-2 text-ink"
+                                      } mt-0.5 rounded-full border px-1.5 py-0.5 text-[11px]`}
+                                    >
+                                      {entry.emoji} {entry.count}
+                                    </button>
+                                  ))}
+                                {/* The reaction picker (T-16.4). */}
+                                {reactPickerFor === message.id && (
+                                  <div className="mt-0.5 flex gap-1">
+                                    {REACTION_EMOJIS.map((emoji) => (
+                                      <button
+                                        key={emoji}
+                                        type="button"
+                                        aria-label={`React ${emoji}`}
+                                        className="grid size-7 place-items-center rounded-full border border-line bg-surface-2 text-sm transition-colors hover:bg-accent-soft"
+                                        onClick={() => void sendReaction(message.id, emoji)}
+                                      >
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                                 {/* The action row: hover on desktop, long-press on a
                                     phone (T-16.2). Clicking the bubble does nothing. */}
                                 {!message.deleted && message.kind === "text" && (
@@ -1621,6 +1899,29 @@ export default function TeamChat({ user }: Props) {
                                       group.mine ? "justify-end" : "justify-start"
                                     } mt-0.5 gap-0.5`}
                                   >
+                                    <button
+                                      type="button"
+                                      aria-label="Reply to message"
+                                      title="Reply"
+                                      className="grid size-7 place-items-center rounded-lg border border-line bg-surface-2 text-[12px] transition-colors hover:bg-surface-3"
+                                      onClick={() => startReply(message)}
+                                    >
+                                      ↩
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label="React to message"
+                                      title="React"
+                                      className="grid size-7 place-items-center rounded-lg border border-line bg-surface-2 text-[12px] transition-colors hover:bg-surface-3"
+                                      onClick={() => {
+                                        setActionsMessage(null);
+                                        setReactPickerFor(
+                                          reactPickerFor === message.id ? null : message.id,
+                                        );
+                                      }}
+                                    >
+                                      😊
+                                    </button>
                                     <button
                                       type="button"
                                       aria-label="Copy message"
@@ -1655,6 +1956,22 @@ export default function TeamChat({ user }: Props) {
                                         🗑
                                       </button>
                                     )}
+                                    {user?.role === "owner" &&
+                                      activeConversation?.kind === "group" && (
+                                        <button
+                                          type="button"
+                                          aria-label={
+                                            pins.some((pin) => pin.messageId === message.id)
+                                              ? "Unpin message"
+                                              : "Pin message"
+                                          }
+                                          title="Pin"
+                                          className="grid size-7 place-items-center rounded-lg border border-line bg-surface-2 text-[12px] transition-colors hover:bg-surface-3"
+                                          onClick={() => void toggleMessagePin(message)}
+                                        >
+                                          📌
+                                        </button>
+                                      )}
                                     <button
                                       type="button"
                                       aria-label="Message info"
@@ -1672,74 +1989,6 @@ export default function TeamChat({ user }: Props) {
                               </div>
                             );
                           })}
-                          <span className="mt-0.5 flex items-center gap-1.5 px-1 text-[11px] text-muted">
-                            {tick && (
-                              <span
-                                className={tick === "read" ? "text-accent-ink" : "text-muted"}
-                                title={
-                                  tick === "read"
-                                    ? "Read by everybody"
-                                    : tick === "delivered"
-                                      ? "Delivered to everybody"
-                                      : "Sent"
-                                }
-                              >
-                                {tick === "sent" ? "✓" : "✓✓"}
-                              </span>
-                            )}
-                            {/* Who has read it — only on the newest message I sent. */}
-                            {group.mine &&
-                              (activeConversation?.kind === "direct" ? (
-                                <span title="Seen">
-                                  {readers.length > 0
-                                    ? `Seen ${formatChatTime(readers[0]!.readAt)}`
-                                    : ""}
-                                </span>
-                              ) : (
-                                readers.length > 0 && (
-                                  <details className="relative">
-                                    <summary
-                                      className="flex cursor-pointer items-center"
-                                      aria-label={`Read by ${readers.length} of ${counts.total}`}
-                                    >
-                                      {readers.slice(0, 3).map((reader, index) => (
-                                        <span
-                                          key={reader.userId}
-                                          className={`grid size-4 place-items-center rounded-full border border-surface bg-surface-3 text-[8px] font-semibold text-muted ${
-                                            index > 0 ? "-ml-1.5" : ""
-                                          }`}
-                                        >
-                                          {reader.initials}
-                                        </span>
-                                      ))}
-                                      {readers.length > 3 && (
-                                        <span className="-ml-1.5 grid size-4 place-items-center rounded-full border border-surface bg-surface-3 text-[8px] font-semibold text-muted">
-                                          +{readers.length - 3}
-                                        </span>
-                                      )}
-                                    </summary>
-                                    <div className="absolute right-0 top-5 z-20 w-48 space-y-0.5 rounded-lg border border-line bg-surface p-2 text-[11px] shadow-lg">
-                                      <p className="font-medium text-ink">Read by</p>
-                                      {readers.map((reader) => (
-                                        <p key={reader.userId} className="text-muted">
-                                          {reader.name} {formatChatTime(reader.readAt)}
-                                        </p>
-                                      ))}
-                                      {pendingReaders.length > 0 && (
-                                        <>
-                                          <p className="pt-1 font-medium text-ink">Delivered, not read</p>
-                                          {pendingReaders.map((name) => (
-                                            <p key={name} className="text-muted">
-                                              {name}
-                                            </p>
-                                          ))}
-                                        </>
-                                      )}
-                                    </div>
-                                  </details>
-                                )
-                              ))}
-                          </span>
                         </div>
                       </div>
                     );
@@ -1765,6 +2014,41 @@ export default function TeamChat({ user }: Props) {
                 >
                   ✕
                 </button>
+              </div>
+            )}
+            {/* The reply banner (T-16.4) — the message goes out with a quote. */}
+            {!editing && replyingTo && (
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent-ink">
+                <span className="truncate">↩ Replying to {replyingTo.author}</span>
+                <button
+                  type="button"
+                  aria-label="Cancel reply"
+                  className="tap-44 -mr-2 grid size-7 place-items-center rounded-full transition-colors hover:bg-accent/15"
+                  onClick={() => setReplyingTo(null)}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            {/* @mentions (T-16.4): the member list while typing @. */}
+            {mentionCandidates.length > 0 && (
+              <div
+                className="mb-2 flex flex-wrap gap-1.5 rounded-lg border border-line bg-surface-2 p-1.5"
+                aria-label="Mention a member"
+              >
+                {mentionCandidates.map((member) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    className="btn-mini"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      pickMention(member);
+                    }}
+                  >
+                    @{member.name}
+                  </button>
+                ))}
               </div>
             )}
             {/* The AI polish card (Phase 15): the member confirms before sending. */}

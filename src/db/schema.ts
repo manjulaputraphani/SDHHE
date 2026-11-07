@@ -11,6 +11,8 @@ import {
   serial,
   text,
   timestamp,
+  type AnyPgColumn,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // Data model — docs/BLUEPRINT.md §4. Money is integer paise, quantity integer base units.
@@ -403,6 +405,8 @@ export const chatMessages = pgTable(
     aiPolished: boolean("ai_polished").notNull().default(false),
     /** Set when the message was soft-deleted (T-16.2) — the body stays. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    /** The message this one quotes (T-16.4 — replies). */
+    replyToId: integer("reply_to_id").references((): AnyPgColumn => chatMessages.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("chat_messages_kind_valid", sql`${t.kind} in ('text','receipt','system')`)],
@@ -524,6 +528,47 @@ export const chatMessageEdits = pgTable(
     editedAt: timestamp("edited_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("chat_message_edits_message_idx").on(t.messageId)],
+);
+
+/**
+ * One reaction per member per message (T-16.4): 👍 ❤️ 😂 🙏 ✅ 🔥.
+ * Clicking a different emoji replaces the row; the same emoji removes it.
+ */
+export const chatReactions = pgTable(
+  "chat_reactions",
+  {
+    id: serial("id").primaryKey(),
+    messageId: integer("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("chat_reactions_message_user").on(t.messageId, t.userId),
+    index("chat_reactions_message_idx").on(t.messageId),
+  ],
+);
+
+/**
+ * The messages an owner pins in a room (T-16.4) — at most three.
+ */
+export const chatPinnedMessages = pgTable(
+  "chat_pinned_messages",
+  {
+    id: serial("id").primaryKey(),
+    room: text("room").notNull(),
+    messageId: integer("message_id")
+      .notNull()
+      .unique()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    pinnedBy: integer("pinned_by").references(() => appUsers.id),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("chat_pinned_room_idx").on(t.room)],
 );
 
 /** Cash / bank ledger — every money movement in or out of the business. */

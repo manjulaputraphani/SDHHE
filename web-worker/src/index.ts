@@ -47,11 +47,16 @@ import {
   insertMessage,
   linkReceiptMessage,
   listMessages,
+  listPinnedMessages,
+  listReactionsForMessages,
   listReceipts,
   messageRoom,
   parseMessageInput,
   pendingReceiptCount,
+  pinMessage,
   receiptRoom,
+  setReaction,
+  unpinMessage,
   type ReceiptRequest,
 updateMessage,
 } from "../../src/db/chat";
@@ -287,6 +292,12 @@ function routePermission(
   // AI polish (Phase 15): a member asks for a suggestion, the owner sets the switch.
   if (pathname === "/api/chat/groups/polish") return { module: "chat", action: "create" };
   if (pathname === "/api/chat/polish") return { module: "chat", action: "create" };
+  // Reactions and pins (T-16.4): any member reacts; only the owner pins.
+  if (/^\/api\/chat\/reactions\/\d+$/.test(pathname)) return { module: "chat", action: "create" };
+  if (pathname === "/api/chat/pins") return { module: "chat", action: read ? "view" : "create" };
+  if (/^\/api\/chat\/pins\/\d+$/.test(pathname) && method === "DELETE") {
+    return { module: "chat", action: "create" };
+  }
 
   return null;
 }
@@ -1498,12 +1509,18 @@ const handler = {
         const messages = await listMessages(db, { room, limit });
         // The ticks: who has received the message and who has read it.
         const marks = await statesForMessages(db, messages.map((message) => message.id));
+        // The reactions (T-16.4) — chips under the bubble.
+        const reactions = await listReactionsForMessages(
+          db,
+          messages.map((message) => message.id),
+        );
         const withMarks = messages.map((message) => {
           const states = marks.get(message.id) ?? [];
           return {
             ...message,
             deliveredBy: states.filter((state) => state.delivered).map((state) => state.userId),
             readBy: states.filter((state) => state.read).map((state) => state.userId),
+            reactions: reactions.get(message.id) ?? [],
           };
         });
         return json({ messages: withMarks });
@@ -1809,6 +1826,73 @@ const handler = {
         return json({ polished: kept ? polished : text, keptOriginal: !kept });
       }
 
+      // ---- Reactions (T-16.4): 👍 ❤️ 😂 🙏 ✅ 🔥 — one per member per message ----
+      const reactionMatch = url.pathname.match(/^\/api\/chat\/reactions\/(\d+)$/);
+      if (reactionMatch && request.method === "POST") {
+        const id = Number(reactionMatch[1]);
+        const room = await messageRoom(db, id);
+        if (!room || !(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        const emoji = String(body.emoji ?? "").trim();
+        if (!emoji || emoji.length > 8) {
+          return json({ error: "Pick a reaction" }, { status: 400 });
+        }
+        const reactions = await setReaction(db, id, session.uid, emoji);
+        await broadcastToChat(env, { type: "reaction", messageId: id, reactions }, room);
+        return json({ reactions });
+      }
+      if (reactionMatch && request.method === "DELETE") {
+        const id = Number(reactionMatch[1]);
+        const room = await messageRoom(db, id);
+        if (!room || !(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        const reactions = await setReaction(db, id, session.uid, null);
+        await broadcastToChat(env, { type: "reaction", messageId: id, reactions }, room);
+        return json({ reactions });
+      }
+
+      // ---- Pinned messages (T-16.4): the owner pins, at most three per room ----
+      if (url.pathname === "/api/chat/pins" && request.method === "GET") {
+        const room = String(url.searchParams.get("room") ?? SHARED_ROOM);
+        if (!(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        return json({ pins: await listPinnedMessages(db, room) });
+      }
+      if (url.pathname === "/api/chat/pins" && request.method === "POST") {
+        if (session.role !== "owner") {
+          return json({ error: "Owner only" }, { status: 403 });
+        }
+        const room = String(body.room ?? "");
+        const messageId = Number(body.messageId);
+        if (!room || !Number.isInteger(messageId) || messageId <= 0) {
+          return json({ error: "Which message?" }, { status: 400 });
+        }
+        let pins: Awaited<ReturnType<typeof pinMessage>>;
+        try {
+          pins = await asActor(actor, () => pinMessage(db, room, messageId, session.uid));
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+        }
+        await broadcastToChat(env, { type: "pins", room }, room);
+        return json({ pins });
+      }
+      const unpinMatch = url.pathname.match(/^\/api\/chat\/pins\/(\d+)$/);
+      if (unpinMatch && request.method === "DELETE") {
+        if (session.role !== "owner") {
+          return json({ error: "Owner only" }, { status: 403 });
+        }
+        const id = Number(unpinMatch[1]);
+        const room = await messageRoom(db, id);
+        if (room) {
+          await asActor(actor, () => unpinMessage(db, id));
+          await broadcastToChat(env, { type: "pins", room }, room);
+        }
+        return json({ ok: true });
+      }
+
       // ---- The notification system (Phase 15) ----
       if (url.pathname === "/api/notifications" && request.method === "GET") {
         const steps = await onboardingSteps(db, session.uid);
@@ -2059,6 +2143,7 @@ const handler = {
               kind: "text",
               body: input.body,
               aiPolished: input.aiPolished,
+              replyToId: input.replyToId,
             }),
           );
           await logFirstDirectMessage(db, room, session, message);
@@ -2084,6 +2169,18 @@ const handler = {
             const title = (await conversationTitle(db, room)) ?? "the group";
             await pushToUsers(env, memberIds, session.uid, {
               title: `${session.name} wrote in ${title}`,
+              body: input.body.slice(0, 120),
+              url: "/team-chat?notify=1",
+            });
+          }
+          // @mentions (T-16.4): the named members get a personal push even if
+          // the room itself would not push them.
+          const mentions = Array.isArray(body.mentions)
+            ? (body.mentions as unknown[]).map(Number).filter((id) => Number.isInteger(id) && id > 0 && id !== session.uid)
+            : [];
+          if (mentions.length > 0) {
+            await pushToUsers(env, mentions, session.uid, {
+              title: `${session.name} mentioned you`,
               body: input.body.slice(0, 120),
               url: "/team-chat?notify=1",
             });

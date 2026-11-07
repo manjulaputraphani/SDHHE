@@ -25,6 +25,10 @@ export type ViewMessage = {
   aiPolished?: boolean;
   /** Soft-deleted (T-16.2) — the bubble shows a tombstone. */
   deleted?: boolean;
+  /** The message this one quotes (T-16.4 — replies). */
+  replyToId?: number;
+  /** The team's reactions (T-16.4). */
+  reactions?: { emoji: string; userId: number; name: string }[];
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */
@@ -65,6 +69,24 @@ export function groupMessages(messages: ViewMessage[], myId: number | null): Cha
 }
 
 /** The states of a message for the members of the conversation. */
+/** One emoji, its count and whether the reader has left it (T-16.4). */
+export type ReactionChip = { emoji: string; count: number; mine: boolean };
+
+/** The reactions of a message grouped per emoji, most-used first. */
+export function groupReactions(
+  reactions: ViewMessage["reactions"],
+  myId?: number | null,
+): ReactionChip[] {
+  const map = new Map<string, ReactionChip>();
+  for (const reaction of reactions ?? []) {
+    const chip = map.get(reaction.emoji) ?? { emoji: reaction.emoji, count: 0, mine: false };
+    chip.count += 1;
+    if (myId != null && reaction.userId === myId) chip.mine = true;
+    map.set(reaction.emoji, chip);
+  }
+  return Array.from(map.values()).sort((a, b) => b.count - a.count);
+}
+
 export function messageStates(message: ViewMessage): MemberState[] {
   const delivered = message.deliveredBy ?? [];
   const read = message.readBy ?? [];
