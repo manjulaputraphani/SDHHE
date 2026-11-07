@@ -152,3 +152,8 @@
 - 2026-11-07 · **Mobile boot + keyboard** — the Google-Fonts stylesheet no longer blocks the first paint (on a slow phone network it left the login
    page blank-white until the CSS arrived); index.html carries an inline boot splash (brand disc + pulse, light/dark) that React replaces on mount.
    On touch devices the chat return key makes a NEW LINE and only the send button sends (WhatsApp behaviour) — desktop keeps Enter-to-send.
+- 2026-11-07 · **Message actions (T-16.2): audit + soft delete** — a message is never overwritten without a record: every edit keeps its previous
+   text in `chat_message_edits`, and deleting only sets `deleted_at` (the body stays — old messages in the DB are never changed). Edits are
+   author-only and only within 15 minutes (`withinEditWindow` in src/logic/chat, shared by the web client and the worker); deleting is author-only
+   (the owner may delete any), a receipt only while Pending. The delete route asks for the `chat create` permission so any member can remove their
+   own message; ownership is checked in `deleteMessage`. Reply / React / Pin actions were deferred to T-16.4 (they need their own tables).
