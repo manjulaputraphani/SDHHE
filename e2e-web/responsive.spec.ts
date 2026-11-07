@@ -118,7 +118,23 @@ async function mockApp(page: Page) {
     }),
   );
   await page.route("**/api/chat/messages*", (route) =>
-    route.fulfill({ json: { messages: [] } }),
+    route.fulfill({
+      json: {
+        messages: [
+          {
+            id: 1,
+            room: "main",
+            userId: 4,
+            author: "RAJU",
+            role: "staff",
+            kind: "text",
+            body: "Stock ready, boss",
+            receiptId: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      },
+    }),
   );
   await page.route("**/api/chat/receipts*", (route) =>
     route.fulfill({
@@ -209,10 +225,35 @@ async function goTo(page: Page, label: string) {
   }
 }
 
-for (const width of [375, 390, 430]) {
+for (const width of [360, 375, 390, 430]) {
   test.describe(`a ${width}px phone`, () => {
     test.use({ viewport: { width, height: 812 } });
     test.setTimeout(180_000);
+
+    test("the chat fits and stays readable in the dark theme too (T-16.5)", async ({ page }) => {
+      await page.addInitScript(() => window.localStorage.setItem("sdhhe-theme", "dark"));
+      await mockApp(page);
+      await page.goto("/");
+      await page.getByRole("button", { name: "Open menu" }).click();
+      await page.getByRole("button", { name: "Team Chat" }).click();
+      await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
+      await page.getByRole("button", { name: /Shop room/ }).click();
+      await expectFits(page, `the dark chat at ${width}px`);
+      // The bubble text is 14px, 1.5 line height — comfortable to read.
+      const style = await page
+        .locator(".chat-bubble")
+        .first()
+        .evaluate((el) => {
+          const computed = getComputedStyle(el);
+          return {
+            fontSize: computed.fontSize,
+            lineHeight: computed.lineHeight,
+            whiteSpace: computed.whiteSpace,
+          };
+        });
+      expect(style.fontSize).toBe("14px");
+      expect(style.whiteSpace).toBe("pre-wrap");
+    });
 
     test("every page fits the screen and has 16px+ fields", async ({ page }) => {
       await mockApp(page);

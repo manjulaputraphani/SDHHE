@@ -619,10 +619,11 @@ inline SVG. Existing tokens only; light + dark. Old messages in the DB are never
   picker + line-break copy existed. Migration **0019** (additive). Unit: groupReactions +
   replyToId parsing; int: reply round-trip, reaction add/replace/remove, pin max-3; e2e in
   T-16.6.
-- [ ] **T-16.5 Look and spacing** — bubbles ≤70% width, 10px 14px padding, 14px font, 1.5 line
-  height; same-sender groups (name once, 2px gap, 12px between senders); avatar initials +
-  accent-ink names for others, bg-primary own; composer row 📎 🧾 😊 textarea send; 360px + both
-  themes checked.
+- [x] **T-16.5 Look and spacing** — bubbles ≤70% width, 10px 14px padding, 14px font, 1.5 line
+  height; consecutive same-sender messages grouped (name once, 2px gap), 12px between different
+  senders; others' bubbles show avatar initials + name in accent-ink, own bubbles bg-primary;
+  composer keeps the 📎 🧾 😊 textarea send row; 360px phone width added to the responsive suite
+  and every phone width now also runs the dark theme with a bubble-metrics assertion.
 - [ ] **T-16.6 Tests** — e2e/chat polish: multi-line paste; plain click does nothing; edit via
   icon + "edited" label; delete shows deleted text; 15-minute + other-user rules; approvals
   button hidden with 0 pending / badge with 1; reply + reaction.

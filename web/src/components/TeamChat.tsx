@@ -1793,7 +1793,7 @@ export default function TeamChat({ user }: Props) {
                                   id={`msg-${message.id}`}
                                   tabIndex={0}
                                   aria-label={`${group.author}: ${message.body}`}
-                                  className={`chat-bubble outline-none rounded-2xl px-3.5 py-2 text-sm ${
+                                  className={`chat-bubble outline-none rounded-2xl px-[14px] py-[10px] text-sm leading-[1.5] ${
                                     group.mine
                                       ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
                                       : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
