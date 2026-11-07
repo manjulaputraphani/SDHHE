@@ -4,12 +4,12 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**Phase 16 "Chat polish" DEPLOYED + the sidebar full-height fix committed** (NOT yet deployed —
-live is still `ad00db7f`). The rail bug's root cause: the global `overflow-x: hidden` (the phone
-no-horizontal-scroll rule) silently disabled `position: sticky`, so the sidebar scrolled away and
-a cream gap showed below "Sign out". Fixed with `overflow-x: clip` (+ @supports fallback); the
-rail top now counts the notch safe-area. New Playwright tests: sidebar bottom == viewport bottom
-at the end of a scrolled page; footer pinned at 1366x700. 494 unit + 70/70 e2e green.
+**LIVE version `cbb81787-30dc-4b7d-9730-045d7b24768c` (2026-11-07) — Phase 16 chat polish +
+the sidebar full-height fix, both deployed.** Migrations 0018/0019 were applied earlier; this
+deploy was a pure web bundle + worker rebuild (no DB change). 494 unit + 70/70 e2e green before
+shipping, tsc clean (root/web/worker), tree clean.
+Live app: https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl 302s to
+sdhhe.cloudflareaccess.com; verify signed in). Desktop = Tauri app in `src/` (untouched).
 
 ## What Phase 16 delivered
 - **T-16.1** line breaks kept exactly (bubble `white-space: pre-wrap`; composer grows to 8 lines).
