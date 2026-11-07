@@ -624,9 +624,12 @@ inline SVG. Existing tokens only; light + dark. Old messages in the DB are never
   senders; others' bubbles show avatar initials + name in accent-ink, own bubbles bg-primary;
   composer keeps the 📎 🧾 😊 textarea send row; 360px phone width added to the responsive suite
   and every phone width now also runs the dark theme with a bubble-metrics assertion.
-- [ ] **T-16.6 Tests** — e2e/chat polish: multi-line paste; plain click does nothing; edit via
-  icon + "edited" label; delete shows deleted text; 15-minute + other-user rules; approvals
-  button hidden with 0 pending / badge with 1; reply + reaction.
+- [x] **T-16.6 Tests** — `e2e-web/chat-polish.spec.ts` (8 tests, mocked worker): pasted
+  multi-line message keeps its exact lines (pre-wrap asserted); plain click does nothing; edit via
+  the action icon → "edited" label; delete shows the tombstone; staff cannot edit after 15 minutes
+  or delete others' messages; the approvals button hides with 0 pending and shows the gold count
+  with 1; reply quotes the original inside the bubble; a reaction chip appears and my click
+  toggles it. Plus the responsive suite now runs 360px + dark theme with bubble-metric assertions.
 
 ## Phase 15 — AI polish (added 2026-11-07)
 
