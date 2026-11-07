@@ -1,8 +1,8 @@
 # Stock Tracker (SDHHE) — Billing · Inventory · Expenses · GST
 
-A complete shop-management application: GST billing, stock tracking with batch/FIFO & weighted-average costing, purchase and expense tracking, credit (udhaar) management, financial reports, role-based access control, and a live web edition — backed by a cloud Postgres database so the data survives any laptop.
+A complete shop-management application: GST billing, stock tracking with batch/FIFO & weighted-average costing, purchase and expense tracking, credit (udhaar) management, financial reports, role-based access control, a live **Team Chat** (groups, receipts approval, AI polish, reactions, replies, pins), phone push notifications, an installable PWA, and a live web edition — backed by a cloud Postgres database so the data survives any laptop.
 
-- **Live web app:** https://sdhhe-api.blvphani.workers.dev
+- **Live web app:** https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access)
 - **Desktop app:** Tauri 2 (macOS `.app` + `.dmg` built; Windows/Linux via CI)
 - **Database:** Neon Postgres (cloud) via Drizzle ORM
 
@@ -27,6 +27,9 @@ A complete shop-management application: GST billing, stock tracking with batch/F
 | **Activity log** | Every action (actor, action, when) in `activity_log`; login/logout sessions in `user_sessions` with duration metrics |
 | **AI suggestions** | App computes all stats; AI only explains (rules → Ollama → read-only tool chat). Cached in `ai_suggestions` |
 | **Themes** | Warm café palette (cream / coffee brown / caramel gold / sage green), light / dark / system modes, Playfair Display + Inter fonts |
+| **Team Chat** | Live rooms (one Durable Object per room): shop room + owner-made groups + 1-to-1 direct chats. Receipts with approval decisions (owner/CA from anywhere). Replies with quoted preview, reactions (👍 ❤️ 😂 🙏 ✅ 🔥), pinned messages (owner, max 3), message editing (own, 15-minute window, full audit in `chat_message_edits`), soft delete with a tombstone, @mentions with a personal push, search with highlights, delivery/read ticks, typing indicator, "New messages" divider. **AI polish** per group (owner switch): a draft is rewritten professionally as a suggestion the sender confirms (Ollama Cloud, key only in the Worker). |
+| **Approvals panel** | Appears only for approvers while receipts are pending (gold badge); auto-opens on a new receipt; open/closed remembered per user |
+| **Notifications & PWA** | Cloudflare Web Push (service worker), ON by default after sign-in, group messages push to group members; the site is an installable PWA (manifest + icons, Android + iPhone "Add to Home Screen") |
 
 ## 2. Architecture
 
@@ -56,7 +59,7 @@ A complete shop-management application: GST billing, stock tracking with batch/F
 | Server (web) | Cloudflare Workers (`web-worker/`), `@noble/hashes` for argon2id verification (Workers block dynamic WASM) |
 | Charts / export | Recharts 3, jspdf, xlsx (Excel export) |
 | Validation | zod 4 |
-| Tests | Vitest 4 + React Testing Library (290 tests), DB integration tests (`vitest.db.config.ts`), Playwright e2e |
+| Tests | Vitest 4 + React Testing Library (494 unit tests), DB integration tests (`DATABASE_URL_TEST`), Playwright e2e (70 web tests, mocked worker) |
 | AI | Ollama (cloud models) — suggestions + read-only chat |
 
 ## 4. Project structure
@@ -119,6 +122,19 @@ role_permissions(role, module, can_view, can_create, can_edit, can_delete, can_e
 settings(key pk, value)                 # costing_method FIFO|AVERAGE, shop_* (name, address,
                                         # phone, gstin, email, bank), theme, …
 ai_suggestions(id, type, item_id, message, priority, created_at, dismissed)
+chat_conversations(id, room unique ('main' | 'dm-a-b' | 'group-…'), kind group|direct,
+      title, ai_polish bool, archived_at)              # rooms; archived = retired, never deleted
+chat_conversation_members(conversation_id, user_id, last_read_message_id, last_read_at)
+chat_messages(id, room, user_id, author, role, kind text|receipt|system, body, receipt_id,
+      edited_at (defaults to created_at; a real edit is later), ai_polished bool, deleted_at,
+      reply_to_id)                                     # soft delete + replies; body never rewritten
+chat_message_edits(id, message_id, old_body, edited_by, edited_at)   # audit of every edit
+chat_message_states(message_id, user_id, delivered_at, read_at)      # the ticks
+chat_reactions(id, message_id, user_id, emoji, unique message+user)   # one reaction per member
+chat_pinned_messages(id, room, message_id unique, pinned_by, pinned_at)  # owner pins, max 3/room
+receipt_requests(id, submitted_by, title, amount_paise, r2_key, status pending|approved|rejected,
+      decided_by, decision_note, message_id)           # receipts in the chat, files in R2
+push_subscriptions(id, user_id, endpoint unique, p256dh, auth)        # phone pushes (per device)
 ```
 
 ## 6. Money & quantity rules (STRICT — no floats)
@@ -143,8 +159,9 @@ Weighted average: avg ₹11/kg → used cost **₹22.00**.
 
 ## 7. Roles & permissions (RBAC)
 
-- **13 modules** (Items, Purchases, Stock, Billing, Bills, Customers, Expenses, Reports, Team, Settings, Suggestions, …) × **5 actions** (view, create, edit, delete, export).
-- Defaults: **Owner** = everything; **CA** = finance view + export, items/customers/stock view; **Staff** = entry create + bills/items view. Owner can edit any cell in the Roles & permissions grid.
+- **15 modules** (Dashboard, Billing, Bills, Items, Purchases, Stock, Customers, Expenses, Suppliers, Investments, Reports, Activity, Chat, Team, Settings) × **5 actions** (view, create, edit, delete, export).
+- Defaults: **Owner** = everything; **CA** = finance view + export, items/customers/stock view, chat view/create/edit; **Staff** = entry create + bills/items view, chat view/create. Owner can edit any cell in the Roles & permissions grid.
+- Chat specifics: group creation/members/pins/AI polish are **owner-only** (role check, like the rename — see `docs/DECISIONS.md`); editing is author-only within 15 minutes; deleting is author-only (owner may delete any); a receipt is deletable only while Pending.
 - Enforced on **web** (403 guard on every API route, permissions returned by `/api/auth/login`/`me`, access-until enforced, auto-inactive on expiry, `/api/roles` owner-only, last-active-owner guard) and on **desktop** (`setCurrentPermissions` after login, `can()` gates nav, routes and action buttons; Settings → Members sets Role + Access until).
 - Every permission change and login/logout is written to `activity_log` / `user_sessions`.
 
@@ -194,10 +211,10 @@ Android plan (PWA → TWA APK) and remaining release decisions: `docs/RELEASE_PL
 |---|---|
 | `npm run tauri dev` | Desktop app in dev mode |
 | `npm run dev` / `npm run build` | Web UI dev server / production build |
-| `npm test` | All 248 Vitest tests (quiet dot reporter) |
+| `npm test` | All 494 Vitest tests (quiet dot reporter) |
 | `npm run test:watch` | Watch mode |
 | `npm run test:db` | DB integration tests (needs `DATABASE_URL_TEST`) |
-| `npm run test:e2e` | Playwright suite (real UI, Tauri IPC stubbed) |
+| `npm run test:e2e:web` | Playwright web suite (70 tests, mocked worker) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run db:push` | `drizzle-kit push` (dev branch only!) |
 
@@ -205,9 +222,9 @@ Android plan (PWA → TWA APK) and remaining release decisions: `docs/RELEASE_PL
 
 - **Unit tests first** for all money/qty logic (fifo, average, gst, profit, finYear, permissions…) — pure functions, no DB.
 - **Component tests** with React Testing Library for every page.
-- **DB integration tests** against a Neon dev branch.
-- **E2E** with Playwright for Setup → Lock → Home.
-- 290 tests green; typecheck clean across root, `web/` and `web-worker/`.
+- **DB integration tests** against a Neon dev branch (skip automatically without `DATABASE_URL_TEST`).
+- **E2E** with Playwright: `e2e-web/` (responsive at 360/375/390/430/768/1280, Team Chat, chat polish, notifications — the Cloudflare Worker is mocked).
+- 494 unit tests + 70 e2e tests green; typecheck clean across root, `web/` and `web-worker/`.
 
 ## 12. How this repo is built (AI-assisted workflow)
 
@@ -228,9 +245,10 @@ This app was built task-by-task with AI coding agents (OpenCode / Claude Code + 
 
 To continue development with an agent: open it in this folder, paste `prompts/START_SESSION.md` — it reads `HANDOVER.md` and picks up exactly where the last session stopped. One task per session; `prompts/END_SESSION.md` commits the handover.
 
-## 13. Current status (v1.0.0)
+## 13. Current status (2026-11-07)
 
-- Web edition **live**; desktop macOS `.app` + `.dmg` built 2026-11-01.
-- RBAC fully shipped (web + desktop).
-- 248 tests green, typecheck clean.
-- Next: Windows signed build, Android PWA → TWA, lot-wise FY report, sale preview batch breakdown, Playwright suites (see `HANDOVER.md`).
+- **Web edition live** — deployed version `cbb81787` (Cloudflare Worker + built web assets; behind Cloudflare Access). Team Chat (Phase 12–16) fully shipped: groups, receipts approval, AI polish, message actions (edit within 15 min + audit, soft delete), replies, reactions, pins, @mentions, search, PWA + default-on push notifications, full-height sticky sidebar.
+- Migrations through `drizzle/0019` are applied to the live DB. Deploy flow: apply any new `drizzle/00NN_*.sql` to Neon first, then `cd web && npm run build && cd ../web-worker && npx wrangler deploy`.
+- Desktop macOS `.app` + `.dmg` built; desktop chat is blocked by Cloudflare Access until a service token exists (see HANDOVER).
+- 494 unit + 70 e2e tests green, typecheck clean (root / web / worker).
+- Next: desktop Access service token, desktop auto-logout decision, desktop Roasting screen, Windows signed build, Android PWA → TWA (see `HANDOVER.md` / `docs/BUILD_PLAN.md`).
