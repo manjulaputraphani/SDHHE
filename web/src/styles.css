@@ -171,8 +171,19 @@
     margin: 0;
     max-width: 100%;
     /* No horizontal scroll on phones — content must shrink or scroll
-       inside its own container instead. */
-    overflow-x: hidden;
+       inside its own container instead. `clip` (not `hidden`) on purpose:
+       `overflow: hidden` turns the element into a scroll container and
+       BREAKS position: sticky — the sidebar scrolled away with the page
+       and ended in a cream gap below "Sign out". `clip` clips the same
+       way without creating a scroll container. */
+    overflow-x: clip;
+  }
+  /* Ancient engines without overflow: clip keep the old behaviour. */
+  @supports not (overflow: clip) {
+    html,
+    body {
+      overflow-x: hidden;
+    }
   }
   img,
   video,

@@ -358,6 +358,47 @@ test.describe("a 1280px desktop", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
   test.setTimeout(60_000);
 
+  test("the sidebar stays full height when the page is scrolled to the bottom", async ({ page }) => {
+    await mockApp(page);
+    await page.goto("/");
+    const aside = page.locator("aside.nav-texture").first();
+    await expect(aside).toBeVisible();
+
+    // Scroll the Dashboard to the very bottom.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(150);
+
+    const box = await aside.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom, height: rect.height };
+    });
+    const viewport = await page.evaluate(() => window.innerHeight);
+
+    // The rail is pinned to the top and its bottom edge reaches the viewport
+    // bottom — no cream gap below "Sign out".
+    expect(box.top).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.bottom - viewport)).toBeLessThanOrEqual(1);
+    expect(box.height).toBeGreaterThanOrEqual(viewport - 1);
+  });
+
+  test("the sidebar footer stays pinned at the bottom on a short laptop screen", async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 700 });
+    await mockApp(page);
+    await page.goto("/");
+    const aside = page.locator("aside.nav-texture").first();
+    await expect(aside).toBeVisible();
+
+    const signOut = aside.getByRole("button", { name: "Sign out" });
+    const box = await signOut.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    });
+    const viewport = await page.evaluate(() => window.innerHeight);
+    // The footer sits at the very bottom of the rail; the nav scrolls inside.
+    expect(box.bottom).toBeLessThanOrEqual(viewport);
+    expect(viewport - box.bottom).toBeLessThanOrEqual(64);
+  });
+
   test("the chat shows all three panels", async ({ page }) => {
     await mockApp(page);
     // The app opens on the Dashboard now — the sidebar leads into the chat.

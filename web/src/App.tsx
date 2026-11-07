@@ -1677,7 +1677,7 @@ export default function App() {
       {/* Desktop: the rail is sticky and exactly one viewport tall, so it stays put
           while only the main content scrolls. The nav scrolls internally when the
           links outgrow the screen; the footer stays pinned at the bottom. */}
-      <aside className="nav-texture sticky top-0 hidden h-viewport w-60 shrink-0 self-start flex-col bg-nav px-3 py-5 text-nav-text md:flex">
+      <aside className="nav-texture sticky top-0 hidden h-viewport w-60 shrink-0 self-start flex-col bg-nav px-3 pb-5 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] text-nav-text md:flex">
         <div className="relative z-10 mb-6 flex items-start gap-3 px-2">
           <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-nav-text/15 text-nav-text">
             <IconCoffeeNav />
