@@ -591,12 +591,16 @@ inline SVG. Existing tokens only; light + dark. Old messages in the DB are never
   `white-space: pre-wrap`, so the browser folded pasted lines into one paragraph. Fixed + bubble
   keeps `overflow-wrap: anywhere`; the composer grows to ~8 lines then scrolls. Unit (parse),
   int (insert/list round-trip "A\n\nB\nC") and e2e (paste → exact lines + pre-wrap asserted).
-- [ ] **T-16.2 Message actions (no edit on plain click)** — hover action bar (desktop) /
-  long-press bottom sheet (phone): Reply, React, Copy, Edit, Delete, Info, Pin (owner). Edit:
-  own text messages within 15 minutes, in the COMPOSER with an "Editing message ✕" bar; old
-  versions audited in a new chat_message_edits table. Delete: own (owner any), confirm dialog,
-  soft-deleted bubble "🚫 This message was deleted"; receipts only while pending. All live via
-  the DO. Tests for permissions + the 15-minute rule.
+- [x] **T-16.2 Message actions (no edit on plain click)** — clicking a bubble does nothing; the
+  action row (📋 Copy, ✏️ Edit, 🗑 Delete, ⓘ Info) shows on hover (desktop) or long-press (phone);
+  Edit = own text messages within 15 minutes, in the COMPOSER with an "Editing message ✕" bar
+  (Enter saves, Esc cancels) + "edited" label + every old version audited in chat_message_edits
+  (drizzle/0018); Delete = own (owner any), in-app confirm, soft delete → "🚫 This message was
+  deleted" (body stays in the DB); receipts: no edit, delete only while pending; all changes
+  broadcast via the DO (`update` frame). Unit tests: 15-minute window + tombstone mapping; int:
+  audit rows, 15-minute refusal, own/owner/other delete rules; e2e: no-op click, composer edit,
+  tombstone, staff lockout, 15-minute rule. *(Deferred to T-16.4: ↩ Reply, 😊 React, 📌 Pin —
+  they need the reply/reaction/pin tables.)*
 - [x] **T-16.3 Receipt approvals panel** — hidden completely with 0 pending (chat full width:
   the grid drops the third column); "🧾 Approvals" header button with gold `bg-accent` count badge
   (approvers only, count > 0); click toggles (below lg it also opens the slide-over tab);

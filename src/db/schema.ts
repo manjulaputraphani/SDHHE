@@ -401,6 +401,8 @@ export const chatMessages = pgTable(
     editedAt: timestamp("edited_at", { withTimezone: true }).notNull().defaultNow(),
     /** The sender accepted the AI polish suggestion (Phase 15). */
     aiPolished: boolean("ai_polished").notNull().default(false),
+    /** Set when the message was soft-deleted (T-16.2) — the body stays. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("chat_messages_kind_valid", sql`${t.kind} in ('text','receipt','system')`)],
@@ -504,6 +506,24 @@ export const chatMessageStates = pgTable(
     readAt: timestamp("read_at", { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.messageId, t.userId] })],
+);
+
+/**
+ * The audit trail of a message edit (T-16.2): every previous version of the
+ * text stays here — a message in the DB is never overwritten without a record.
+ */
+export const chatMessageEdits = pgTable(
+  "chat_message_edits",
+  {
+    id: serial("id").primaryKey(),
+    messageId: integer("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    oldBody: text("old_body").notNull(),
+    editedBy: integer("edited_by").references(() => appUsers.id),
+    editedAt: timestamp("edited_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("chat_message_edits_message_idx").on(t.messageId)],
 );
 
 /** Cash / bank ledger — every money movement in or out of the business. */

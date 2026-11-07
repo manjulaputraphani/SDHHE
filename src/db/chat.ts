@@ -11,7 +11,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, TxDb } from "./client";
-import { chatMessages, receiptRequests } from "./schema";
+import { chatMessageEdits, chatMessages, receiptRequests } from "./schema";
 import { logActivity } from "./activity";
 import {
   CHAT_ROOM_DEFAULT,
@@ -39,6 +39,8 @@ export type ChatMessage = {
   editedAt?: string;
   /** The sender accepted the AI polish suggestion (Phase 15). */
   aiPolished?: boolean;
+  /** Soft-deleted (T-16.2) — the bubble shows a tombstone, the body stays. */
+  deleted?: boolean;
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */
@@ -212,6 +214,7 @@ type MessageRow = {
   createdAt: Date;
   editedAt: Date;
   aiPolished: boolean;
+  deletedAt: Date | null;
 };
 
 type ReceiptRow = {
@@ -248,6 +251,7 @@ export function toMessage(row: MessageRow): ChatMessage {
     createdAt: row.createdAt.toISOString(),
     editedAt: row.editedAt.getTime() > row.createdAt.getTime() ? row.editedAt.toISOString() : undefined,
     aiPolished: Boolean(row.aiPolished),
+    deleted: Boolean(row.deletedAt),
   };
 }
 
@@ -331,6 +335,10 @@ export type MessageEditInput = {
   body: string;
 };
 
+/** The edit window (T-16.2): a message can be fixed within 15 minutes. */
+import { withinEditWindow } from "../logic/chat";
+export { EDIT_WINDOW_MS, withinEditWindow } from "../logic/chat";
+
 /** Validate a message edit input. */
 export function parseMessageEditInput(input: unknown): MessageEditInput {
   if (typeof input !== 'object' || input === null) {
@@ -375,6 +383,11 @@ export async function updateMessage(
     throw new Error('Not authorized to edit this message');
   }
 
+  // T-16.2: a message can be fixed only within 15 minutes of sending.
+  if (!withinEditWindow(existing.createdAt.getTime())) {
+    throw new Error('The message can only be edited within 15 minutes');
+  }
+
   const [updated] = await db
     .update(chatMessages)
     .set({
@@ -383,6 +396,13 @@ export async function updateMessage(
     })
     .where(eq(chatMessages.id, messageId))
     .returning() as MessageRow[];
+
+  // The previous version is kept — an old message is never lost (T-16.2).
+  await db.insert(chatMessageEdits).values({
+    messageId,
+    oldBody: existing.body,
+    editedBy: userId,
+  });
 
   if (!updated) {
     throw new Error('Failed to update message');
@@ -399,6 +419,45 @@ export async function updateMessage(
 }
 
 /** Point a receipt at the message that shows it. */
+/**
+ * Soft-delete a message (T-16.2). The body stays in the database — the
+ * bubble shows "This message was deleted". Only the author may delete their
+ * own message (the owner may delete any); a receipt can only go while it is
+ * still Pending, never after a decision.
+ */
+export async function deleteMessage(
+  db: Db | TxDb,
+  messageId: number,
+  actor: { userId: number; role: string },
+): Promise<ChatMessage> {
+  const [existing] = await db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.id, messageId))
+    .limit(1);
+  if (!existing) throw new Error("Message not found");
+  if (existing.deletedAt) throw new Error("The message is already deleted");
+  if (actor.role !== "owner" && existing.userId !== actor.userId) {
+    throw new Error("Not authorized to delete this message");
+  }
+  if (existing.kind === "receipt") {
+    const [receipt] = await db
+      .select({ status: receiptRequests.status })
+      .from(receiptRequests)
+      .where(eq(receiptRequests.messageId, messageId))
+      .limit(1);
+    if (!receipt || receipt.status !== "pending") {
+      throw new Error("A decided receipt cannot be deleted");
+    }
+  }
+  const [updated] = (await db
+    .update(chatMessages)
+    .set({ deletedAt: new Date() })
+    .where(eq(chatMessages.id, messageId))
+    .returning()) as MessageRow[];
+  return toMessage(updated);
+}
+
 export async function linkReceiptMessage(
   db: Db | TxDb,
   receiptId: number,

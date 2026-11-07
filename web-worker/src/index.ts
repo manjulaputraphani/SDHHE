@@ -43,6 +43,7 @@ import { chatTokenExpiry, signChatToken, verifyChatToken, CHAT_SESSION_TOKEN_TTL
 import {
   createReceipt,
   decideReceipt,
+  deleteMessage,
   insertMessage,
   linkReceiptMessage,
   listMessages,
@@ -251,6 +252,11 @@ function routePermission(
   if (pathname === "/api/chat/messages") return { module: "chat", action: read ? "view" : "create" };
   if (/^\/api\/chat\/messages\/\d+$/.test(pathname) && method === "PATCH") {
     return { module: "chat", action: "edit" };
+  }
+  // Deleting one's own message is a "create"-level action — the route checks
+  // ownership itself (the owner may delete any, T-16.2).
+  if (/^\/api\/chat\/messages\/\d+$/.test(pathname) && method === "DELETE") {
+    return { module: "chat", action: "create" };
   }
   if (pathname === "/api/chat/receipts") return { module: "chat", action: read ? "view" : "create" };
   if (/^\/api\/chat\/receipts\/[A-Za-z0-9_-]+$/.test(pathname)) return { module: "chat", action: "view" };
@@ -2136,6 +2142,39 @@ const handler = {
         // Everybody in the room sees the fixed text at once.
         await broadcastToChat(env, { type: "update", message: edited }, room);
         return json({ message: edited });
+      }
+
+      // ---- Message deleting (T-16.2): soft-delete, the body stays in the DB ----
+      const deleteMatch = url.pathname.match(/^\/api\/chat\/messages\/(\d+)$/);
+      if (deleteMatch && request.method === "DELETE") {
+        const id = Number(deleteMatch[1]);
+        const room = await messageRoom(db, id);
+        if (!room || !(await chatRoomMember(db, room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        let gone: Awaited<ReturnType<typeof deleteMessage>>;
+        try {
+          gone = await asActor(actor, () =>
+            deleteMessage(db, id, { userId: session.uid, role: session.role }),
+          );
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const status = /not found|already deleted/i.test(message)
+            ? 404
+            : /not authorized|cannot be deleted/i.test(message)
+              ? 403
+              : 400;
+          return json({ error: message }, { status });
+        }
+        // The tombstone replaces the bubble everywhere at once.
+        await broadcastToChat(env, { type: "update", message: gone }, room);
+        await logActivity(db, {
+          event: "chat.message.delete",
+          summary: `Chat message #${id} deleted`,
+          entity: "chat",
+          entityId: id,
+        });
+        return json({ message: gone });
       }
 
       const decisionMatch = url.pathname.match(/^\/api\/chat\/receipts\/(\d+)\/decision$/);

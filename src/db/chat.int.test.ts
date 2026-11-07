@@ -3,13 +3,17 @@ import { resetAll, setupTestDb } from "./test-utils";
 import {
   createReceipt,
   decideReceipt,
+  deleteMessage,
   getReceipt,
   insertMessage,
   linkReceiptMessage,
   listMessages,
   listReceipts,
   pendingReceiptCount,
+  updateMessage,
 } from "./chat";
+import { sql } from "drizzle-orm";
+import { chatMessageEdits } from "./schema";
 
 const db = await setupTestDb();
 const suite = db ? describe : describe.skip;
@@ -41,6 +45,41 @@ suite("Team Chat — messages and receipt approvals", () => {
     await insertMessage(db!, { userId: null, author: "ANITA", kind: "text", body: "A\n\nB\nC" });
     const [message] = await listMessages(db!);
     expect(message.body).toBe("A\n\nB\nC");
+  });
+
+  it("keeps the previous version of an edit in the audit table (T-16.2)", async () => {
+    const message = await insertMessage(db!, { userId: 7, author: "ANITA", kind: "text", body: "first" });
+    const edited = await updateMessage(db!, message.id, { userId: 7, body: "second" });
+    expect(edited.body).toBe("second");
+    expect(edited.editedAt).toBeDefined();
+
+    const rows = await db!.select().from(chatMessageEdits);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].messageId).toBe(message.id);
+    expect(rows[0].oldBody).toBe("first");
+    expect(rows[0].editedBy).toBe(7);
+  });
+
+  it("refuses an edit after the 15-minute window (T-16.2)", async () => {
+    const message = await insertMessage(db!, { userId: 7, author: "ANITA", kind: "text", body: "first" });
+    // The message pretends to be 16 minutes old.
+    await db!.execute(sql`update chat_messages set created_at = now() - interval '16 minutes' where id = ${message.id}`);
+    await expect(
+      updateMessage(db!, message.id, { userId: 7, body: "too late" }),
+    ).rejects.toThrow(/15 minutes/);
+  });
+
+  it("soft-deletes an own message; others may not; the owner may delete any (T-16.2)", async () => {
+    const message = await insertMessage(db!, { userId: 7, author: "ANITA", kind: "text", body: "mine" });
+    const deleted = await deleteMessage(db!, message.id, { userId: 7, role: "staff" });
+    expect(deleted.deleted).toBe(true);
+
+    const other = await insertMessage(db!, { userId: 7, author: "ANITA", kind: "text", body: "theirs" });
+    await expect(deleteMessage(db!, other.id, { userId: 8, role: "staff" })).rejects.toThrow(
+      /Not authorized/,
+    );
+    const byOwner = await deleteMessage(db!, other.id, { userId: 1, role: "owner" });
+    expect(byOwner.deleted).toBe(true);
   });
 
   it("returns only the newest messages when a limit is given", async () => {

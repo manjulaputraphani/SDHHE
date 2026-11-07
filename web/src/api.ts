@@ -17,6 +17,8 @@ export type ChatMessage = {
   editedAt?: string;
   /** The sender accepted the AI polish suggestion (Phase 15). */
   aiPolished?: boolean;
+  /** Soft-deleted (T-16.2) — the bubble shows a tombstone. */
+  deleted?: boolean;
   /** Who has received it (Phase 14). */
   deliveredBy?: number[];
   /** Who has read it (Phase 14). */
@@ -574,6 +576,10 @@ export const api = {
     request<{ message: ChatMessage }>(`/api/chat/messages/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ body }),
+    }),
+  deleteChatMessage: (id: number) =>
+    request<{ message: ChatMessage }>(`/api/chat/messages/${id}`, {
+      method: "DELETE",
     }),
   polishChatMessage: (room: string, text: string) =>
     request<{

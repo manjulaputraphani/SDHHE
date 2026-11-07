@@ -90,6 +90,14 @@ export function chatMessagePreview(message: { author: string; body: string }): s
   return `${message.author}: ${text}`;
 }
 
+/** The edit window (T-16.2): a message can be fixed within 15 minutes. */
+export const EDIT_WINDOW_MS = 15 * 60_000;
+
+/** Is the message still inside the 15-minute edit window? */
+export function withinEditWindow(createdAtMs: number, nowMs: number = Date.now()): boolean {
+  return nowMs - createdAtMs <= EDIT_WINDOW_MS;
+}
+
 /** Clock time of a message — "09:42 AM" (the shop's local time, 12-hour). */
 export function formatChatTime(iso: string): string {
   const date = new Date(iso);

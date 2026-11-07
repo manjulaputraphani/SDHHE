@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { parseMessageInput, parseReceiptInput, parseDecision, toMessage, toReceipt } from "./chat";
+import {
+  parseDecision,
+  parseMessageInput,
+  parseReceiptInput,
+  toMessage,
+  toReceipt,
+  withinEditWindow,
+} from "./chat";
 import { MAX_MESSAGE_CHARS, MAX_RECEIPT_BYTES } from "../logic/chat";
 
 const file = {
@@ -130,6 +137,21 @@ describe("parseDecision", () => {
   });
 });
 
+describe("withinEditWindow (T-16.2)", () => {
+  const now = 1_000_000_000_000;
+  const EDIT_WINDOW_MS = 15 * 60_000;
+  it("allows an edit within 15 minutes", () => {
+    expect(withinEditWindow(now, now)).toBe(true);
+    expect(withinEditWindow(now - EDIT_WINDOW_MS, now)).toBe(true);
+    expect(withinEditWindow(now - EDIT_WINDOW_MS + 1000, now)).toBe(true);
+  });
+
+  it("refuses an edit after 15 minutes", () => {
+    expect(withinEditWindow(now - EDIT_WINDOW_MS - 1, now)).toBe(false);
+    expect(withinEditWindow(now - 60 * 60_000, now)).toBe(false);
+  });
+});
+
 describe("row mapping", () => {
   it("maps a message row to the API shape", () => {
     const at = new Date("2026-11-06T09:42:00.000Z");
@@ -146,6 +168,7 @@ describe("row mapping", () => {
         createdAt: at,
         editedAt: at,
         aiPolished: false,
+        deletedAt: null,
       }),
     ).toEqual({
       id: 7,
@@ -158,7 +181,28 @@ describe("row mapping", () => {
       receiptId: null,
       createdAt: "2026-11-06T09:42:00.000Z",
       aiPolished: false,
+      deleted: false,
     });
+  });
+
+  it("marks a soft-deleted message (T-16.2)", () => {
+    const at = new Date("2026-11-07T09:42:00.000Z");
+    expect(
+      toMessage({
+        id: 9,
+        room: "main",
+        userId: 3,
+        author: "ANITA",
+        role: "staff",
+        kind: "text",
+        body: "old text stays in the DB",
+        receiptId: null,
+        createdAt: at,
+        editedAt: at,
+        aiPolished: false,
+        deletedAt: new Date("2026-11-07T10:00:00.000Z"),
+      }).deleted,
+    ).toBe(true);
   });
 
   it("marks a message that the AI polished (Phase 15)", () => {
@@ -176,6 +220,7 @@ describe("row mapping", () => {
         createdAt: at,
         editedAt: at,
         aiPolished: true,
+        deletedAt: null,
       }).aiPolished,
     ).toBe(true);
   });

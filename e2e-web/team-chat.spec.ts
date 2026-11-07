@@ -44,7 +44,7 @@ const MESSAGES = [
     kind: "text" as const,
     body: "₹96/kg — kal 20 kg laya tha",
     receiptId: null,
-    createdAt: "2026-11-06T09:43:00.000Z",
+    createdAt: new Date(Date.now() - 60_000).toISOString(),
     // Phase 14: the other member has received and read it.
     deliveredBy: [4],
     readBy: [4],
@@ -295,27 +295,48 @@ async function mockChat(
       json: { polished: "Please send 20 bags by tomorrow." },
     }),
   );
-  // Message editing (Phase 17): the author fixes their own text.
+  // Message editing / deleting (Phase 17 + T-16.2): author-only, 15 minutes,
+  // soft delete. The mocks echo the change back.
   await page.route("**/api/chat/messages/*", (route) => {
-    if (route.request().method() !== "PATCH") return route.fallback();
     const id = Number(route.request().url().match(/\/messages\/(\d+)/)?.[1] ?? 0);
     const data = JSON.parse(route.request().postData() ?? "{}") as { body?: string };
-    return route.fulfill({
-      json: {
-        message: {
-          id,
-          room: "main",
-          userId: member.id,
-          author: member.name,
-          role: member.role,
-          kind: "text",
-          body: String(data.body ?? ""),
-          receiptId: null,
-          createdAt: new Date(Date.now() - 60_000).toISOString(),
-          editedAt: new Date().toISOString(),
+    if (route.request().method() === "PATCH") {
+      return route.fulfill({
+        json: {
+          message: {
+            id,
+            room: "main",
+            userId: member.id,
+            author: member.name,
+            role: member.role,
+            kind: "text",
+            body: String(data.body ?? ""),
+            receiptId: null,
+            createdAt: new Date(Date.now() - 60_000).toISOString(),
+            editedAt: new Date().toISOString(),
+          },
         },
-      },
-    });
+      });
+    }
+    if (route.request().method() === "DELETE") {
+      return route.fulfill({
+        json: {
+          message: {
+            id,
+            room: "main",
+            userId: member.id,
+            author: member.name,
+            role: member.role,
+            kind: "text",
+            body: "",
+            receiptId: null,
+            createdAt: new Date(Date.now() - 60_000).toISOString(),
+            deleted: true,
+          },
+        },
+      });
+    }
+    return route.fallback();
   });
   // Start every test from the default conversation list (polish can be pre-armed).
   conversationsState = options.groups
@@ -330,8 +351,10 @@ async function mockChat(
     route.fulfill({ json: { token: "test-token", expiresAt: Date.now() + 3_600_000, user: member } }),
   );
   await page.route("**/api/chat/messages**", async (route) => {
-    // Message editing (Phase 17) has its own route above.
-    if (route.request().method() === "PATCH") return route.fallback();
+    // Message editing / deleting have their own route above.
+    if (route.request().method() === "PATCH" || route.request().method() === "DELETE") {
+      return route.fallback();
+    }
     if (route.request().method() === "POST") {
       const body = JSON.parse(route.request().postData() ?? "{}") as {
         body?: string;
@@ -745,20 +768,67 @@ test.describe("Team Chat", () => {
   });
 
   // ---- Message editing (Phase 17) ----
-  test("the author can fix their own message", async ({ page }) => {
+  // ---- Message actions (T-16.2) ----
+  test("clicking a bubble does nothing (T-16.2)", async ({ page }) => {
     await mockChat(page, OWNER);
     await openChat(page);
 
-    // Tap my own message (#2 — B PHANI KUMAR wrote it).
-    await page
-      .locator('[aria-label="B PHANI KUMAR: ₹96/kg — kal 20 kg laya tha"]')
-      .click();
-    const editor = page.getByRole("textbox", { name: "Edit message" });
-    await expect(editor).toBeVisible();
-    await editor.fill("₹96/kg — kal 25 kg laya tha");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.locator('[aria-label="B PHANI KUMAR: ₹96/kg — kal 20 kg laya tha"]').click();
+
+    await expect(page.getByText(/Editing message/)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save edit" })).toHaveCount(0);
+  });
+
+  test("the author fixes their message from the action row, in the composer (T-16.2)", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+
+    await page.locator('[aria-label="B PHANI KUMAR: ₹96/kg — kal 20 kg laya tha"]').hover();
+    await page.getByRole("button", { name: "Edit message" }).click();
+
+    // The edit lives in the composer, full width — with a clear bar.
+    await expect(page.getByText("✏️ Editing message — Enter saves, Esc cancels")).toBeVisible();
+    const composer = page.getByRole("textbox", { name: "Message" });
+    await expect(composer).toHaveValue("₹96/kg — kal 20 kg laya tha");
+    await composer.fill("₹96/kg — kal 25 kg laya tha");
+    await page.getByRole("button", { name: "Save edit" }).click();
 
     await expect(page.getByText("₹96/kg — kal 25 kg laya tha", { exact: true })).toBeVisible();
     await expect(page.getByText("edited").first()).toBeVisible();
+  });
+
+  test("deleting my own message shows the tombstone (T-16.2)", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+
+    await page.locator('[aria-label="B PHANI KUMAR: ₹96/kg — kal 20 kg laya tha"]').hover();
+    await page.getByRole("button", { name: "Delete message" }).click();
+    // The in-app confirm dialog (never a browser alert).
+    await expect(page.getByRole("heading", { name: "Delete this message?" })).toBeVisible();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+
+    await expect(page.getByText("🚫 This message was deleted").first()).toBeVisible();
+  });
+
+  test("staff cannot edit or delete a message that is not theirs (T-16.2)", async ({ page }) => {
+    await mockChat(page, STAFF);
+    await openChat(page);
+
+    await page.locator('[aria-label="B PHANI KUMAR: ₹96/kg — kal 20 kg laya tha"]').hover();
+    await expect(page.getByRole("button", { name: "Edit message" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Delete message" })).toHaveCount(0);
+    // Copy and Info are still there for everyone.
+    await expect(page.getByRole("button", { name: "Copy message" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Message info" })).toBeVisible();
+  });
+
+  test("a message older than 15 minutes can no longer be edited (T-16.2)", async ({ page }) => {
+    await mockChat(page, STAFF);
+    await openChat(page);
+
+    // RAJU's own message, sent "yesterday" in the mock.
+    await page.locator('[aria-label="RAJU: Baki stock ki kya rate badha?"]').hover();
+    await expect(page.getByRole("button", { name: "Edit message" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Delete message" })).toBeVisible();
   });
 });

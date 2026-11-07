@@ -29,6 +29,7 @@ import {
   formatChatTime,
   receiptStatusLabel,
   receiptStatusTone,
+  withinEditWindow,
 } from "../../../src/logic/chat";
 import { polishSkipReason } from "../../../src/logic/aiPolish";
 import { formatRupees } from "../../../src/logic/units";
@@ -48,6 +49,7 @@ import {
   messageTick,
   presenceLabel,
   readCount,
+  type ViewMessage,
 } from "../../../src/logic/chatView";
 import {
   IconArrowLeft,
@@ -186,10 +188,16 @@ export default function TeamChat({ user }: Props) {
     | { state: "failed"; original: string }
     | null
   >(null);
-  /** The message being edited in place (Phase 17 — message editing). */
-  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  /** The message being edited in the composer (Phase 17 / T-16.2). */
+  const [editing, setEditing] = useState<{ id: number } | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  /** T-16.2: the long-pressed message whose action row is open. */
+  const [actionsMessage, setActionsMessage] = useState<number | null>(null);
+  /** T-16.2: the message whose delete is being confirmed. */
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  /** T-16.2: the message whose seen-by info is open. */
+  const [infoMessage, setInfoMessage] = useState<ViewMessage | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -251,6 +259,8 @@ export default function TeamChat({ user }: Props) {
   const atBottomRef = useRef(true);
   const socketRef = useRef<WebSocket | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  /** T-16.2: a long press on a bubble opens its action row (phone). */
+  const pressTimer = useRef<number | undefined>(undefined);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -667,6 +677,11 @@ export default function TeamChat({ user }: Props) {
   /** Send the draft (the composer's Enter key and the send button both call this).
    *  In a room with AI polish on, the member first confirms a suggestion (Phase 15). */
   async function submitDraft() {
+    // An edit in the composer saves instead of sending (T-16.2).
+    if (editing) {
+      await saveEdit();
+      return;
+    }
     const text = draft.trim();
     if (!text || busy) return;
     // A suggestion card is already open — its buttons send, Enter does nothing.
@@ -720,17 +735,20 @@ export default function TeamChat({ user }: Props) {
     }
   }
 
-  /** Save an edit of one of my own messages (Phase 17 — message editing). */
-  async function saveEdit(messageId: number) {
+  /** Save the edit that lives in the composer (T-16.2: own text, 15 minutes). */
+  async function saveEdit() {
+    if (!editing || savingEdit) return;
     const text = editDraft.trim();
-    if (!text || savingEdit) return;
+    if (!text) {
+      cancelEdit();
+      return;
+    }
     setSavingEdit(true);
     setError(null);
     try {
-      const { message } = await api.editChatMessage(messageId, text);
+      const { message } = await api.editChatMessage(editing.id, text);
       setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)));
-      setEditingMessageId(null);
-      setEditDraft("");
+      cancelEdit();
       // The preview line in the chat list may have changed too.
       void loadConversations();
       showToast("Message edited", "success", 2000);
@@ -738,6 +756,54 @@ export default function TeamChat({ user }: Props) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSavingEdit(false);
+    }
+  }
+
+  /** Start editing one of my own text messages — in the composer (T-16.2). */
+  function startEdit(message: ViewMessage) {
+    if (message.kind !== "text" || message.deleted || message.userId !== user?.id) return;
+    if (!withinEditWindow(new Date(message.createdAt).getTime())) {
+      showToast("This message is older than 15 minutes — it can no longer be edited", "warning");
+      return;
+    }
+    setActionsMessage(null);
+    setEditing({ id: message.id });
+    setEditDraft(message.body);
+    composerRef.current?.focus();
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setEditDraft("");
+  }
+
+  /** Delete my own message (the owner may delete any) — confirmed (T-16.2). */
+  async function confirmDelete() {
+    const id = confirmDeleteId;
+    if (id == null) return;
+    setConfirmDeleteId(null);
+    setActionsMessage(null);
+    setBusy(true);
+    setError(null);
+    try {
+      const { message } = await api.deleteChatMessage(id);
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)));
+      showToast("Message deleted", "info", 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Copy a message — the line breaks travel too (T-16.2). */
+  async function copyMessage(message: ViewMessage) {
+    setActionsMessage(null);
+    try {
+      await navigator.clipboard.writeText(message.body);
+      showToast("Copied", "success", 1500);
+    } catch {
+      showToast("Copy is not available here", "warning");
     }
   }
 
@@ -1487,84 +1553,122 @@ export default function TeamChat({ user }: Props) {
                                 </div>
                               );
                             }
-                            // The author fixes their own text right in the bubble (Phase 17).
-                            if (message.id === editingMessageId) {
-                              return (
-                                <form
-                                  key={message.id}
-                                  onSubmit={(event) => {
-                                    event.preventDefault();
-                                    void saveEdit(message.id);
-                                  }}
-                                  className="card w-full max-w-[80%] space-y-2 p-2 md:max-w-[65%]"
-                                >
-                                  <textarea
-                                    className="input min-h-16 text-sm"
-                                    aria-label="Edit message"
-                                    value={editDraft}
-                                    autoFocus
-                                    onChange={(event) => setEditDraft(event.currentTarget.value)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Escape") {
-                                        setEditingMessageId(null);
-                                        setEditDraft("");
-                                      }
-                                    }}
-                                  />
-                                  <div className="flex gap-2">
-                                    <button type="submit" className="btn-mini" disabled={savingEdit}>
-                                      Save
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn-mini"
-                                      onClick={() => {
-                                        setEditingMessageId(null);
-                                        setEditDraft("");
-                                      }}
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </form>
-                              );
-                            }
+                            // T-16.2: the actions each message offers. Edit = own
+                            // text within 15 minutes; Delete = own (owner: any),
+                            // receipts only while pending; Copy + Info always.
+                            const editable =
+                              message.kind === "text" &&
+                              !message.deleted &&
+                              message.userId === user?.id &&
+                              withinEditWindow(new Date(message.createdAt).getTime());
+                            const deletable =
+                              !message.deleted &&
+                              (message.userId === user?.id || user?.role === "owner") &&
+                              (message.kind !== "receipt" || receipt?.status === "pending");
                             return (
                               <div
                                 key={message.id}
-                                tabIndex={0}
-                                aria-label={`${group.author}: ${message.body}`}
-                                onClick={() => {
-                                  // Tap my own text to fix it.
-                                  if (message.kind === "text" && message.userId === user?.id) {
-                                    setEditingMessageId(message.id);
-                                    setEditDraft(message.body);
-                                  }
+                                className="group/msg relative max-w-[80%] md:max-w-[65%]"
+                                onPointerDown={() => {
+                                  // A long press opens the action row on a phone.
+                                  pressTimer.current = window.setTimeout(
+                                    () => setActionsMessage(message.id),
+                                    450,
+                                  );
                                 }}
-                                className={`chat-bubble outline-none rounded-2xl px-3.5 py-2 text-sm ${
-                                  group.mine
-                                    ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
-                                    : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
-                                } ${isFirst ? "" : "mt-0.5"} ${
-                                  group.mine && message.kind === "text" ? "cursor-pointer" : ""
-                                }`}
+                                onPointerUp={() => window.clearTimeout(pressTimer.current)}
+                                onPointerLeave={() => window.clearTimeout(pressTimer.current)}
                               >
-                                <span>{message.body}</span>
-                                {message.aiPolished && (
-                                  <span title="Polished by AI" aria-label="Polished by AI" className="ml-0.5 text-[10px]">
-                                    ✨
-                                  </span>
-                                )}
-                                {message.editedAt && (
-                                  <span className="ml-1 text-[9px] italic opacity-70">edited</span>
-                                )}
-                                <span
-                                  className={`chat-time ml-2 inline-block align-baseline text-[10px] ${
-                                    group.mine ? "text-on-primary/70" : "text-muted"
-                                  }`}
+                                <div
+                                  tabIndex={0}
+                                  aria-label={`${group.author}: ${message.body}`}
+                                  className={`chat-bubble outline-none rounded-2xl px-3.5 py-2 text-sm ${
+                                    group.mine
+                                      ? `bg-primary text-on-primary ${isLast ? "rounded-br-md" : "rounded-br-2xl"}`
+                                      : `border border-line bg-surface text-ink ${isFirst ? "rounded-bl-md" : "rounded-bl-2xl"}`
+                                  } ${isFirst ? "" : "mt-0.5"}`}
                                 >
-                                  {formatChatTime(message.createdAt)}
-                                </span>
+                                  {message.deleted ? (
+                                    <span className="italic opacity-70">
+                                      🚫 This message was deleted
+                                    </span>
+                                  ) : (
+                                    <span>{message.body}</span>
+                                  )}
+                                  {!message.deleted && message.aiPolished && (
+                                    <span title="Polished by AI" aria-label="Polished by AI" className="ml-0.5 text-[10px]">
+                                      ✨
+                                    </span>
+                                  )}
+                                  {!message.deleted && message.editedAt && (
+                                    <span className="ml-1 text-[9px] italic opacity-70">edited</span>
+                                  )}
+                                  <span
+                                    className={`chat-time ml-2 inline-block align-baseline text-[10px] ${
+                                      group.mine ? "text-on-primary/70" : "text-muted"
+                                    }`}
+                                  >
+                                    {formatChatTime(message.createdAt)}
+                                  </span>
+                                </div>
+                                {/* The action row: hover on desktop, long-press on a
+                                    phone (T-16.2). Clicking the bubble does nothing. */}
+                                {!message.deleted && message.kind === "text" && (
+                                  <div
+                                    className={`${
+                                      actionsMessage === message.id ? "flex" : "hidden"
+                                    } group-hover/msg:flex ${
+                                      group.mine ? "justify-end" : "justify-start"
+                                    } mt-0.5 gap-0.5`}
+                                  >
+                                    <button
+                                      type="button"
+                                      aria-label="Copy message"
+                                      title="Copy"
+                                      className="grid size-7 place-items-center rounded-lg border border-line bg-surface-2 text-[12px] transition-colors hover:bg-surface-3"
+                                      onClick={() => void copyMessage(message)}
+                                    >
+                                      📋
+                                    </button>
+                                    {editable && (
+                                      <button
+                                        type="button"
+                                        aria-label="Edit message"
+                                        title="Edit"
+                                        className="grid size-7 place-items-center rounded-lg border border-line bg-surface-2 text-[12px] transition-colors hover:bg-surface-3"
+                                        onClick={() => startEdit(message)}
+                                      >
+                                        ✏️
+                                      </button>
+                                    )}
+                                    {deletable && (
+                                      <button
+                                        type="button"
+                                        aria-label="Delete message"
+                                        title="Delete"
+                                        className="grid size-7 place-items-center rounded-lg border border-line bg-surface-2 text-[12px] transition-colors hover:bg-surface-3"
+                                        onClick={() => {
+                                          setActionsMessage(null);
+                                          setConfirmDeleteId(message.id);
+                                        }}
+                                      >
+                                        🗑
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      aria-label="Message info"
+                                      title="Info"
+                                      className="grid size-7 place-items-center rounded-lg border border-line bg-surface-2 text-[12px] transition-colors hover:bg-surface-3"
+                                      onClick={() => {
+                                        setActionsMessage(null);
+                                        setInfoMessage(message);
+                                      }}
+                                    >
+                                      ⓘ
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -1649,6 +1753,20 @@ export default function TeamChat({ user }: Props) {
             onSubmit={send}
             className="relative z-10 border-t border-line bg-surface px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
           >
+            {/* Editing lives in the composer, full width (T-16.2). */}
+            {editing && (
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent-ink">
+                <span>✏️ Editing message — Enter saves, Esc cancels</span>
+                <button
+                  type="button"
+                  aria-label="Cancel editing"
+                  className="tap-44 -mr-2 grid size-7 place-items-center rounded-full transition-colors hover:bg-accent/15"
+                  onClick={cancelEdit}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             {/* The AI polish card (Phase 15): the member confirms before sending. */}
             {polishCard && (
               <div
@@ -1753,14 +1871,29 @@ export default function TeamChat({ user }: Props) {
                 ref={composerRef}
                 className="chat-composer flex-1 px-3.5 py-2.5 text-sm"
                 rows={1}
-                placeholder="Message…"
+                placeholder={editing ? "Edit your message…" : "Message…"}
                 aria-label="Message"
-                value={draft}
+                value={editing ? editDraft : draft}
                 onChange={(e) => {
-                  setDraft(e.currentTarget.value);
-                  sendTyping();
+                  if (editing) setEditDraft(e.currentTarget.value);
+                  else {
+                    setDraft(e.currentTarget.value);
+                    sendTyping();
+                  }
                 }}
                 onKeyDown={(e) => {
+                  // Editing: Enter saves, Esc cancels (T-16.2).
+                  if (editing) {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void saveEdit();
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelEdit();
+                    }
+                    return;
+                  }
                   // Enter sends, Shift+Enter makes a new line — but on a
                   // touch phone the return key ALWAYS makes a new line
                   // (WhatsApp behaviour): the send button sends.
@@ -1779,8 +1912,8 @@ export default function TeamChat({ user }: Props) {
               />
               <button
                 type="submit"
-                aria-label="Send"
-                disabled={busy || !draft.trim()}
+                aria-label={editing ? "Save edit" : "Send"}
+                disabled={busy || !(editing ? editDraft.trim() : draft.trim())}
                 className="tap-44 grid size-10 shrink-0 place-items-center rounded-full bg-primary text-on-primary transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted"
               >
                 <IconSend size={16} />
@@ -2067,6 +2200,62 @@ export default function TeamChat({ user }: Props) {
                 <p className="text-sm text-muted">There is nobody to remove.</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteId != null && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/60 p-4">
+          <div className="card w-full max-w-sm space-y-3 p-4">
+            <h2 className="text-sm font-semibold text-ink">Delete this message?</h2>
+            <p className="text-xs text-muted">
+              The team will see "This message was deleted" instead of the text.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-mini bg-error-soft text-error-ink"
+                disabled={busy}
+                onClick={() => void confirmDelete()}
+              >
+                Delete
+              </button>
+              <button type="button" className="btn-mini" onClick={() => setConfirmDeleteId(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {infoMessage && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/60 p-4">
+          <div className="card w-full max-w-sm space-y-2 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-ink">Message info</h2>
+              <button type="button" className="btn-mini" onClick={() => setInfoMessage(null)}>
+                Close
+              </button>
+            </div>
+            <p className="text-xs text-muted">
+              {infoMessage.author} · sent {formatChatTime(infoMessage.createdAt)}
+            </p>
+            <p className="text-xs text-muted">
+              Seen by:{" "}
+              {(infoMessage.readBy ?? []).length > 0
+                ? (infoMessage.readBy ?? [])
+                    .map((id) => members.find((m) => m.id === id)?.name ?? `#${id}`)
+                    .join(", ")
+                : "nobody yet"}
+            </p>
+            <p className="text-xs text-muted">
+              Delivered to:{" "}
+              {(infoMessage.deliveredBy ?? []).length > 0
+                ? (infoMessage.deliveredBy ?? [])
+                    .map((id) => members.find((m) => m.id === id)?.name ?? `#${id}`)
+                    .join(", ")
+                : "nobody yet"}
+            </p>
           </div>
         </div>
       )}
