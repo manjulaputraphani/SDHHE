@@ -582,6 +582,40 @@ Reconciliation with the interim work of 2026-10-30:
 - [x] **e2e race fixed (welcome banner)** — the login-flag helper re-set the flag on every reload
   (init scripts re-run); it now sets it once per tab, so "a refresh shows no banner" is real.
 
+## Phase 16 — Chat polish (added 2026-11-07)
+*Spec adapted to this codebase: there is no useChat hook / App.css / CoffeeIcon.tsx — the chat is
+one component (`web/src/components/TeamChat.tsx`), tokens live in `web/src/styles.css`, icons are
+inline SVG. Existing tokens only; light + dark. Old messages in the DB are never rewritten.*
+- [x] **T-16.1 Keep messages exactly as typed/pasted (BUG)** — the pipeline was clean (zod trims
+  ends only, nothing collapsed `\s+`); the bug was the RENDER: `.chat-bubble` had no
+  `white-space: pre-wrap`, so the browser folded pasted lines into one paragraph. Fixed + bubble
+  keeps `overflow-wrap: anywhere`; the composer grows to ~8 lines then scrolls. Unit (parse),
+  int (insert/list round-trip "A\n\nB\nC") and e2e (paste → exact lines + pre-wrap asserted).
+- [ ] **T-16.2 Message actions (no edit on plain click)** — hover action bar (desktop) /
+  long-press bottom sheet (phone): Reply, React, Copy, Edit, Delete, Info, Pin (owner). Edit:
+  own text messages within 15 minutes, in the COMPOSER with an "Editing message ✕" bar; old
+  versions audited in a new chat_message_edits table. Delete: own (owner any), confirm dialog,
+  soft-deleted bubble "🚫 This message was deleted"; receipts only while pending. All live via
+  the DO. Tests for permissions + the 15-minute rule.
+- [x] **T-16.3 Receipt approvals panel** — hidden completely with 0 pending (chat full width:
+  the grid drops the third column); "🧾 Approvals" header button with gold `bg-accent` count badge
+  (approvers only, count > 0); click toggles (below lg it also opens the slide-over tab);
+  auto-open on a new receipt via the socket; open/closed remembered per user (localStorage,
+  try/catch); staff never see the panel, the tab or the button. e2e: staff lockout, hidden with 0
+  pending, gold badge, 768/1280 layouts (responsive mock now carries one pending receipt).
+- [ ] **T-16.4 Chat features** — reply/quote with scroll-to-original; reactions (👍 ❤️ 😂 🙏 ✅ 🔥,
+  click own to remove); ticks INSIDE the bubble bottom-right with time; "Seen by" info; typing
+  indicator (exists); @mentions with member list + notification override; group search with
+  highlight + jump; pinned messages bar (owner, max 3); floating ↓ + unread count (exists);
+  "New messages" divider; emoji picker (exists, small built-in list); copy keeps line breaks.
+- [ ] **T-16.5 Look and spacing** — bubbles ≤70% width, 10px 14px padding, 14px font, 1.5 line
+  height; same-sender groups (name once, 2px gap, 12px between senders); avatar initials +
+  accent-ink names for others, bg-primary own; composer row 📎 🧾 😊 textarea send; 360px + both
+  themes checked.
+- [ ] **T-16.6 Tests** — e2e/chat polish: multi-line paste; plain click does nothing; edit via
+  icon + "edited" label; delete shows deleted text; 15-minute + other-user rules; approvals
+  button hidden with 0 pending / badge with 1; reply + reaction.
+
 ## Phase 15 — AI polish (added 2026-11-07)
 
 The owner turns AI polish on per group; in those groups a message is rewritten professionally

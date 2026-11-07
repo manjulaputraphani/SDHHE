@@ -155,7 +155,7 @@ const GROUP_MEMBERS = [{ id: 4, name: "RAJU", role: "staff", lastSeenAt: null }]
 async function mockChat(
   page: Page,
   member: typeof OWNER | typeof STAFF,
-  options: { onDecision?: (id: number) => void; groups?: boolean; polish?: boolean } = {},
+  options: { onDecision?: (id: number) => void; groups?: boolean; polish?: boolean; noReceipts?: boolean } = {},
 ) {
   // Anything else the app asks for (the shop details, the activity, ...) is
   // answered with an empty result — a 401 would sign the app out again and a
@@ -371,7 +371,9 @@ async function mockChat(
       return;
     }
     await route.fulfill({
-      json: { receipts: [PENDING_RECEIPT, DECIDED_RECEIPT], pending: 1 },
+      json: options.noReceipts
+        ? { receipts: [], pending: 0 }
+        : { receipts: [PENDING_RECEIPT, DECIDED_RECEIPT], pending: 1 },
     });
   });
   // The live room.
@@ -444,15 +446,32 @@ test.describe("Team Chat", () => {
     expect(decided).toBe(12);
   });
 
-  test("staff sees the receipt but cannot approve it", async ({ page }) => {
+  test("staff never see the approvals panel (T-16.3)", async ({ page }) => {
     await mockChat(page, STAFF);
     await openChat(page);
 
+    await expect(page.getByRole("heading", { name: "Receipt approvals" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Receipt approvals" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Approvals/ })).toHaveCount(0);
+  });
+
+  test("the approvals panel hides completely when nothing is pending (T-16.3)", async ({ page }) => {
+    await mockChat(page, OWNER, { noReceipts: true });
+    await openChat(page);
+
+    await expect(page.getByRole("heading", { name: "Receipt approvals" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Receipt approvals" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Approvals/ })).toHaveCount(0);
+  });
+
+  test("the approver's header button carries the gold count (T-16.3)", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+
+    const button = page.getByRole("button", { name: "Receipt approvals" });
+    await expect(button).toBeVisible();
+    await expect(button.getByText("1")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Receipt approvals" })).toBeVisible();
-    await expect(page.getByText("Transport bill").first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Reject" })).toHaveCount(0);
-    await expect(page.getByText("Waiting for an owner")).toBeVisible();
   });
 
   test("sends a message", async ({ page }) => {

@@ -121,7 +121,32 @@ async function mockApp(page: Page) {
     route.fulfill({ json: { messages: [] } }),
   );
   await page.route("**/api/chat/receipts*", (route) =>
-    route.fulfill({ json: { receipts: [] } }),
+    route.fulfill({
+      json: {
+        receipts: [
+          {
+            id: 12,
+            submittedBy: 4,
+            submitterName: "RAJU",
+            title: "Transport bill",
+            amountPaise: 45000,
+            note: null,
+            r2Key: "receipts/2026-11-06/12.jpg",
+            filename: "transport.jpg",
+            mime: "image/jpeg",
+            sizeBytes: 1024,
+            status: "pending",
+            decidedBy: null,
+            deciderName: null,
+            decisionNote: null,
+            decidedAt: null,
+            messageId: 3,
+            createdAt: "2026-11-06T09:45:00.000Z",
+          },
+        ],
+        pending: 1,
+      },
+    }),
   );
 }
 
@@ -281,7 +306,7 @@ test.describe("a 768px tablet", () => {
     // No back arrow on a tablet — the list is always there.
     await expect(page.getByRole("button", { name: "Back to chats" })).toHaveCount(0);
     // Approvals slide over the grid, not a separate column.
-    await page.getByRole("button", { name: /Approvals/ }).click();
+    await page.getByRole("button", { name: "Approvals (1)", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Receipt approvals" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
     await expectFits(page, "the chat with the approvals slide-over at 768px");

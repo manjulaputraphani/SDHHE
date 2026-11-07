@@ -215,8 +215,24 @@ export default function TeamChat({ user }: Props) {
   const [showMembers, setShowMembers] = useState(false);
   /** On mobile only one panel is the screen at a time. */
   const [mobileView, setMobileView] = useState<MobileView>("list");
-  /** The approvals panel is collapsible on desktop (a tab on mobile). */
-  const [approvalsOpen, setApprovalsOpen] = useState(true);
+  /** The approvals panel is collapsible — and the choice is remembered (T-16.3). */
+  const [approvalsOpen, setApprovalsOpen] = useState(() => {
+    try {
+      return localStorage.getItem("sdhhe:approvals-open") !== "0";
+    } catch {
+      return true;
+    }
+  });
+
+  /** Open or close the approvals panel — remembered per user, best effort. */
+  function toggleApprovals(next: boolean) {
+    setApprovalsOpen(next);
+    try {
+      localStorage.setItem("sdhhe:approvals-open", next ? "1" : "0");
+    } catch {
+      // Private mode — the choice lasts for this tab only.
+    }
+  }
   /** The on-screen keyboard's height — the shell shrinks to fit (iOS). */
   const keyboardOffset = useKeyboardOffset();
   /** Tablet (md+) shows the list and the room side by side. */
@@ -455,6 +471,8 @@ export default function TeamChat({ user }: Props) {
               const without = prev.filter((r) => r.id !== frame.receipt!.id);
               return [frame.receipt!, ...without];
             });
+            // An approver sees the new receipt at once (T-16.3).
+            if (canApprove) toggleApprovals(true);
             scrollToBottom();
           }
           if (frame.type === "presence" && frame.users) setPresence(frame.users);
@@ -831,6 +849,12 @@ export default function TeamChat({ user }: Props) {
   }
 
   const pending = receipts.filter((r) => r.status === "pending");
+  /**
+   * The approvals panel exists only for approvers with something to decide
+   * (T-16.3): staff never see it, and 0 pending means no panel at all — the
+   * chat takes the full width.
+   */
+  const showApprovals = canApprove && pending.length > 0;
   const receiptById = new Map(receipts.map((r) => [r.id, r]));
   const activeConversation = conversations.find((c) => c.room === room);
   /** The owner may make groups — and this open room is one they made. */
@@ -910,6 +934,26 @@ export default function TeamChat({ user }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <PushToggle />
+          {showApprovals && (
+            <button
+              type="button"
+              aria-label="Receipt approvals"
+              title="Open the receipt approvals"
+              className={`btn-mini relative ${approvalsOpen ? "bg-surface-3 font-semibold" : ""}`}
+              onClick={() => {
+                const next = !approvalsOpen;
+                toggleApprovals(next);
+                // Below lg the panel is a slide-over — opening it must switch
+                // the view to it (on lg this is a harmless no-op).
+                if (next) setMobileView("approvals");
+              }}
+            >
+              🧾 Approvals
+              <span className="ml-1 rounded-full bg-accent px-1.5 text-[10px] font-semibold text-bg">
+                {pending.length}
+              </span>
+            </button>
+          )}
           <p className="flex items-center gap-2 text-xs text-muted" data-testid="chat-status">
           <span
             className={`size-2 rounded-full ${connected ? "bg-secondary" : "bg-muted"}`}
@@ -938,21 +982,25 @@ export default function TeamChat({ user }: Props) {
           >
             Chat
           </button>
-          <button
-            type="button"
-            className={`btn-mini ${mobileView === "approvals" ? "bg-surface-3 font-semibold" : ""}`}
-            onClick={() => setMobileView("approvals")}
-          >
-            Approvals{pending.length > 0 ? ` (${pending.length})` : ""}
-          </button>
+          {/* The approvals tab exists only for approvers with pending receipts
+              (T-16.3) — staff never see it. */}
+          {showApprovals && (
+            <button
+              type="button"
+              className={`btn-mini ${mobileView === "approvals" ? "bg-surface-3 font-semibold" : ""}`}
+              onClick={() => setMobileView("approvals")}
+            >
+              Approvals{pending.length > 0 ? ` (${pending.length})` : ""}
+            </button>
+          )}
         </div>
       )}
 
       <div
         className={`relative grid min-h-0 flex-1 gap-4 md:grid-cols-[240px_minmax(0,1fr)] ${
-          approvalsOpen
+          showApprovals && approvalsOpen
             ? "lg:grid-cols-[300px_minmax(0,1fr)_340px]"
-            : "lg:grid-cols-[300px_minmax(0,1fr)_64px]"
+            : "lg:grid-cols-[300px_minmax(0,1fr)]"
         }`}
       >
         {/* ---------------- conversations ---------------- */}
@@ -1802,7 +1850,8 @@ export default function TeamChat({ user }: Props) {
           )}
         </div>
 
-        {/* ---------------- approvals ---------------- */}
+        {/* ---------------- approvals (T-16.3: approvers only, only while pending) ---------------- */}
+        {showApprovals && (approvalsOpen || mobileView === "approvals") && (
         <aside
           className={`${
             mobileView === "approvals"
@@ -1811,41 +1860,20 @@ export default function TeamChat({ user }: Props) {
           } card min-h-0 flex-col space-y-3 p-4 lg:static lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none lg:flex`}
         >
           <div className="flex items-center justify-between gap-2">
-            {approvalsOpen ? (
-              <>
-                <h2 className="text-sm font-semibold text-ink">Receipt approvals</h2>
-                <span className="flex items-center gap-1.5">
-                  {pending.length > 0 && (
-                    <span className="badge bg-accent-soft text-accent-ink">
-                      {pending.length} pending
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    aria-label="Collapse approvals"
-                    className="hidden size-7 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink lg:grid"
-                    onClick={() => setApprovalsOpen(false)}
-                  >
-                    <IconChevronDown size={14} className="rotate-90" />
-                  </button>
-                </span>
-              </>
-            ) : (
+            <h2 className="text-sm font-semibold text-ink">Receipt approvals</h2>
+            <span className="flex items-center gap-1.5">
+              <span className="badge bg-accent-soft text-accent-ink">{pending.length} pending</span>
               <button
                 type="button"
-                aria-label="Expand approvals"
-                className="flex w-full flex-col items-center gap-1 py-1 text-muted transition-colors hover:text-ink"
-                onClick={() => setApprovalsOpen(true)}
+                aria-label="Collapse approvals"
+                className="hidden size-7 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink lg:grid"
+                onClick={() => toggleApprovals(false)}
               >
-                <IconChevronDown size={14} className="-rotate-90" />
-                {pending.length > 0 && (
-                  <span className="badge bg-accent-soft text-accent-ink">{pending.length}</span>
-                )}
+                <IconChevronDown size={14} className="rotate-90" />
               </button>
-            )}
+            </span>
           </div>
-          {approvalsOpen && (
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
               {pending.length === 0 && (
                 <p className="text-sm text-muted">Nothing is waiting for a decision.</p>
               )}
@@ -1907,8 +1935,8 @@ export default function TeamChat({ user }: Props) {
                 </details>
               )}
             </div>
-          )}
         </aside>
+        )}
       </div>
 
       {showNewChat && (
