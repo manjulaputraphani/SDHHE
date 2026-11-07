@@ -4,9 +4,11 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**Phase 16 "Chat polish" COMPLETE: T-16.1–T-16.6 all committed, thoroughly tested.**
-494 unit + 68/68 e2e green, tsc clean (root/web/worker). Working tree clean. **NOT DEPLOYED** —
-migrations 0018 + 0019 must reach the DB before the worker can ship (see Owner steps).
+**Phase 16 "Chat polish" COMPLETE and DEPLOYED TO THE WEB** — live version
+`ad00db7f-984a-482b-88b9-78b5c4ce1779` (2026-11-07). Migrations 0018 + 0019 were applied to the
+Neon DB and verified BEFORE the deploy. 494 unit + 68/68 e2e green, tsc clean (root/web/worker),
+tree clean. Live app: https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl 302s
+to sdhhe.cloudflareaccess.com; verify signed in). Desktop = Tauri app in `src/` (untouched).
 
 ## What Phase 16 delivered
 - **T-16.1** line breaks kept exactly (bubble `white-space: pre-wrap`; composer grows to 8 lines).
@@ -30,8 +32,9 @@ migrations 0018 + 0019 must reach the DB before the worker can ship (see Owner s
 - Frames: "update", "reaction", "pins" (+ "settings"/"members" from earlier phases)
 
 ## Owner steps that are still open
-1. **Deploy (ask first)**: apply drizzle/0018 + 0019 to the Neon DB (idempotent script pattern
-   used before), then `cd web && npm run build && cd ../web-worker && npx wrangler deploy`.
+1. ~~Deploy~~ DONE 2026-11-07 — migrations 0018/0019 applied + verified, web bundle rebuilt,
+   worker deployed (`ad00db7f`). Try signed in: hover a bubble for the actions, ↩ reply, 😊 react,
+   📌 pin (owner), search 🔍 with ↑↓, @mention someone, and the 🧾 approvals badge.
 2. Desktop chat → Worker blocked by Cloudflare Access until a service token exists.
 3. Desktop 1-hour auto-logout (owner has not answered). 4. Roasting screen missing in desktop.
 
