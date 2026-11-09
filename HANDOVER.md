@@ -4,8 +4,7 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `388e3ee9`. New work (mobile login redesign + unread badges/FAB + contrast theme) is
-committed, NOT deployed yet.**
+**LIVE `d01e573f` (mobile login redesign + unread badges/FAB + contrast theme shipped).**
 
 ## Next task
 None queued — the owner picks the next task.
@@ -40,7 +39,7 @@ None queued — the owner picks the next task.
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
 
 ## This + last session (UI work)
-- **Chat (live `388e3ee9`)**: edge-to-edge mobile, WhatsApp composer (emoji·pill·circular send,
+- **Chat**: edge-to-edge mobile, WhatsApp composer (emoji·pill·circular send,
   mic⇄send), `100dvh`+safe areas, bubble max-w 80/65% + always-visible time/ticks (blue read),
   `.chat-bg` pattern, mobile header short mark, theme toggle into drawer.
 - **Contrast theme**: `contrast` ThemeMode + `[data-theme=contrast]` palette (solid, 2px borders).
