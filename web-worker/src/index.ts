@@ -603,7 +603,10 @@ async function logFirstDirectMessage(
 
 /** The Web Push settings (null when the keys are not set). */
 function webPushConfig(env: Env) {
-  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return null;
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) {
+    console.log("push: VAPID keys not configured — notifications disabled");
+    return null;
+  }
   return {
     publicKey: env.VAPID_PUBLIC_KEY,
     privateKey: env.VAPID_PRIVATE_KEY,
@@ -645,6 +648,7 @@ async function pushToSubscriptions(
 ): Promise<void> {
   const config = webPushConfig(env);
   if (!config) return;
+  console.log("push: fan-out to", subscriptions.length, "subscription(s)");
   try {
     await Promise.allSettled(
       subscriptions.map(async (subscription) => {
