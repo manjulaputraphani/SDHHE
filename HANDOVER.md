@@ -12,9 +12,8 @@ None queued — the owner picks the next task. Next: the two-browser manual test
 Message info (me + Chaluvaraj) against the LIVE site (hard-refresh both browsers).
 
 ## Owner steps that are still open
-1. Cloudflare Access service token for the desktop app (for desktop chat).
-2. Desktop 1-hour auto-logout (owner has not answered). 3. Roasting screen missing in desktop.
-4. Keep ~/sdhhe-android-twa safe (the APK signing keystore, password sdhhe2026).
+1. Cloudflare Access service token (desktop chat). 2. Desktop 1-hour auto-logout (no answer).
+3. Roasting screen missing in desktop. 4. Keep ~/sdhhe-android-twa safe (keystore, pw sdhhe2026).
 
 ## Blockers
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
@@ -24,9 +23,8 @@ Message info (me + Chaluvaraj) against the LIVE site (hard-refresh both browsers
   cream cup `#F3E6D2`, two animated steam wisps + gentle tile pulse (CSS in `src/App.css` AND
   `web/src/styles.css`; honours prefers-reduced-motion).
 - Shown on EVERY screen load: both boot screens, Dashboard/Reports/Suppliers/Suggestions/Settings,
-  the table loaders (Purchases/Items/Bills/Expenses), web roles panel, chat list + room skeletons.
-  Button labels ("Loading lots…", Lock unlock, "Load more") stay plain text. NOT yet deployed.
-- Group "Pending" (undelivered names) stays as is — confirmed okay by the owner.
+  table loaders (Purchases/Items/Bills/Expenses), web roles panel, chat list + room skeletons.
+  Button labels stay plain text. NOT yet deployed. Group "Pending" (undelivered names) stays as is.
 
 ## This session (deployed `648781ba`): 1:1 Message info fix + repair
 - **Bugs**: 1:1 panel listed the whole team as Pending; "Delivered to #1" (sender's own receipt +
