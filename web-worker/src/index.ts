@@ -648,12 +648,17 @@ async function pushToSubscriptions(
   try {
     await Promise.allSettled(
       subscriptions.map(async (subscription) => {
-        const ok = await sendWebPush(config, subscription, message);
-        if (!ok) await forgetPushSubscription(db, subscription.endpoint);
+        const result = await sendWebPush(config, subscription, message);
+        if (result.gone) {
+          await forgetPushSubscription(db, subscription.endpoint);
+          console.log("push: removed dead subscription", subscription.endpoint);
+        } else if (!result.delivered) {
+          console.log("push: delivery failed for", subscription.endpoint);
+        }
       }),
     );
   } catch (err) {
-    console.error("push failed:", err);
+    console.error("push fan-out failed:", err);
   }
 }
 

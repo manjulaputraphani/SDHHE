@@ -118,14 +118,20 @@ export async function encryptPayload(
 }
 
 /**
- * Push one message to one subscription. Returns false when the subscription
- * is gone (the browser tells us to stop).
+ * Push one message to one subscription. Returns `{ delivered, gone }`.
+ *
+ * `delivered` is true only when the push service accepted it (HTTP 201).
+ * `gone` is true when the subscription is dead (404/410) and should be removed.
+ * Anything else (400/401 VAPID-invalid, 403, 500, network) is a failure that is
+ * logged but NOT auto-removed — the subscription may recover on its own.
  */
+export type PushResult = { delivered: boolean; gone: boolean };
+
 export async function sendWebPush(
   config: { privateKey: string; publicKey: string; subject: string },
   subscription: { endpoint: string; p256dh: string; auth: string },
   message: PushMessage,
-): Promise<boolean> {
+): Promise<PushResult> {
   const audience = new URL(subscription.endpoint).origin;
   const jwt = await vapidJwt(config.privateKey, config.publicKey, audience, config.subject);
   const { body } = await encryptPayload(JSON.stringify(message), subscription.p256dh, subscription.auth);
@@ -140,6 +146,14 @@ export async function sendWebPush(
     },
     body,
   });
-  // 201 = delivered; 404/410 = the subscription is gone.
-  return res.status !== 404 && res.status !== 410;
+  // 201 = delivered to the push service. 404/410 = subscription is gone.
+  // Anything else (400/401 VAPID-invalid, 403, 500, network error) is a failure.
+  if (res.status === 201) return { delivered: true, gone: false };
+  const gone = res.status === 404 || res.status === 410;
+  if (!gone) {
+    let detail = "";
+    try { detail = await res.text(); } catch { /* body unreadable */ }
+    console.error("web push failed:", res.status, res.statusText, detail, subscription.endpoint);
+  }
+  return { delivered: false, gone };
 }
