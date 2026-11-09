@@ -4,9 +4,9 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `25ed9b13`** (deployed 2026-11-09: push notification diagnostics). Previous: `41b713aa`
-(mobile layout + round loading mark + 1:1 Message info fix; repair ran — 6 sender receipts
-deleted). Owner's real-device pass (Safari / Android Chrome) is due.
+**LIVE `cc685e1d`** (deployed 2026-11-09: WhatsApp-style notification sound for incoming chat messages
+while the app is open + push diagnostics). Previous: `cf71e475` (1:1 push notifications enabled).
+Owner's real-device push + sound test is due.
 
 ## Next task
 None queued — the owner picks the next task. Push notification testing on real devices.
@@ -49,9 +49,22 @@ None queued — the owner picks the next task. Push notification testing on real
 - Push diagnostics: `wrangler tail` runs in background → `/tmp/wrangler-tail.log`
 
 ## Push notification root cause + test steps
-- **Root cause**: `sendWebPush` treated every non-404/410 response as "delivered" — VAPID/auth
+- **Root cause (fixed)**: `sendWebPush` treated every non-404/410 response as "delivered" — VAPID/auth
   failures were silently swallowed. Now returns `{delivered, gone}` and logs status + body.
-- **1:1 chats never push** (by design — private text). Only shop room / group messages push.
-- Ticks (✓/✓✓) work in 1:1 regardless.
-- Test: hard-refresh → bell toggle "🔔 Notifications on" → send in shop room with app
-  closed/backgrounded → check `/tmp/wrangler-tail.log` for 401/403/500 if no notification.
+- **1:1 push now enabled** (was disabled by design — private text). A 1:1 message now sends a
+  text-free web push ("New message" + sender name) to the other member's subscription, plus an
+  ntfy fallback. The message text never reaches the push service.
+- **Test**: hard-refresh both phones → bell toggle "🔔 Notifications on" → send a 1:1 message
+  with the app closed/backgrounded → notification should arrive. Check
+  `/tmp/wrangler-tail.log` for 401/403/500 if it doesn't.
+
+## This session: notification sound (WhatsApp-style) — deployed `cc685e1d`
+- **`web/src/lib/notificationSound.ts`** (new): synthesizes a two-tone chime (880 Hz → 1320 Hz)
+  via the Web Audio API — no external file, works offline.
+- **`web/public/sw.js`**: on a push event, posts `play-notification-sound` to every open
+  window client so the tab plays the sound even if the OS notification is suppressed.
+- **`web/src/App.tsx`**: listens for the service worker message and plays the sound.
+- **`web/src/components/TeamChat.tsx`**: plays the sound on incoming socket "message" frames
+  (not your own message).
+- Note: iOS Safari blocks audio until the first user gesture; Android Chrome plays once the
+  user has tapped anything. The OS notification sound (closed app) is separate and automatic.
