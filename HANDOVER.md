@@ -4,12 +4,9 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `5e7683d2` (Android install button + APK shipped).**
+**LIVE `388e3ee9` (chat UI redesign shipped).**
 The database is Neon Postgres (Drizzle) and stays that way — no database migration is planned
 or in progress.
-
-**Chat UI redesigned (WhatsApp-style, responsive) — committed, NOT deployed yet.** See
-"What this session changed" below.
 
 ## Next task
 None queued — the owner picks the next task.
@@ -43,7 +40,7 @@ None queued — the owner picks the next task.
 ## Blockers
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
 
-## What this session changed (chat UI, code-only — deploy pending)
+## What this session changed (chat UI — now live)
 - Fixed horizontal overflow: mobile chat edge-to-edge (main padding negated, `min-w-0` on
   grid/flex, `word-break`/`overflow-wrap` on bubbles, `overflow-x:hidden` on the list).
 - WhatsApp composer: [emoji] [pill: textarea+attach+camera] [circular 48px send]; mic ⇄ send
