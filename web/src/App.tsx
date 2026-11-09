@@ -21,6 +21,7 @@ import {
   type User,
 } from "./api";
 import { buildBillHtml } from "../../src/lib/printBill";
+import { playNotificationSound } from "./lib/notificationSound";
 import { clearWelcomeFlag, setWelcomeFlag } from "../../src/logic/welcomeBanner";
 import { normalizePhone } from "../../src/logic/auth";
 import { planRoast } from "../../src/logic/roasting";
@@ -577,7 +578,26 @@ export default function App() {
     return () => window.removeEventListener("sdhhe:unauthorized", onUnauthorized);
   }, []);
 
-  /** Close the mobile drawer when the window grows into the desktop layout. */
+  /**
+   * Play the notification sound when a push arrives while this tab is open
+   * (the service worker relays the push event to every open window).
+   */
+  useEffect(() => {
+    const onSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === "play-notification-sound") {
+        void playNotificationSound();
+      }
+    };
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", onSwMessage);
+    }
+    return () => {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("message", onSwMessage);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const wide = window.matchMedia("(min-width: 768px)");
     const close = () => {

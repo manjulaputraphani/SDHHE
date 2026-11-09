@@ -38,6 +38,7 @@ import { formatRupees } from "../../../src/logic/units";
 
 import { showToast } from "./notifications/toastStore";
 import PushToggle from "./notifications/PushToggle";
+import { playNotificationSound } from "../lib/notificationSound";
 import {
   confirmDirectDelivered,
   markRoomRead,
@@ -618,6 +619,10 @@ export default function TeamChat({ user, initialRoom }: Props) {
             // own message: the sender gets no receipt for it.
             if (frame.message.userId !== user?.id) {
               void api.markChatDelivered(frame.message.id).catch(() => undefined);
+              // WhatsApp-style notification sound for an incoming message
+              // (not your own). The service worker also relays push events to
+              // this tab via App.tsx.
+              void playNotificationSound();
             }
             // Mark the messages that are actually on screen as read, but only
             // while the tab is visible and focused.

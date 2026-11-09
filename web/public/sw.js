@@ -28,6 +28,15 @@ self.addEventListener("push", (event) => {
       data: { url: data.url || "/team-chat?notify=1" },
     }),
   );
+  // Tell every open tab to play the notification sound (the OS plays its own
+  // sound for closed apps; open tabs need this).
+  event.waitUntil(
+    self.clients.matchAll({ type: "window" }).then((clients) => {
+      for (const client of clients) {
+        client.postMessage({ type: "play-notification-sound" });
+      }
+    }),
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
