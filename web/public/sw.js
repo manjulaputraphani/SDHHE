@@ -22,6 +22,17 @@ self.addEventListener("push", (event) => {
     console.log("sw: push data parse failed", err);
     // A payload we do not understand still shows the default text.
   }
+  // Confirm delivery to the sender — the app is closed, so the socket
+  // can't do it. This makes the sender's tick go from ✓ to ✓✓.
+  if (data.messageId) {
+    event.waitUntil(
+      fetch("/api/chat/delivered", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messageId: data.messageId }),
+      }).catch(() => undefined),
+    );
+  }
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,

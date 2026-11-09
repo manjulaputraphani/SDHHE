@@ -2274,6 +2274,7 @@ const handler = {
                   title: "New message",
                   body: session.name,
                   url: "/team-chat?notify=1",
+                  messageId: message.id,
                 });
                 await pushNtfy(
                   env.NTFY_TOPIC,

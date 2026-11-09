@@ -2,7 +2,7 @@
  * Web Push (RFC 8291 + VAPID) — written with WebCrypto only, so it runs in
  * the Cloudflare Worker without any npm dependency.
  */
-export type PushMessage = { title: string; body: string; url?: string };
+export type PushMessage = { title: string; body: string; url?: string; messageId?: number };
 
 function b64u(bytes: Uint8Array): string {
   let text = "";
