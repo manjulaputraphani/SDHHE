@@ -4,10 +4,11 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `51bbd70a` (Android APK shipped). Phase 17 STARTED: Neon Postgres → Cloudflare D1.**
-T-17.0 plan + T-17.1 database created (`sdhhe`, APAC, id a111542a-461f-4cda-a756-a5eca215ca48,
-binding `DB` in wrangler.toml, deploy dry-run verified). better-sqlite3 added for local int tests.
-The app still runs on Neon until the cutover (T-17.5) — nothing user-visible changed yet.
+**LIVE `5e7683d2` (Android install button + APK shipped; D1 binding `DB` registered).**
+Phase 17 STARTED: Neon Postgres → Cloudflare D1. T-17.0 plan + T-17.1 database created
+(`sdhhe`, APAC, id a111542a-461f-4cda-a756-a5eca215ca48, binding `DB` in wrangler.toml).
+better-sqlite3 added for local int tests.
+The app still runs on Neon until the cutover (T-17.5) — no data migration shipped yet.
 
 ## Next task — T-17.2 port the schema (tests first)
 Rewrite `src/db/schema.ts` on drizzle sqlite-core (serial → autoincrement pk; timestamptz →
