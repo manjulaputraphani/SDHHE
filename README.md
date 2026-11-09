@@ -203,7 +203,7 @@ cd ../web-worker && npm install
 npm run tauri build        # macOS: .app + .dmg in src-tauri/target/release/bundle/
 ```
 Windows `.exe`/`.msi`, Linux `.AppImage`/`.deb` build in CI via `release.yml` (push a tag, e.g. `v1.0.0`).
-Android plan (PWA → TWA APK) and remaining release decisions: `docs/RELEASE_PLAN.md`.
+**Android: shipped.** The app is a TWA (Trusted Web Activity) APK — `web/public/sdhhe.apk`, hosted by the worker and downloadable in-app on Android devices ("📲 Install the Android app" in the sidebar). Rebuild with Google bubblewrap from the project kept at `~/sdhhe-android-twa` (same signing keystore required for updates). Remaining release decisions: `docs/RELEASE_PLAN.md`.
 
 ## 10. Commands
 

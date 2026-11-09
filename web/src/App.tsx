@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   api,
   money,
@@ -261,6 +261,11 @@ const ACTIVITY_PAGE = 20;
 export default function App() {
   const [checking, setChecking] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  /** An Android phone can install the native app — the link appears only there. */
+  const isAndroid = useMemo(
+    () => typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent),
+    [],
+  );
   // The app ALWAYS opens on the Dashboard — even from a /team-chat URL (the
   // owner asked; the chat deep link now only works through in-app navigation).
   // One exception: a tapped notification (?notify=1) opens the chat, because
@@ -1718,6 +1723,15 @@ export default function App() {
         </nav>
         <div className="relative z-10 mt-auto shrink-0 space-y-3 px-2 pt-6 text-[11px]">
           <ThemeToggle onDark />
+          {isAndroid && (
+            <a
+              href="/sdhhe.apk"
+              download="SDHHE.apk"
+              className="block rounded-lg bg-nav-text/10 px-3 py-2 text-center text-[11px] font-medium text-nav-text transition-colors hover:bg-nav-text/20"
+            >
+              📲 Install the Android app
+            </a>
+          )}
           <div className="space-y-1">
             <p className="text-nav-muted">{user.name} · {user.role}</p>
             <button
@@ -1829,6 +1843,15 @@ export default function App() {
                 ))}
               </nav>
               <div className="relative z-10 mt-auto space-y-2 px-2 pt-6 text-[11px]">
+                {isAndroid && (
+                  <a
+                    href="/sdhhe.apk"
+                    download="SDHHE.apk"
+                    className="block rounded-lg bg-nav-text/10 px-3 py-2 text-center text-[11px] font-medium text-nav-text transition-colors hover:bg-nav-text/20"
+                  >
+                    📲 Install the Android app
+                  </a>
+                )}
                 <p className="text-nav-muted">{user.name} · {user.role}</p>
                 <button
                   className="flex items-center gap-1.5 text-nav-muted underline"

@@ -4,12 +4,14 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE version `cbb81787-30dc-4b7d-9730-045d7b24768c` (2026-11-07) — Phase 16 chat polish +
-the sidebar full-height fix, both deployed.** Migrations 0018/0019 were applied earlier; this
-deploy was a pure web bundle + worker rebuild (no DB change). 494 unit + 70/70 e2e green before
-shipping, tsc clean (root/web/worker), tree clean.
-Live app: https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access — curl 302s to
-sdhhe.cloudflareaccess.com; verify signed in). Desktop = Tauri app in `src/` (untouched).
+**LIVE version `51bbd70a-8496-406e-a0ab-7147009824e7` (2026-11-09) — Android app shipped.**
+A TWA APK (`web/public/sdhhe.apk`, 1.1 MB, signed: CN=Phani Kumar, O=SDHHE, C=IN) is hosted by
+the worker and downloadable in-app ("📲 Install the Android app" in the sidebar footer, Android
+devices only — opens the live web app full-screen with notifications). Built with Google
+bubblewrap (JDK 17 + Android SDK installed at ~/.bubblewrap). The TWA project + signing keystore
+(android.keystore, password sdhhe2026) live at **~/sdhhe-android-twa** — NOT in git; keep the
+keystore safe, future APK updates must be signed with it. 494 unit + 70/70 e2e green before
+shipping, tsc clean, tree clean.
 
 ## What Phase 16 delivered
 - **T-16.1** line breaks kept exactly (bubble `white-space: pre-wrap`; composer grows to 8 lines).
