@@ -2257,6 +2257,25 @@ const handler = {
               body: input.body.slice(0, 120),
               url: "/team-chat?notify=1",
             });
+          } else {
+            // Direct chat (1:1): push to the other member only — text-free alert
+            // so the private message text never reaches the push service.
+            const dm = membersOf(room);
+            if (dm) {
+              const otherId = dm.userId === session.uid ? dm.otherId : dm.userId;
+              if (otherId) {
+                await pushToUsers(env, [otherId], session.uid, {
+                  title: "New message",
+                  body: session.name,
+                  url: "/team-chat?notify=1",
+                });
+                await pushNtfy(
+                  env.NTFY_TOPIC,
+                  `New message from ${session.name}`,
+                  "Open the chat to read it",
+                );
+              }
+            }
           }
           // @mentions (T-16.4): the named members get a personal push even if
           // the room itself would not push them.
