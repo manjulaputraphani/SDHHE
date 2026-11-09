@@ -272,17 +272,12 @@ describe("Settings — security", { timeout: 30_000 }, () => {
     expect(screen.queryByTestId("members-card")).not.toBeInTheDocument();
   });
 
-  it("removes the saved AI key", async () => {
-    vi.mocked(getSecret).mockImplementation(async (key) =>
-      key === "OLLAMA_API_KEY" ? "secret-key" : "saved",
-    );
+  it("shows no local AI key (key is stored in Cloudflare)", async () => {
     renderPage();
-    const user = userEvent.setup({ delay: null });
 
-    expect(await screen.findByText(/AI cloud key: saved/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Remove key" }));
-
-    expect(deleteSecret).toHaveBeenCalledWith("OLLAMA_API_KEY");
+    // No local AI key is stored — the key lives in Cloudflare Worker secrets.
     expect(await screen.findByText(/AI cloud key: not saved/)).toBeInTheDocument();
+    // There is no local key to remove, so the Remove button is not rendered.
+    expect(screen.queryByRole("button", { name: "Remove key" })).not.toBeInTheDocument();
   });
 });

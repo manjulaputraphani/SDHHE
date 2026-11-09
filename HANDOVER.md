@@ -4,7 +4,7 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `50e15cc7` (read receipts + unread badges fix deployed — `max(m.id)` crash on empty rooms fixed).**
+**LIVE `ae4ffebd` (AI key moved to Cloudflare Worker — desktop app calls `/api/ai/chat` instead of ollama.com directly; no local key storage).**
 
 ## Next task
 None queued — the owner picks the next task.
@@ -32,6 +32,13 @@ None queued — the owner picks the next task.
 - **unread.ts**: `markRoomRead` returns rollback; new `markRoomReadByOther`.
 - No route/schema change (tables existed). 498 unit tests + typechecks green.
 - Hotfix: `markRead` high-water computation used `sql<number>\`max(m.id)\`` which crashed on empty rooms; replaced with `orderBy(desc(id)).limit(1)` pattern.
+
+## This session (deployed): AI key moved to Cloudflare Worker
+- **Desktop app** (`src/pages/Chat.tsx`, `src/pages/Settings.tsx`): now calls `POST /api/ai/chat` on the worker instead of calling `ollama.com` directly with a locally-stored key. No local `OLLAMA_API_KEY` storage — the key lives only in Cloudflare Worker secrets.
+- **Worker** (`web-worker/src/index.ts`): `/api/ai/chat` is now unauthenticated (the worker's `OLLAMA_API_KEY` secret is the gatekeeper). Old authenticated handler removed.
+- **`src/lib/aiApi.ts`**: new `callAiApi()` helper using Tauri's HTTP plugin (bypasses webview CORS).
+- **Desktop app gets worker URL from DB** via `getChatWorkerUrl(db)` — owner must set it in Settings first.
+- `Settings.test.tsx` updated for new behavior. 498 unit tests + typechecks green.
 
 ## This + last session (UI work)
 - **Chat**: edge-to-edge mobile, WhatsApp composer, `100dvh`+safe areas, bubble max-w 80/65% +

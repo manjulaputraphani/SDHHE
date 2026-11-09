@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
-import { chat } from "../ai/ollama";
 import { DEFAULT_AI_CONFIG, getAiConfig, saveAiConfig, type AiConfig } from "../db/settings";
 import { useDb } from "../lib/db-context";
 import { deleteSecret, getSecret, hashPin, saveSecret, SECRET_KEYS, verifyPin } from "../lib/secrets";
+import { callAiApi } from "../lib/aiApi";
 import { getAuditActor, listActivity, logActivity, type ActivityRow } from "../db/activity";
 import {
   createUser,
@@ -304,13 +304,12 @@ export default function Settings({
   useEffect(() => {
     void (async () => {
       try {
-        const [dbUrl, pinHash, apiKey] = await Promise.all([
+        const [dbUrl, pinHash] = await Promise.all([
           getSecret(SECRET_KEYS.DATABASE_URL),
           getSecret(SECRET_KEYS.PIN_HASH),
-          getSecret(SECRET_KEYS.OLLAMA_API_KEY),
         ]);
-        setStored({ db: Boolean(dbUrl), pin: Boolean(pinHash), aiKey: Boolean(apiKey) });
-        setAiKeySaved(Boolean(apiKey));
+        setStored({ db: Boolean(dbUrl), pin: Boolean(pinHash), aiKey: false });
+        setAiKeySaved(false);
       } catch {
         setStored({ db: false, pin: false, aiKey: false });
       }
@@ -339,24 +338,22 @@ export default function Settings({
   }
 
   async function saveKey() {
-    const value = keyInput.trim();
-    if (!value) return;
-    try {
-      await saveSecret(SECRET_KEYS.OLLAMA_API_KEY, value);
-      setKeyInput("");
-      setAiKeySaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
+    setError(null);
+    setKeyInput("");
+    setAiKeySaved(false);
+    setError("The AI key is stored in Cloudflare — nothing to save locally.");
+    window.setTimeout(() => setError(null), 4000);
   }
 
   async function testAi() {
     setAiStatus("Testing…");
     try {
-      const apiKey = ai.mode === "cloud" ? await getSecret(SECRET_KEYS.OLLAMA_API_KEY) : null;
-      await chat({ ...ai, apiKey }, [
-        { role: "user", content: "Reply with the single word OK." },
-      ]);
+      const workerUrl = await getChatWorkerUrl(db);
+      if (!workerUrl) {
+        setAiStatus("AI failed: worker URL not set");
+        return;
+      }
+      await callAiApi(workerUrl, "Reply with the single word OK.", []);
       setAiStatus("AI OK");
     } catch (err) {
       setAiStatus(`AI failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -437,13 +434,9 @@ export default function Settings({
 
   async function removeAiKey() {
     setError(null);
-    try {
-      await deleteSecret(SECRET_KEYS.OLLAMA_API_KEY);
-      setAiKeySaved(false);
-      setStored((prev) => (prev ? { ...prev, aiKey: false } : prev));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
+    setAiKeySaved(false);
+    setError("Nothing to remove — the AI key is stored in Cloudflare, not locally.");
+    window.setTimeout(() => setError(null), 4000);
   }
 
   return (

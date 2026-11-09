@@ -1043,6 +1043,23 @@ const handler = {
       return json({ user: { id: session.uid, name: session.name, role: session.role, permissions } });
     }
 
+    // ---- AI chat (unauthenticated — the worker holds the OLLAMA_API_KEY secret) ----
+    if (url.pathname === "/api/ai/chat" && request.method === "POST") {
+      if (!env.OLLAMA_API_KEY) {
+        return json({ error: "AI is not configured (missing OLLAMA_API_KEY secret)" }, { status: 503 });
+      }
+      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+      const message = String(body.message ?? "").trim();
+      if (!message) return json({ error: "Message is required" }, { status: 400 });
+      const history = (Array.isArray(body.history) ? body.history : []) as ChatTurn[];
+      const db = getDb(env.DATABASE_URL as string);
+      const config = { mode: "cloud" as const, apiKey: env.OLLAMA_API_KEY, model: "glm-5.3-flash:cloud" };
+      const result = await askAssistant(db, config, history, message, (c, m, t) =>
+        chat(c, m, t, globalThis.fetch),
+      );
+      return json(result);
+    }
+
     // ---- Team Chat login (Phase 12) ----
     // The desktop app has no worker cookie, so it signs in here with the same
     // phone + password and gets a short-lived chat token.
@@ -1155,12 +1172,14 @@ const handler = {
     }
 
     // ---- W3 read API (session required) ----
-    // A chat bearer token is only accepted on the Team Chat routes — it is not
-    // a general session.
+    // A chat bearer token is accepted on the Team Chat routes and on
+    // /api/ai/chat — it is not a general session.
     const cookieSession = await readSession(request, env.SESSION_SECRET);
     const session =
       cookieSession ??
-      (url.pathname.startsWith("/api/chat/") ? await chatTokenSession(request, env) : null);
+      (url.pathname.startsWith("/api/chat/") || url.pathname === "/api/ai/chat"
+        ? await chatTokenSession(request, env)
+        : null);
     if (!session) return json({ error: "Not signed in" }, { status: 401 });
 
     // Inactivity auto-logout (sliding window, refreshed on every API call).
@@ -2311,23 +2330,6 @@ const handler = {
         await broadcastToChat(env, { type: "receipt", receipt, message: system }, room);
         await notifyReceipt(env, receipt, session.name);
         return json({ receipt, message: system });
-      }
-
-      if (url.pathname === "/api/ai/chat" && request.method === "POST") {
-        if (!env.OLLAMA_API_KEY) {
-          return json({ error: "AI is not configured (missing OLLAMA_API_KEY secret)" }, { status: 503 });
-        }
-        const message = String(body.message ?? "").trim();
-        if (!message) return json({ error: "Message is required" }, { status: 400 });
-        const history = (Array.isArray(body.history) ? body.history : []) as ChatTurn[];
-        const config = { mode: "cloud" as const, apiKey: env.OLLAMA_API_KEY, model: "glm-5.3-flash:cloud" };
-        const result = await askAssistant(db, config, history, message, (c, m, t) =>
-          chat(c, m, t, globalThis.fetch),
-        );
-        await asActor(actor, () =>
-          logActivity(db, { event: "ai.chat", summary: `AI asked: ${message.slice(0, 60)}`, entity: "ai" }),
-        );
-        return json(result);
       }
 
       if (url.pathname === "/api/roles" && (request.method === "POST" || request.method === "PUT")) {

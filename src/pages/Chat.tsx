@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { askAssistant, type ChatTurn } from "../ai/chat";
-import { getAiConfig } from "../db/settings";
+import { type ChatTurn } from "../ai/chat";
+import { getAiConfig, getChatWorkerUrl } from "../db/settings";
 import { useDb } from "../lib/db-context";
-import { getSecret, SECRET_KEYS } from "../lib/secrets";
+import { callAiApi } from "../lib/aiApi";
 
 const CHIPS = [
   "How much rice did I use this month?",
@@ -33,9 +33,12 @@ export default function Chat() {
         setError("AI is off - enable it in Settings");
         return;
       }
-      const apiKey =
-        config.mode === "cloud" ? await getSecret(SECRET_KEYS.OLLAMA_API_KEY) : null;
-      const result = await askAssistant(db, { ...config, apiKey }, history, text);
+      const workerUrl = await getChatWorkerUrl(db);
+      if (!workerUrl) {
+        setError("AI worker URL is not set — ask the owner to configure it.");
+        return;
+      }
+      const result = await callAiApi(workerUrl, text, history);
       setBubbles((prev) => [...prev, { role: "assistant", content: result.answer }]);
       setHistory((prev) => [
         ...prev,
