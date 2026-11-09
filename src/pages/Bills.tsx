@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import LoadingMark from "../components/LoadingMark";
 import {
   cancelSaleBill,
   getSaleBill,
@@ -284,7 +285,7 @@ export default function Bills() {
             {loading && (
               <tr>
                 <td className="px-3 py-4 text-muted" colSpan={8}>
-                  Loading…
+                  <LoadingMark />
                 </td>
               </tr>
             )}

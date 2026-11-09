@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import LoadingMark from "../components/LoadingMark";
 import { DEFAULT_AI_CONFIG, getAiConfig, saveAiConfig, type AiConfig } from "../db/settings";
 import { useDb } from "../lib/db-context";
 import { deleteSecret, getSecret, hashPin, saveSecret, SECRET_KEYS, verifyPin } from "../lib/secrets";
@@ -686,7 +687,7 @@ export default function Settings({
           </div>
           {rolesMsg && <p role="status" className="text-sm text-muted">{rolesMsg}</p>}
           {!roleMatrix ? (
-            <p className="text-sm text-muted">Loading…</p>
+            <LoadingMark />
           ) : (
             (["ca", "staff"] as const).map((role) => (
               <div key={role} className="space-y-2">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listItems, type ItemRow } from "../db/items";
+import LoadingMark from "../components/LoadingMark";
 import {
   deletePurchase,
   listPurchases,
@@ -215,7 +216,7 @@ export default function Purchases() {
             {loading && (
               <tr>
                 <td className="px-3 py-4 text-muted" colSpan={8}>
-                  Loading…
+                  <LoadingMark />
                 </td>
               </tr>
             )}

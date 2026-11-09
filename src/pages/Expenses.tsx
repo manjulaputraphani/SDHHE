@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import LoadingMark from "../components/LoadingMark";
 import {
   createExpense,
   deleteExpense,
@@ -256,7 +257,7 @@ export default function Expenses() {
             {loading && (
               <tr>
                 <td className="px-3 py-4 text-muted" colSpan={8}>
-                  Loading…
+                  <LoadingMark />
                 </td>
               </tr>
             )}

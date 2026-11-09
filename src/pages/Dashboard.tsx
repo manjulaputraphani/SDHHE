@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import LoadingMark from "../components/LoadingMark";
 import {
   Bar,
   BarChart,
@@ -126,7 +127,7 @@ export default function Dashboard() {
         </p>
       )}
 
-      {loading && !data && <p className="text-sm text-muted">Loading…</p>}
+      {loading && !data && <LoadingMark />}
 
       {data && data.itemCount === 0 && (
         <section className="rounded border border-dashed border-line p-8 text-center">

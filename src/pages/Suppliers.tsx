@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { NavLink } from "react-router-dom";
+import LoadingMark from "../components/LoadingMark";
 import {
   createSupplier,
   getSupplierDues,
@@ -121,7 +122,7 @@ export default function Suppliers() {
     }
   }
 
-  if (loading) return <p className="text-sm text-muted">Loading…</p>;
+  if (loading) return <LoadingMark />;
 
   if (error) {
     return (

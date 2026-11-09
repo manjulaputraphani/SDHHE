@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAiSuggestions, shouldAutoRefresh, type AiSuggestion } from "../ai/suggest";
+import LoadingMark from "../components/LoadingMark";
 import { getAiConfig } from "../db/settings";
 import {
   listStoredSuggestions,
@@ -138,7 +139,7 @@ export default function Suggestions() {
         </section>
       )}
 
-      {loading && <p className="text-sm text-muted">Loading…</p>}
+      {loading && <LoadingMark />}
 
       {!loading && suggestions.length === 0 && (
         <section className="rounded border border-dashed border-line p-6 text-center text-muted">

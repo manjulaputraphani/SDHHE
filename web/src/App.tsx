@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import LoadingMark from "../../src/components/LoadingMark";
 import {
   api,
   money,
@@ -1612,7 +1613,11 @@ export default function App() {
   }
 
   if (checking) {
-    return <main className="grid min-h-viewport place-items-center text-sm text-muted">Loading…</main>;
+    return (
+      <main className="grid min-h-viewport place-items-center">
+        <LoadingMark />
+      </main>
+    );
   }
 
   if (!user) {
@@ -4399,7 +4404,7 @@ export default function App() {
                 </div>
                 {rolesMsg && <p role="status" className="mb-2 text-sm text-muted">{rolesMsg}</p>}
                 {!roleMatrix ? (
-                  <p className="text-sm text-muted">Loading…</p>
+                  <LoadingMark />
                 ) : (
                   (["ca", "staff"] as const).map((role) => (
                     <div key={role} className="mb-5 last:mb-0">

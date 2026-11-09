@@ -52,6 +52,7 @@ import {
   type MessageInfo,
 } from "../../../src/logic/messageInfo";
 import { membersOf } from "../../../src/logic/chatPrivacy";
+import LoadingMark from "../../../src/components/LoadingMark";
 import {
   chatDaySections,
   conversationName,
@@ -1465,16 +1466,11 @@ export default function TeamChat({ user, initialRoom }: Props) {
             />
           </div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-            {loadingList &&
-              [0, 1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex items-center gap-2.5 px-2 py-2">
-                  <span className="skeleton size-10 shrink-0 rounded-full" />
-                  <span className="flex-1 space-y-1.5">
-                    <span className="skeleton block h-3 w-2/3" />
-                    <span className="skeleton block h-2.5 w-1/2" />
-                  </span>
-                </div>
-              ))}
+            {loadingList && (
+              <div className="grid place-items-center py-8">
+                <LoadingMark label={null} />
+              </div>
+            )}
             {!loadingList && visibleConversations.length === 0 && (
               <p className="px-1 py-4 text-center text-xs text-muted">
                 {listQuery.trim()
@@ -1866,12 +1862,11 @@ export default function TeamChat({ user, initialRoom }: Props) {
             className="chat-bg chat-scroll relative z-0 min-h-0 min-w-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4"
             onScroll={onScroll}
           >
-            {loadingRoom &&
-              [0, 1, 2, 3].map((i) => (
-                <div key={i} className={`flex ${i % 2 ? "justify-end" : "justify-start"}`}>
-                  <span className="skeleton block h-9 w-2/3 max-w-[70%] rounded-2xl" />
-                </div>
-              ))}
+            {loadingRoom && (
+              <div className="grid min-h-40 place-items-center">
+                <LoadingMark />
+              </div>
+            )}
             {!loadingRoom && sections.length === 0 && (
               <div className="grid h-full place-items-center text-center">
                 <div>

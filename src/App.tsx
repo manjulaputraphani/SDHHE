@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { HashRouter, Route, Routes } from "react-router-dom";
+import LoadingMark from "./components/LoadingMark";
 import "./App.css";
 import Layout from "./components/Layout";
 import { DbProvider } from "./lib/db-context";
@@ -103,7 +104,11 @@ export default function App() {
   }, [phase]);
 
   if (phase === "loading") {
-    return <main className="p-8 text-sm text-muted">Loading…</main>;
+    return (
+      <main className="grid min-h-screen place-items-center">
+        <LoadingMark />
+      </main>
+    );
   }
 
   if (phase === "setup") {

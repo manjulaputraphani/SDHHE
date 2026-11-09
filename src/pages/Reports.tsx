@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useDb } from "../lib/db-context";
+import LoadingMark from "../components/LoadingMark";
 import { dealProfits, finYearOptions, finYearReport, type DealProfit, type FinYearReport } from "../db/reports";
 import { formatQuantity, formatRupees, type Unit } from "../logic/units";
 
@@ -173,7 +174,7 @@ export default function Reports() {
         </>
       )}
 
-      {loading && !report && <p className="text-sm text-muted">Loading…</p>}
+      {loading && !report && <LoadingMark />}
     </div>
   );
 }
