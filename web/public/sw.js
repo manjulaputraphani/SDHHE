@@ -13,10 +13,13 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("push", (event) => {
+  console.log("sw: push event received", event.data ? "with data" : "no data");
   let data = { title: "Team Chat", body: "New message", url: "/team-chat?notify=1" };
   try {
     data = { ...data, ...event.data.json() };
+    console.log("sw: push data parsed", JSON.stringify(data));
   } catch (err) {
+    console.log("sw: push data parse failed", err);
     // A payload we do not understand still shows the default text.
   }
   event.waitUntil(
@@ -26,12 +29,17 @@ self.addEventListener("push", (event) => {
       badge: "/favicon.svg",
       tag: "team-chat",
       data: { url: data.url || "/team-chat?notify=1" },
+    }).then(() => {
+      console.log("sw: notification shown", data.title);
+    }).catch((err) => {
+      console.log("sw: notification failed", err);
     }),
   );
   // Tell every open tab to play the notification sound (the OS plays its own
   // sound for closed apps; open tabs need this).
   event.waitUntil(
     self.clients.matchAll({ type: "window" }).then((clients) => {
+      console.log("sw: notifying", clients.length, "open tabs");
       for (const client of clients) {
         client.postMessage({ type: "play-notification-sound" });
       }

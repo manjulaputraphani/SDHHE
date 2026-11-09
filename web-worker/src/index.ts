@@ -610,7 +610,7 @@ function webPushConfig(env: Env) {
   return {
     publicKey: env.VAPID_PUBLIC_KEY,
     privateKey: env.VAPID_PRIVATE_KEY,
-    subject: env.VAPID_SUBJECT || "mailto:sdhhe-api.blvphani.workers.dev",
+    subject: env.VAPID_SUBJECT || "mailto:owner@sdhhe-api.blvphani.workers.dev",
   };
 }
 

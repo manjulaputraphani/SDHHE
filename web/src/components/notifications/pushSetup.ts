@@ -39,13 +39,14 @@ export async function ensurePushSubscription(): Promise<PushOutcome> {
       atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")),
       (char) => char.charCodeAt(0),
     );
-    const existing = await registration.pushManager.getSubscription();
-    const subscription =
-      existing ??
-      (await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: key as unknown as BufferSource,
-      }));
+    // Always create a FRESH subscription — the old one may be bound to a
+    // different VAPID key (VapidPkHashMismatch), so reuse is never safe.
+    const old = await registration.pushManager.getSubscription();
+    if (old) await old.unsubscribe();
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: key as unknown as BufferSource,
+    });
     const json = subscription.toJSON() as {
       endpoint?: string;
       keys?: { p256dh?: string; auth?: string };
