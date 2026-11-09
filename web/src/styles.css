@@ -67,7 +67,7 @@
   --badge-total: #c2410c; /* terracotta — total unread */
   --badge-contact: #2e8b57; /* green — per-contact unread */
   --badge-text: #ffffff;
-  --c-read: #53bdeb; /* WhatsApp-style read-receipt blue */
+  --c-read: #34b7f1; /* WhatsApp-style read-receipt blue */
 }
 
 [data-theme="dark"] {

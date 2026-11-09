@@ -5,9 +5,14 @@
  * seen it. The rows are per (message, member), so a shop room with five
  * people can show "read by 3".
  */
-import { inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { Db, TxDb } from "./client";
-import { chatMessageStates } from "./schema";
+import {
+  chatConversationMembers,
+  chatConversations,
+  chatMessageStates,
+  chatMessages,
+} from "./schema";
 import type { MemberState } from "../logic/chatStates";
 
 export type MessageMark = {
@@ -35,8 +40,13 @@ export async function markDelivered(
 /**
  * Mark the messages of a room as read by this member.
  *
- * Returns the ids that changed, so the Worker can push a "read" frame to the
- * room and the sender sees the tick turn blue at once.
+ * Marks every message `sender_id != userId` up to `messageId` (or the whole
+ * room when omitted) as read, and bumps the member's
+ * `chat_conversation_members.last_read_message_id` so the unread badge
+ * clears server-side for both 1:1 and group chats.
+ *
+ * Returns the message ids whose read state changed, so the Worker can push a
+ * "read" frame to the room.
  */
 export async function markRead(
   db: Db | TxDb,
@@ -44,9 +54,20 @@ export async function markRead(
   userId: number,
   messageId?: number,
 ): Promise<number[]> {
-  const target = messageId
-    ? sql`select m.id from chat_messages m where m.room = ${room} and m.id <= ${messageId} and m.user_id is distinct from ${userId}`
-    : sql`select m.id from chat_messages m where m.room = ${room} and m.user_id is distinct from ${userId}`;
+  // High-water mark: up to messageId when given, otherwise the newest message
+  // in the room (marking the whole room as read).
+  let highWater: number;
+  if (messageId != null && Number.isInteger(messageId) && messageId > 0) {
+    highWater = messageId;
+  } else {
+    const [maxRow] = await db
+      .select({ maxId: sql<number>`max(m.id)` })
+      .from(chatMessages)
+      .where(eq(chatMessages.room, room));
+    highWater = Number(maxRow?.maxId ?? 0);
+  }
+
+  const target = sql`select m.id from chat_messages m where m.room = ${room} and m.id <= ${highWater} and m.user_id is distinct from ${userId}`;
 
   const rows = await db.execute(sql`
     insert into chat_message_states (message_id, user_id, delivered_at, read_at)
@@ -58,7 +79,19 @@ export async function markRead(
     returning message_id
   `);
   const list = (rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
-  return (list as Array<{ message_id: number }>).map((row) => Number(row.message_id));
+  const changedIds = (list as Array<{ message_id: number }>).map((row) => Number(row.message_id));
+
+  // Bump the conversation member's high-water read pointer so the unread
+  // count (computed from last_read_message_id) drops for this room.
+  await db.execute(sql`
+    update chat_conversation_members
+    set last_read_message_id = greatest(coalesce(last_read_message_id, 0), ${highWater}),
+        last_read_at = now()
+    where user_id = ${userId}
+      and conversation_id = (select id from chat_conversations where room = ${room})
+  `);
+
+  return changedIds;
 }
 
 /** The marks of a list of messages. */

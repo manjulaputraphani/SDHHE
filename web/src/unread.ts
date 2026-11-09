@@ -51,9 +51,25 @@ export async function refreshUnread(): Promise<void> {
   }
 }
 
-/** Zero one room locally after it is opened (the server marks it read too). */
-export function markRoomRead(room: string): void {
-  if (!(state.byRoom[room] ?? 0)) return;
+/**
+ * Optimistically clear one room's badge (called when a conversation is
+ * opened). Returns a rollback that restores the previous count if the API
+ * call fails.
+ */
+export function markRoomRead(room: string): { rollback: () => void } | null {
+  const prev = state.byRoom[room];
+  if (prev == null || prev === 0) return null;
+  const prevByRoom = { ...state.byRoom };
+  setByRoom({ ...state.byRoom, [room]: 0 });
+  return {
+    rollback: () => {
+      setByRoom(prevByRoom);
+    },
+  };
+}
+
+/** Another tab/device marked this room read — clear the badge here too. */
+export function markRoomReadByOther(room: string): void {
   setByRoom({ ...state.byRoom, [room]: 0 });
 }
 

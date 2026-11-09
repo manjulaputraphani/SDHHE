@@ -38,7 +38,7 @@ import { formatRupees } from "../../../src/logic/units";
 
 import { showToast } from "./notifications/toastStore";
 import PushToggle from "./notifications/PushToggle";
-import { markRoomRead, setUnreadFromConversations } from "../unread";
+import { markRoomRead, markRoomReadByOther, setUnreadFromConversations } from "../unread";
 import {
   chatDaySections,
   conversationName,
@@ -281,6 +281,38 @@ export default function TeamChat({ user, initialRoom }: Props) {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  /** IntersectionObserver that tracks which message bubbles are visible on
+   * screen — a message only counts as "read" once it's actually visible. */
+  const ioRef = useRef<IntersectionObserver | null>(null);
+  const messageRefsRef = useRef<Map<number, HTMLDivElement>>(new Map());
+  const visibleMessageIdsRef = useRef<Set<number>>(new Set());
+  const visibleReadTimer = useRef<number | null>(null);
+
+  /** Register a message bubble with the IntersectionObserver so we know when
+   * it's actually on screen. Stable identity (reads the id from a data
+   * attribute) so React doesn't un-observe/re-observe every render. */
+  const registerMessageVisibility = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const id = Number(el.dataset.msgid);
+    if (!Number.isFinite(id)) return;
+    const prev = messageRefsRef.current.get(id);
+    if (prev && prev !== el) ioRef.current?.unobserve(prev);
+    messageRefsRef.current.set(id, el);
+    ioRef.current?.observe(el);
+  }, []);
+
+  /** Mark the currently visible messages as read (debounced, 500 ms). Only
+   * runs while the room is open, the tab is visible and the window focused. */
+  function scheduleVisibleRead(): void {
+    if (visibleReadTimer.current) window.clearTimeout(visibleReadTimer.current);
+    visibleReadTimer.current = window.setTimeout(async () => {
+      visibleReadTimer.current = null;
+      const ids = [...visibleMessageIdsRef.current];
+      if (ids.length === 0) return;
+      // Mark everything up to the newest visible message as read.
+      await api.markChatRead(room, Math.max(...ids)).catch(() => undefined);
+    }, 500);
+  }
   const canApprove = canApproveReceipts(user?.permissions);
 
   const scrollToBottom = useCallback(() => {
@@ -305,6 +337,69 @@ export default function TeamChat({ user, initialRoom }: Props) {
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
+
+  /** IntersectionObserver over the message scroll container: a message only
+   * counts as read once it's actually visible on screen. Recreated whenever
+   * the room changes so stale message ids from the previous room never leak
+   * into the read calculation. */
+  useEffect(() => {
+    visibleMessageIdsRef.current.clear();
+    ioRef.current?.disconnect();
+    ioRef.current = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const target = entry.target as HTMLElement;
+          if (!document.contains(target)) {
+            // Element was unmounted (room switched) — stop tracking it.
+            const id = Number(target.dataset.msgId);
+            if (Number.isFinite(id)) {
+              visibleMessageIdsRef.current.delete(id);
+              messageRefsRef.current.delete(id);
+            }
+            continue;
+          }
+          const id = Number(target.dataset.msgId);
+          if (!Number.isFinite(id)) continue;
+          if (entry.isIntersecting) visibleMessageIdsRef.current.add(id);
+          else visibleMessageIdsRef.current.delete(id);
+        }
+      },
+      { root: listRef.current || undefined, threshold: 0.5 },
+    );
+    // (Re)observe every message we have a reference to, so messages that
+    // mounted just before this effect ran are tracked too.
+    for (const el of messageRefsRef.current.values()) ioRef.current?.observe(el);
+    return () => {
+      ioRef.current?.disconnect();
+      ioRef.current = null;
+    };
+  }, [room]);
+
+  /** When the tab becomes visible or regains focus with a chat open, mark the
+   * messages that are on screen as read. */
+  useEffect(() => {
+    const onVisible = () => {
+      if (
+        room &&
+        document.visibilityState === "visible" &&
+        document.hasFocus()
+      ) {
+        scheduleVisibleRead();
+      }
+    };
+    const onFocus = () => {
+      if (room && document.visibilityState === "visible") {
+        scheduleVisibleRead();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+      if (visibleReadTimer.current) window.clearTimeout(visibleReadTimer.current);
+    };
+  }, [room]);
 
   /** The members of the open group (the shop room keeps the whole team). */
   const loadGroupMembers = useCallback(async (target: string) => {
@@ -453,11 +548,14 @@ export default function TeamChat({ user, initialRoom }: Props) {
               );
             } else {
               scrollToBottom();
-              // It is on screen — that is a "read".
-              void api.markChatRead(room, frame.message.id).catch(() => undefined);
             }
             // The message reached this device — tell the sender.
             void api.markChatDelivered(frame.message.id).catch(() => undefined);
+            // Mark the messages that are actually on screen as read, but only
+            // while the tab is visible and focused.
+            if (document.visibilityState === "visible" && document.hasFocus()) {
+              scheduleVisibleRead();
+            }
           }
           if (frame.type === "reaction" && typeof frame.messageId === "number") {
             const reactions = frame.reactions ?? [];
@@ -487,6 +585,13 @@ export default function TeamChat({ user, initialRoom }: Props) {
                 return { ...message, [key]: [...list, frame.userId!] };
               }),
             );
+            // Another tab/device marked this room read — clear the badge here
+            // too, so the sidebar badge, FAB and tab title stay in sync.
+            if (frame.type === "read" && frame.userId !== null && frame.userId !== undefined) {
+              if (user && frame.userId === user.id) {
+                markRoomReadByOther(room);
+              }
+            }
           }
           if (frame.type === "rename") {
             // Read the name from the list (the database), never a local copy.
@@ -684,16 +789,17 @@ export default function TeamChat({ user, initialRoom }: Props) {
     );
   }, [user?.id, user?.name]);
 
-  /** Open a conversation and mark it as read. */
+  /** Open a conversation and mark it as read (optimistically, with rollback). */
   async function openRoom(next: string) {
     setRoom(next);
     setMobileView("room");
     setError(null);
-    markRoomRead(next);
+    const rollback = markRoomRead(next);
     try {
       await api.markChatRead(next);
       await loadConversations();
     } catch (err) {
+      rollback?.rollback();
       setError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -1133,8 +1239,16 @@ export default function TeamChat({ user, initialRoom }: Props) {
     if (activeConversation?.kind === "direct") {
       return activeConversation.other ? [activeConversation.other.id] : [];
     }
-    return members.map((member) => member.id);
-  }, [activeConversation, members]);
+    return members.map((member) => member.id).filter((id) => id !== user?.id);
+  }, [activeConversation, members, user?.id]);
+  /** Members of this room who have not yet received the open message. */
+  const pendingMembers = useMemo(
+    () =>
+      members.filter(
+        (m) => m.id !== user?.id && !(infoMessage?.deliveredBy ?? []).includes(m.id),
+      ),
+    [members, user?.id, infoMessage],
+  );
   // ---- Phase 2: the list with its search, pinned chats first ----
   const visibleConversations = useMemo(() => {
     const pinnedFirst = [...conversations].sort((a, b) => {
@@ -1794,7 +1908,9 @@ export default function TeamChat({ user, initialRoom }: Props) {
                             return (
                               <div
                                 key={message.id}
-                                className="group/msg relative max-w-[80%] min-w-0 sm:max-w-[65%]"
+                                className="group/msg relative max-w-[80%] min-w-[80px] sm:max-w-[65%]"
+                                ref={registerMessageVisibility}
+                                data-msgid={String(message.id)}
                                 onPointerDown={() => {
                                   // A long press opens the action row on a phone.
                                   pressTimer.current = window.setTimeout(
@@ -1844,39 +1960,41 @@ export default function TeamChat({ user, initialRoom }: Props) {
                                           </span>
                                         </button>
                                       )}
-                                      <span>{highlightBody(message.body)}</span>
-                                      {message.aiPolished && (
-                                        <span title="Polished by AI" aria-label="Polished by AI" className="ml-0.5 text-[10px]">
-                                          ✨
-                                        </span>
-                                      )}
-                                      {message.editedAt && (
-                                        <span className="ml-1 text-[9px] italic opacity-70">edited</span>
-                                      )}
-                                      <span
-                                        className={`chat-time ml-2 inline-block align-baseline text-[10px] ${
-                                          group.mine ? "text-on-primary/70" : "text-muted"
-                                        }`}
-                                      >
-                                        {formatChatTime(message.createdAt)}
-                                      </span>
-                                      {/* The ticks live INSIDE the bubble (T-16.4). */}
-                                      {group.mine && isLast && tick && (
+                                      <div className="flex flex-col">
+                                        <span>{highlightBody(message.body)}</span>
+                                        {message.aiPolished && (
+                                          <span title="Polished by AI" aria-label="Polished by AI" className="ml-0.5 text-[10px]">
+                                            ✨
+                                          </span>
+                                        )}
+                                        {message.editedAt && (
+                                          <span className="ml-1 text-[9px] italic opacity-70">edited</span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-end justify-end gap-1 whitespace-nowrap mt-0.5">
                                         <span
-                                          className={`ml-1 text-[10px] ${
-                                            tick === "read" ? "tick-read" : "opacity-70"
+                                          className={`chat-time inline-block align-baseline text-[10px] ${
+                                            group.mine ? "text-on-primary/70" : "text-muted"
                                           }`}
-                                          title={
-                                            tick === "read"
-                                              ? "Read by everybody"
-                                              : tick === "delivered"
-                                                ? "Delivered to everybody"
-                                                : "Sent"
-                                          }
                                         >
-                                          {tick === "sent" ? "✓" : "✓✓"}
+                                          {formatChatTime(message.createdAt)}
                                         </span>
-                                      )}
+                                        {/* The ticks live INSIDE the bubble (T-16.4). */}
+                                        {group.mine && isLast && tick && (
+                                          <span
+                                            className={`text-[10px] ${tick === "read" ? "tick-read" : "opacity-70"}`}
+                                            title={
+                                              tick === "read"
+                                                ? "Read by everybody"
+                                                : tick === "delivered"
+                                                  ? "Delivered to everybody"
+                                                  : "Sent"
+                                            }
+                                          >
+                                            {tick === "sent" ? "✓" : "✓✓"}
+                                          </span>
+                                        )}
+                                      </div>
                                     </>
                                   )}
                                 </div>
@@ -2559,24 +2677,68 @@ export default function TeamChat({ user, initialRoom }: Props) {
             <p className="text-xs text-muted">
               {infoMessage.author} · sent {formatChatTime(infoMessage.createdAt)}
             </p>
-            <p className="text-xs text-muted">
-              Seen by:{" "}
-              {(infoMessage.readBy ?? []).length > 0
-                ? (infoMessage.readBy ?? [])
-                    .map((id) => members.find((m) => m.id === id)?.name ?? `#${id}`)
-                    .join(", ")
-                : "nobody yet"}
-            </p>
-            <p className="text-xs text-muted">
-              Delivered to:{" "}
-              {(infoMessage.deliveredBy ?? []).length > 0
-                ? (infoMessage.deliveredBy ?? [])
-                    .map((id) => members.find((m) => m.id === id)?.name ?? `#${id}`)
-                    .join(", ")
-                : "nobody yet"}
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-ink">Seen by (read)</p>
+              {(infoMessage.readBy ?? []).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {(infoMessage.readBy ?? []).map((id) => {
+                    const m = members.find((x) => x.id === id);
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px]"
+                      >
+                        <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
+                          {m ? initials(m.name) : "#"}
+                        </span>
+                        {m ? m.name : `#${id}`}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted">nobody yet</p>
+              )}
+              <p className="text-xs font-semibold text-ink">Delivered to</p>
+              {(infoMessage.deliveredBy ?? []).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {(infoMessage.deliveredBy ?? []).map((id) => {
+                    const m = members.find((x) => x.id === id);
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px]"
+                      >
+                        <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
+                          {m ? initials(m.name) : "#"}
+                        </span>
+                        {m ? m.name : `#${id}`}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted">nobody yet</p>
+              )}
+              {/* Members who have not received the message yet. */}
+              <p className="text-xs font-semibold text-ink">Pending</p>
+              <div className="flex flex-wrap gap-1.5">
+                {pendingMembers.map((m) => (
+                  <span
+                    key={m.id}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] text-muted"
+                  >
+                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
+                      {initials(m.name)}
+                    </span>
+                    {m.name}
+                  </span>
+                ))}
+                {pendingMembers.length === 0 && <p className="text-xs text-muted">none</p>}
+              </div>
+              </div>
+            </div>
           </div>
-        </div>
       )}
 
       {error && (
