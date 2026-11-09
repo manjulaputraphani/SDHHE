@@ -1299,8 +1299,10 @@ export default function TeamChat({ user, initialRoom }: Props) {
     }
     return members.map((member) => member.id).filter((id) => id !== user?.id);
   }, [activeConversation, members, room, user?.id]);
-  /** The Message info panel's rows (the 1:1 fix). */
-  const isDirectInfo = activeConversation?.kind === "direct";
+  /** The Message info panel's rows (the 1:1 fix). A 1:1 chat is decided by the
+   *  ROOM NAME (dm-<a>-<b>), never by a possibly broken conversation row — a
+   *  1:1 panel must never fall back to the group lists (no Pending). */
+  const isDirectInfo = membersOf(room) != null || activeConversation?.kind === "direct";
   const infoReceipts = useMemo(() => infoData?.receipts ?? [], [infoData]);
   const infoRead = useMemo(() => infoReceipts.filter((r) => r.readAt !== null), [infoReceipts]);
   const infoDelivered = useMemo(
