@@ -38,7 +38,7 @@ suite("Team Chat — read marks clear unread (groups + 1:1)", () => {
     }
 
     // RAVI sends two messages to the shop room.
-    const m1 = await insertMessage(db!, {
+    await insertMessage(db!, {
       userId: ravi.id,
       author: "RAVI",
       role: "staff",

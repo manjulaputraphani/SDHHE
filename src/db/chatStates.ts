@@ -7,12 +7,7 @@
  */
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db, TxDb } from "./client";
-import {
-  chatConversationMembers,
-  chatConversations,
-  chatMessageStates,
-  chatMessages,
-} from "./schema";
+import { chatMessageStates, chatMessages } from "./schema";
 import type { MemberState } from "../logic/chatStates";
 
 export type MessageMark = {
