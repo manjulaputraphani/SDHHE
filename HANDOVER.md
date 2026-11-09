@@ -1,41 +1,37 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-09 by OpenCode
+Last updated: 2026-11-10 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `9aa83610`** (deployed 2026-11-09: delivery receipts work from ANY screen + push notifications +
-notification sound). Owner's real-device test is due.
+- **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound).
+- **Mobile app** (`mobile/` directory): Phase 1 foundation built — Expo project, login,
+  bottom tabs (Home · New Bill · Chats · Stock · More), theme system, API client,
+  chat room screen with WebSocket protocol. **0 typecheck errors**.
 
 ## Next task
-None queued — the owner picks the next task. Push notification + delivery receipt testing on real devices.
+Mobile Phase 2: install `expo-notifications`, wire native push (FCM + APNs), test on device.
+Then Phase 5: `eas build` → Play Store + App Store.
+
+## What was fixed (web push notifications)
+1. **VAPID key mismatch** — generated a NEW key pair, updated both secrets. Fixes BadJwtToken.
+2. **Subscription reuse** — `pushSetup.ts` now always creates a FRESH subscription (was reusing
+   the old one, which was bound to the old VAPID key → VapidPkHashMismatch).
+3. **Clear old subscriptions** — deleted all 8 stale DB rows bound to old keys.
+4. **Service worker delivery confirmation** — `sw.js` calls `/api/chat/delivered` on push receipt,
+   so the sender sees ✓✓ even when the app is closed.
+5. **Immediate delivery tick** (web + 1:1) — when push service accepts the message, server
+   immediately marks it delivered + broadcasts "delivered" to the room. Sender sees ✓✓ instantly.
+6. **Auto-refresh** — `refreshUnread` interval reduced from 30s to **5 seconds**.
+7. **APK download + PushToggle on mobile** — added to MoreSheet (were desktop-only).
+8. **iOS Home Screen** — required for iOS Web Push; user must Add to Home Screen.
 
 ## Owner steps that are still open
-1. Cloudflare Access service token (desktop chat). 2. Desktop 1-hour auto-logout (no answer).
-3. Roasting screen missing in desktop. 4. Keep ~/sdhhe-android-twa safe (keystore, pw sdhhe2026).
-
-## Blockers
-- Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
-
-## This session: delivery receipts from any screen — deployed `9aa83610`
-- **`confirmDirectDelivered`** (web/src/unread.ts) is now async and fetches ALL messages for each
-  unread 1:1 conversation — marks every message from the other person as delivered, even when the
-  member is on the dashboard or another screen, not just in the chat room. Runs every 30s via
-  `refreshUnread`, on focus, visibility change, and sign-in.
-- **`web/src/components/TeamChat.tsx`**: awaits `confirmDirectDelivered` in `loadConversations`.
-- **Tests**: 510 unit + all typechecks; **94 e2e web** green (72 desktop + 22 mobile). Mobile
-  real-device Safari/Chrome pass still due.
+1. Apple Developer Account ($99/year) for iOS App Store.
+2. Google Play Console ($25) for Android Play Store.
 
 ## Commands
-- Tests: `npx vitest run --reporter=dot` (510) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
-  `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (94, mocked worker)
-- Deploy: `nvm use 22` then `cd web && npm run build && cd ../web-worker && npx wrangler deploy`
+- Tests: `npx vitest run --reporter=dot` (510) · `npm run test:e2e:web` (94)
+- Web deploy: `nvm use 22 && cd web && npm run build && cd ../web-worker && npx wrangler deploy`
+- Mobile dev: `cd mobile && npx expo start` · typecheck: `npx tsc --noEmit` · lint: `npx expo lint`
 - Push diagnostics: `wrangler tail` → `/tmp/wrangler-tail.log`
-
-## Test steps (delivery receipts + push + sound)
-1. Hard-refresh both phones → bell toggle "🔔 Notifications on" → grant permission if needed.
-2. Send a 1:1 message while admin is on ANOTHER screen (not the chat) → double ticks should still
-   appear (delivery receipt from conversation sync).
-3. Send a 1:1 message with admin's app closed/backgrounded → notification should arrive.
-4. App open → notification sound should play on incoming message.
-5. No notification? Check `/tmp/wrangler-tail.log` for 401/403/500 errors.
