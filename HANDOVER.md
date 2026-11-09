@@ -1,6 +1,6 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-07 by OpenCode
+Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
@@ -44,17 +44,10 @@ Full task list in docs/BUILD_PLAN.md (Phase 17).
 - messages GET carries reactions; messages POST carries replyToId + mentions (personal push)
 - Frames: "update", "reaction", "pins" (+ "settings"/"members" from earlier phases)
 
-## Owner steps that are still open
-1. ~~Deploy~~ DONE 2026-11-07 — migrations 0018/0019 applied + verified, web bundle rebuilt,
-   worker deployed (`ad00db7f`). Try signed in: hover a bubble for the actions, ↩ reply, 😊 react,
-   📌 pin (owner), search 🔍 with ↑↓, @mention someone, and the 🧾 approvals badge.
-2. Desktop chat → Worker blocked by Cloudflare Access until a service token exists.
-3. Desktop 1-hour auto-logout (owner has not answered). 4. Roasting screen missing in desktop.
-
 ## Blockers
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
 
 ## Commands
 - Tests: `npx vitest run --reporter=dot` (494) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
-  `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (68, mocked worker)
+  `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (70, mocked worker)
 - Deploy (ask first): `cd web && npm run build && cd ../web-worker && npx wrangler deploy`
