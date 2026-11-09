@@ -4,8 +4,7 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `d0085094` (mobile-login polish shipped).**
-**Read receipts / unread badges fixed (committed, NOT deployed yet)** — see "This session".
+**LIVE `db5978c0` (read receipts / unread badges shipped).**
 
 ## Next task
 None queued — the owner picks the next task.
@@ -18,7 +17,7 @@ None queued — the owner picks the next task.
 ## Blockers
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
 
-## This session (committed, not deployed): read receipts + unread badges
+## This session (deployed): read receipts + unread badges
 - **Root cause**: `POST /api/chat/read` wrote `chat_message_states.read_at` (ticks) but never
   bumped `chat_conversation_members.last_read_message_id`, which `listConversations`/`unreadCount`
   compute the badge from — group and 1:1 badges never cleared server-side.
