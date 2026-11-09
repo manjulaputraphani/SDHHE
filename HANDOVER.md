@@ -52,4 +52,5 @@ None queued — the owner picks the next task.
 ## Commands
 - Tests: `npx vitest run --reporter=dot` (494) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
   `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (70, mocked worker)
-- Deploy (ask first): `cd web && npm run build && cd ../web-worker && npx wrangler deploy`
+- Deploy (ask first): `nvm use 22` (wrangler 4.158 requires Node ≥22) then
+  `cd web && npm run build && cd ../web-worker && npx wrangler deploy`
