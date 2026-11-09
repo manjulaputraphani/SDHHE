@@ -4,12 +4,15 @@ import { insertMessage } from "./chat";
 import {
   SHARED_ROOM,
   addConversationMember,
+  conversationRecipients,
+  ensureDirectConversation,
   ensureGroupConversation,
   isMember,
   listConversations,
   markRead,
   unreadCount,
 } from "./chatRooms";
+import { markDelivered, receiptsForMessage } from "./chatStates";
 import { appUsers } from "./schema";
 
 const db = await setupTestDb();
@@ -93,5 +96,45 @@ suite("Team Chat — read marks clear unread (groups + 1:1)", () => {
     expect(await unreadCount(db!, a.id)).toBe(1);
     await markRead(db!, conversation!.room, a.id);
     expect(await unreadCount(db!, a.id)).toBe(0);
+  });
+
+  it("never writes a receipt for the sender, and the recipients are the conversation's own", async () => {
+    const [me, other, third] = await db!
+      .insert(appUsers)
+      .values([
+        { name: "ME", phone: "9000000020", passwordHash: "x", role: "owner" },
+        { name: "OTHER", phone: "9000000021", passwordHash: "x", role: "staff" },
+        { name: "THIRD", phone: "9000000022", passwordHash: "x", role: "staff" },
+      ])
+      .returning();
+
+    // A 1:1 chat between me and OTHER. THIRD is on the team but NOT in it.
+    const conversation = await ensureDirectConversation(db!, me.id, other.id);
+    const message = await insertMessage(db!, {
+      userId: me.id,
+      author: "ME",
+      role: "owner",
+      kind: "text",
+      body: "hello",
+      room: conversation!.room,
+    });
+
+    // The sender cannot mark their own message delivered — no receipt.
+    expect(await markDelivered(db!, message.id, me.id)).toBe(false);
+    // …and marking it read never writes a row for the sender either.
+    expect(await markRead(db!, conversation!.room, me.id, message.id)).toEqual([]);
+    expect(await receiptsForMessage(db!, message.id)).toEqual([]);
+
+    // The receiver gets their receipt (the receiver's user_id is saved).
+    expect(await markDelivered(db!, message.id, other.id)).toBe(true);
+    const receipts = await receiptsForMessage(db!, message.id, me.id);
+    expect(receipts.map((entry) => entry.userId)).toEqual([other.id]);
+    expect(receipts[0]!.name).toBe("OTHER");
+
+    // The recipients are the members of THIS conversation minus the sender —
+    // never the team: THIRD is not a recipient of a 1:1 chat.
+    const recipients = await conversationRecipients(db!, conversation!.room, me.id);
+    expect(recipients.map((entry) => entry.id)).toEqual([other.id]);
+    expect(recipients.map((entry) => entry.id)).not.toContain(third.id);
   });
 });

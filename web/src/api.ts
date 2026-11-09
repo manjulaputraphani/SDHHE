@@ -1,4 +1,5 @@
 import type { Role, RolePermissions } from "../../src/logic/permissions";
+import type { MessageInfo } from "../../src/logic/messageInfo";
 
 export type User = { id: number; name: string; role: Role; permissions: RolePermissions };
 
@@ -79,7 +80,7 @@ export type ChatConversation = {
   unread: number;
   lastMessageAt: string | null;
   /** The newest message — the one-line preview in the chat list (Phase 2). */
-  lastMessage?: { author: string; body: string; kind: string; createdAt: string } | null;
+  lastMessage?: { id: number; userId: number | null; author: string; body: string; kind: string; createdAt: string } | null;
 };
 
 /** A member of the shop (who may be chatted with). */
@@ -654,6 +655,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ room, messageId }),
     }),
+  /**
+   * Message info (the 1:1 fix): the recipients of one message (the
+   * conversation's members minus the sender) and their receipts, each with
+   * the joined user data (id, name, initials, avatar).
+   */
+  chatMessageInfo: (messageId: number) =>
+    request<MessageInfo>(`/api/chat/messages/${messageId}/info`),
   // ---- The notification system (Phase 15) ----
   notifications: () => request<NotificationBootstrap>("/api/notifications"),
   dismissAnnouncement: (id: number) =>

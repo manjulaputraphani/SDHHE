@@ -7,7 +7,7 @@
  */
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db, TxDb } from "./client";
-import { chatMessageStates, chatMessages } from "./schema";
+import { appUsers, chatMessageStates, chatMessages } from "./schema";
 import type { MemberState } from "../logic/chatStates";
 
 export type MessageMark = {
@@ -17,19 +17,29 @@ export type MessageMark = {
   read: boolean;
 };
 
-/** Mark a message as delivered to this member (their device got it). */
+/**
+ * Mark a message as delivered to this member (their device got it).
+ *
+ * The sender NEVER gets a receipt for their own message — the row is only
+ * written when `userId` is somebody else. Returns whether a row exists now
+ * (false for an own message), so the caller can skip the broadcast too.
+ */
 export async function markDelivered(
   db: Db | TxDb,
   messageId: number,
   userId: number,
-): Promise<void> {
-  await db
-    .insert(chatMessageStates)
-    .values({ messageId, userId, deliveredAt: new Date() })
-    .onConflictDoUpdate({
-      target: [chatMessageStates.messageId, chatMessageStates.userId],
-      set: { deliveredAt: sql`coalesce(${chatMessageStates.deliveredAt}, now())` },
-    });
+): Promise<boolean> {
+  const rows = await db.execute(sql`
+    insert into chat_message_states (message_id, user_id, delivered_at)
+    select m.id, ${userId}, now()
+    from chat_messages m
+    where m.id = ${messageId} and m.user_id is distinct from ${userId}
+    on conflict (message_id, user_id) do update
+      set delivered_at = coalesce(chat_message_states.delivered_at, now())
+    returning message_id
+  `);
+  const list = (rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
+  return (list as unknown[]).length > 0;
 }
 
 /**
@@ -109,13 +119,13 @@ export async function statesForMessages(
     .where(inArray(chatMessageStates.messageId, messageIds));
 
   for (const row of rows) {
-    const list = result.get(row.messageId) ?? [];
+    const list = result.get(Number(row.messageId)) ?? [];
     list.push({
-      userId: row.userId,
+      userId: Number(row.userId),
       delivered: row.deliveredAt !== null,
       read: row.readAt !== null,
     });
-    result.set(row.messageId, list);
+    result.set(Number(row.messageId), list);
   }
   return result;
 }
@@ -127,4 +137,45 @@ export async function statesForMessage(
 ): Promise<MemberState[]> {
   const map = await statesForMessages(db, [messageId]);
   return map.get(messageId) ?? [];
+}
+
+/** One receipt of a message, with the user joined in (null name = gone user). */
+export type MessageReceiptRow = {
+  userId: number;
+  name: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+};
+
+/**
+ * The receipts of one message for the Message info panel.
+ *
+ * The user is joined in (LEFT JOIN, so a receipt survives its user); the
+ * caller renders "Unknown member" when the name is null. `excludeUserId`
+ * leaves out the sender — the sender is never a recipient of their own
+ * message.
+ */
+export async function receiptsForMessage(
+  db: Db,
+  messageId: number,
+  excludeUserId?: number | null,
+): Promise<MessageReceiptRow[]> {
+  const rows = await db
+    .select({
+      userId: chatMessageStates.userId,
+      name: appUsers.name,
+      deliveredAt: chatMessageStates.deliveredAt,
+      readAt: chatMessageStates.readAt,
+    })
+    .from(chatMessageStates)
+    .leftJoin(appUsers, eq(appUsers.id, chatMessageStates.userId))
+    .where(eq(chatMessageStates.messageId, messageId));
+  return rows
+    .map((row) => ({
+      userId: Number(row.userId),
+      name: row.name ?? null,
+      deliveredAt: row.deliveredAt ? new Date(row.deliveredAt).toISOString() : null,
+      readAt: row.readAt ? new Date(row.readAt).toISOString() : null,
+    }))
+    .filter((row) => excludeUserId == null || row.userId !== excludeUserId);
 }

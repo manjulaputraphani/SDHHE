@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  directMessagesToConfirm,
   getUnread,
   markRoomRead,
   markRoomReadByOther,
@@ -45,5 +46,30 @@ describe("unread store", () => {
     markRoomReadByOther("main");
     expect(calls).toContain(0);
     unsub();
+  });
+});
+
+describe("1:1 delivered from the conversation sync", () => {
+  const conversation = (over: Partial<{ kind: "group" | "direct"; unread: number; lastMessage: { id?: number; userId?: number | null } | null }>) => ({
+    kind: "direct" as const,
+    unread: 1,
+    lastMessage: { id: 7, userId: 2 },
+    ...over,
+  });
+
+  it("confirms the newest message of an unread 1:1 chat", () => {
+    expect(directMessagesToConfirm([conversation({})], 1)).toEqual([7]);
+  });
+
+  it("never confirms my OWN message (the sender gets no receipt)", () => {
+    expect(directMessagesToConfirm([conversation({ lastMessage: { id: 7, userId: 1 } })], 1)).toEqual([]);
+    expect(directMessagesToConfirm([conversation({ lastMessage: { id: 7, userId: null } })], 1)).toEqual([]);
+  });
+
+  it("ignores groups, read chats and chats without a known message", () => {
+    expect(directMessagesToConfirm([conversation({ kind: "group" })], 1)).toEqual([]);
+    expect(directMessagesToConfirm([conversation({ unread: 0 })], 1)).toEqual([]);
+    expect(directMessagesToConfirm([conversation({ lastMessage: null })], 1)).toEqual([]);
+    expect(directMessagesToConfirm([conversation({})], null)).toEqual([]);
   });
 });

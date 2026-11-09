@@ -50,6 +50,7 @@ import {
   listPinnedMessages,
   listReactionsForMessages,
   listReceipts,
+  messageContext,
   messageRoom,
   parseMessageInput,
   pendingReceiptCount,
@@ -63,6 +64,7 @@ updateMessage,
 import {
   addConversationMember,
   archiveConversation,
+  conversationRecipients,
   conversationTitle,
   createGroupConversation,
   ensureDirectConversation,
@@ -79,7 +81,13 @@ import {
   SHARED_ROOM,
   unreadCount,
 } from "../../src/db/chatRooms";
-import { markDelivered, markRead as markMessageRead, statesForMessages } from "../../src/db/chatStates";
+import {
+  markDelivered,
+  markRead as markMessageRead,
+  receiptsForMessage,
+  statesForMessages,
+} from "../../src/db/chatStates";
+import { initials } from "../../src/logic/chatView";
 import {
   buildDecisionMail,
   buildPushText,
@@ -255,6 +263,8 @@ function routePermission(
   // ---- Team Chat (Phase 12) ----
   if (pathname === "/api/chat/auth") return null; // the caller proves who they are
   if (pathname === "/api/chat/messages") return { module: "chat", action: read ? "view" : "create" };
+  // Message info (the 1:1 fix): who got / read one message — read-only.
+  if (/^\/api\/chat\/messages\/\d+\/info$/.test(pathname)) return { module: "chat", action: "view" };
   if (/^\/api\/chat\/messages\/\d+$/.test(pathname) && method === "PATCH") {
     return { module: "chat", action: "edit" };
   }
@@ -1535,14 +1545,52 @@ const handler = {
         );
         const withMarks = messages.map((message) => {
           const states = marks.get(message.id) ?? [];
+          // The sender is NEVER a recipient of their own message — their rows
+          // (dirty data from before the fix) never reach the client.
+          const senderId = message.userId == null ? null : Number(message.userId);
+          const notMine = (state: { userId: number }) =>
+            senderId == null || Number(state.userId) !== senderId;
           return {
             ...message,
-            deliveredBy: states.filter((state) => state.delivered).map((state) => state.userId),
-            readBy: states.filter((state) => state.read).map((state) => state.userId),
+            deliveredBy: states
+              .filter((state) => state.delivered && notMine(state))
+              .map((state) => Number(state.userId)),
+            readBy: states.filter((state) => state.read && notMine(state)).map((state) => Number(state.userId)),
             reactions: reactions.get(message.id) ?? [],
           };
         });
         return json({ messages: withMarks });
+      }
+
+      // ---- Message info (the 1:1 fix): the recipients and their receipts ----
+      const messageInfoMatch = url.pathname.match(/^\/api\/chat\/messages\/(\d+)\/info$/);
+      if (messageInfoMatch && request.method === "GET") {
+        const id = Number(messageInfoMatch[1]);
+        const target = await messageContext(db, id);
+        if (!target || !(await chatRoomMember(db, target.room, session.uid))) {
+          return json({ error: "Not allowed: chat view" }, { status: 403 });
+        }
+        // The recipients are the members of THIS conversation, minus the
+        // sender — never the team or the all-users list.
+        const [recipients, receipts] = await Promise.all([
+          conversationRecipients(db, target.room, target.userId),
+          receiptsForMessage(db, id, target.userId),
+        ]);
+        const userOf = (userId: number, name: string | null) => ({
+          id: userId,
+          name,
+          initials: name ? initials(name) : null,
+          avatar: null as string | null,
+        });
+        return json({
+          recipients: recipients.map((entry) => userOf(entry.id, entry.name)),
+          receipts: receipts.map((entry) => ({
+            userId: entry.userId,
+            user: userOf(entry.userId, entry.name),
+            deliveredAt: entry.deliveredAt,
+            readAt: entry.readAt,
+          })),
+        });
       }
 
       if (url.pathname === "/api/chat/receipts" && request.method === "GET") {
@@ -2099,6 +2147,8 @@ const handler = {
           return json({ error: "Not allowed: chat view" }, { status: 403 });
         }
         const messageId = Number(body.messageId ?? 0);
+        // The receiver's user_id (session.uid) is saved; the sender NEVER gets
+        // a receipt for their own message (markMessageRead skips those rows).
         const readIds = await markMessageRead(
           db,
           room,
@@ -2126,16 +2176,23 @@ const handler = {
         if (!Number.isInteger(messageId) || messageId <= 0) {
           return json({ error: "Which message?" }, { status: 400 });
         }
-        const room = await messageRoom(db, messageId);
-        if (!room || !(await chatRoomMember(db, room, session.uid))) {
+        const target = await messageContext(db, messageId);
+        if (!target || !(await chatRoomMember(db, target.room, session.uid))) {
           return json({ error: "Not allowed: chat view" }, { status: 403 });
         }
-        await markDelivered(db, messageId, session.uid);
-        await broadcastToChat(
-          env,
-          { type: "delivered", messageIds: [messageId], userId: session.uid, name: session.name },
-          room,
-        );
+        // NEVER a receipt for the sender: my own message cannot be "delivered
+        // to me". No row, no broadcast — the tick stays on the real receiver.
+        if (target.userId != null && Number(target.userId) === session.uid) {
+          return json({ ok: true, own: true });
+        }
+        const marked = await markDelivered(db, messageId, session.uid);
+        if (marked) {
+          await broadcastToChat(
+            env,
+            { type: "delivered", messageIds: [messageId], userId: session.uid, name: session.name },
+            target.room,
+          );
+        }
         return json({ ok: true });
       }
 

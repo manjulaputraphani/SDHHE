@@ -30,8 +30,8 @@ export type ChatConversation = {
   other: ChatMember | null;
   unread: number;
   lastMessageAt: string | null;
-  /** The newest message of the room — shown as a one-line preview in the list (Phase 2). */
-  lastMessage: { author: string; body: string; kind: string; createdAt: string } | null;
+  /** The newest message — the one-line preview in the chat list (Phase 2). */
+  lastMessage: { id: number; userId: number | null; author: string; body: string; kind: string; createdAt: string } | null;
   /** AI polish (Phase 15): the owner turned it on for this group. */
   aiPolish: boolean;
 };
@@ -214,6 +214,8 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
            (select max(m.created_at) from chat_messages m where m.room = c.room)::text as last_message_at,
             (
               select json_build_object(
+                'id', m.id,
+                'userId', m.user_id,
                 'author', m.author, 'body', m.body, 'kind', m.kind, 'createdAt', m.created_at
               )
               from chat_messages m where m.room = c.room
@@ -242,7 +244,7 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     ai_polish: boolean;
     unread: number;
     last_message_at: string | null;
-    last_message: { author: string; body: string; kind: string; createdAt: Date | string } | null;
+    last_message: { id: number; userId: number | null; author: string; body: string; kind: string; createdAt: Date | string } | null;
     other: ChatMember | null;
   }>).map((row) => ({
     id: row.id,
@@ -255,6 +257,8 @@ export async function listConversations(db: Db, userId: number): Promise<ChatCon
     aiPolish: Boolean(row.ai_polish),
     lastMessage: row.last_message
       ? {
+          id: Number(row.last_message.id ?? 0),
+          userId: row.last_message.userId == null ? null : Number(row.last_message.userId),
           author: row.last_message.author,
           body: row.last_message.body,
           kind: row.last_message.kind,
@@ -433,6 +437,30 @@ export async function listConversationMembers(
     role: row.role,
     lastSeenAt: row.lastSeenAt ? new Date(row.lastSeenAt).toISOString() : null,
   }));
+}
+
+/**
+ * The recipients of a message: the members of THAT conversation, minus the
+ * sender. Never the team or the all-users list — a private chat has exactly
+ * one recipient (the other member), a group has its own roster.
+ *
+ * The user is LEFT-joined in, so a member whose user row is gone still shows
+ * up ("Unknown member" in the panel) instead of vanishing silently.
+ */
+export async function conversationRecipients(
+  db: Db | TxDb,
+  room: string,
+  excludeUserId?: number | null,
+): Promise<{ id: number; name: string | null }[]> {
+  const rows = await db
+    .select({ id: chatConversationMembers.userId, name: appUsers.name })
+    .from(chatConversationMembers)
+    .innerJoin(chatConversations, eq(chatConversations.id, chatConversationMembers.conversationId))
+    .leftJoin(appUsers, eq(appUsers.id, chatConversationMembers.userId))
+    .where(and(eq(chatConversations.room, room), isNull(chatConversations.archivedAt)));
+  return rows
+    .map((row) => ({ id: Number(row.id), name: row.name ?? null }))
+    .filter((row) => excludeUserId == null || row.id !== excludeUserId);
 }
 
 /** Add a member to an owner-made group (false: not a live group, or a made-up id). */

@@ -380,6 +380,24 @@ async function mockChat(
     }
     await route.fulfill({ json: { messages: MESSAGES } });
   });
+  // Message info (the 1:1 fix): the conversation's own members + receipts,
+  // each with its joined user data. Never the team, never a raw "#id".
+  const infoAt = new Date(Date.now() - 60_000).toISOString();
+  await page.route("**/api/chat/messages/*/info**", (route) =>
+    route.fulfill({
+      json: {
+        recipients: [{ id: 4, name: "RAJU", initials: "RA", avatar: null }],
+        receipts: [
+          {
+            userId: 4,
+            user: { id: 4, name: "RAJU", initials: "RA", avatar: null },
+            deliveredAt: infoAt,
+            readAt: infoAt,
+          },
+        ],
+      },
+    }),
+  );
   await page.route("**/api/chat/receipts**", async (route) => {
     const request = route.request();
     if (request.method() === "POST" && request.url().endsWith("/decision")) {
@@ -830,5 +848,43 @@ test.describe("Team Chat", () => {
     await page.locator('[aria-label="RAJU: Baki stock ki kya rate badha?"]').hover();
     await expect(page.getByRole("button", { name: "Edit message" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Delete message" })).toBeVisible();
+  });
+
+  // ---- Message info (the 1:1 fix) ----
+  test("the 1:1 Message info shows Read / Delivered times only", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+    // The private chat with RAJU.
+    await page.getByRole("button", { name: /RAJU/ }).click();
+    await page.locator('[aria-label="B PHANI KUMAR: ₹96/kg — kal 20 kg laya tha"]').hover();
+    await page.getByRole("button", { name: "Message info" }).click();
+
+    await expect(page.getByRole("heading", { name: "Message info" })).toBeVisible();
+    // The bubble preview, then exactly two rows with their times.
+    await expect(page.getByText("Read", { exact: true })).toBeVisible();
+    await expect(page.getByText("Delivered", { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Today, \d{2}:\d{2} (AM|PM)$/)).toHaveCount(2);
+    // No Pending, no member chips, and never a raw "#id".
+    await expect(page.getByText("Pending", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Seen by (read)")).toHaveCount(0);
+    await expect(page.getByText("Delivered to", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/#\d+/)).toHaveCount(0);
+  });
+
+  test("group Message info keeps Read by / Delivered to / Pending", async ({ page }) => {
+    await mockChat(page, OWNER);
+    await openChat(page);
+    await page.locator('[aria-label="B PHANI KUMAR: ₹96/kg — kal 20 kg laya tha"]').hover();
+    await page.getByRole("button", { name: "Message info" }).click();
+
+    await expect(page.getByRole("heading", { name: "Message info" })).toBeVisible();
+    await expect(page.getByText("Seen by (read)")).toBeVisible();
+    await expect(page.getByText("Delivered to", { exact: true })).toBeVisible();
+    await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+    // The chips carry real names from the joined user data — never "#id".
+    await expect(page.getByText("RAJU").first()).toBeVisible();
+    await expect(page.getByText(/#\d+/)).toHaveCount(0);
+    // Nobody of this conversation is still waiting.
+    await expect(page.getByText("none")).toBeVisible();
   });
 });

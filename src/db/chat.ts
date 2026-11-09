@@ -666,6 +666,20 @@ export async function messageRoom(db: Db, messageId: number): Promise<string | n
   return row?.room ?? null;
 }
 
+/** The room and the sender of one message (null when it does not exist). */
+export async function messageContext(
+  db: Db,
+  messageId: number,
+): Promise<{ room: string; userId: number | null } | null> {
+  const [row] = await db
+    .select({ room: chatMessages.room, userId: chatMessages.userId })
+    .from(chatMessages)
+    .where(eq(chatMessages.id, messageId))
+    .limit(1);
+  if (!row) return null;
+  return { room: row.room, userId: row.userId ?? null };
+}
+
 /** One receipt by id. */
 export async function getReceipt(db: Db | TxDb, id: number): Promise<ReceiptRequest | null> {
   const rows = (await db

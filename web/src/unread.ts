@@ -40,12 +40,14 @@ export function onlyUnreadRoom(): string | null {
 }
 
 /** Pull the conversation list and republish the unread counts. */
-export async function refreshUnread(): Promise<void> {
+export async function refreshUnread(myId?: number | null): Promise<void> {
   try {
     const { conversations } = await api.chatConversations();
     const byRoom: Record<string, number> = {};
     for (const conversation of conversations) byRoom[conversation.room] = conversation.unread;
     setByRoom(byRoom);
+    // A 1:1 message that reached this device is delivered to its owner.
+    confirmDirectDelivered(conversations, myId);
   } catch {
     // Offline or not signed in — keep whatever we have.
   }
@@ -78,4 +80,62 @@ export function setUnreadFromConversations(conversations: { room: string; unread
   const byRoom: Record<string, number> = {};
   for (const conversation of conversations) byRoom[conversation.room] = conversation.unread;
   setByRoom(byRoom);
+}
+
+// ---- "Delivered" for 1:1 chats (the Message info fix) ----
+
+/**
+ * The messages that just reached THIS device: the newest message of a 1:1
+ * chat with unread messages from the other person. Pure — the caller decides
+ * what to do with the ids (see `confirmDirectDelivered`).
+ *
+ * Groups keep their socket-only delivered flow; only private chats confirm
+ * from the conversation sync.
+ */
+export function directMessagesToConfirm(
+  conversations: {
+    kind: "group" | "direct";
+    unread: number;
+    lastMessage?: { id?: number; userId?: number | null } | null;
+  }[],
+  myId: number | null | undefined,
+): number[] {
+  if (myId == null) return [];
+  const ids: number[] = [];
+  for (const conversation of conversations) {
+    if (conversation.kind !== "direct") continue;
+    if (!(conversation.unread > 0)) continue;
+    const last = conversation.lastMessage;
+    if (!last || typeof last.id !== "number") continue;
+    // Never confirm my OWN message — the sender gets no receipt.
+    if (last.userId == null || last.userId === myId) continue;
+    ids.push(last.id);
+  }
+  return ids;
+}
+
+/** Ids already confirmed in this browser (a sync repeats every 30 s). */
+const confirmedDelivered = new Set<number>();
+
+/**
+ * Tell the sender "my device has it" for the newest message of every 1:1 chat
+ * with unread messages. Fire-and-forget and idempotent (the server keeps the
+ * first delivered time).
+ */
+export function confirmDirectDelivered(
+  conversations: {
+    kind: "group" | "direct";
+    unread: number;
+    lastMessage?: { id?: number; userId?: number | null } | null;
+  }[],
+  myId: number | null | undefined,
+): void {
+  for (const id of directMessagesToConfirm(conversations, myId)) {
+    if (confirmedDelivered.has(id)) continue;
+    confirmedDelivered.add(id);
+    void api.markChatDelivered(id).catch(() => {
+      // A failed call is retried at the next sync.
+      confirmedDelivered.delete(id);
+    });
+  }
 }

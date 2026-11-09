@@ -489,14 +489,14 @@ export default function App() {
   // timer so the badges stay fresh without a page refresh.
   useEffect(() => {
     if (!user) return;
-    void refreshUnread();
-    const onFocus = () => void refreshUnread();
+    void refreshUnread(user.id);
+    const onFocus = () => void refreshUnread(user.id);
     const onVisible = () => {
-      if (document.visibilityState === "visible") void refreshUnread();
+      if (document.visibilityState === "visible") void refreshUnread(user.id);
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
-    const timer = window.setInterval(() => void refreshUnread(), 30000);
+    const timer = window.setInterval(() => void refreshUnread(user.id), 30000);
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);

@@ -38,7 +38,20 @@ import { formatRupees } from "../../../src/logic/units";
 
 import { showToast } from "./notifications/toastStore";
 import PushToggle from "./notifications/PushToggle";
-import { markRoomRead, markRoomReadByOther, setUnreadFromConversations } from "../unread";
+import {
+  confirmDirectDelivered,
+  markRoomRead,
+  markRoomReadByOther,
+  setUnreadFromConversations,
+} from "../unread";
+import {
+  directTimes,
+  pendingRecipients,
+  receiptTimeLabel,
+  receiptUserLabel,
+  type MessageInfo,
+} from "../../../src/logic/messageInfo";
+import { membersOf } from "../../../src/logic/chatPrivacy";
 import {
   chatDaySections,
   conversationName,
@@ -205,6 +218,9 @@ export default function TeamChat({ user, initialRoom }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   /** T-16.2: the message whose seen-by info is open. */
   const [infoMessage, setInfoMessage] = useState<ViewMessage | null>(null);
+  /** The Message info panel's data (the 1:1 fix) — the API's recipients and
+   *  receipts with the joined user data (never a raw "#id"). */
+  const [infoData, setInfoData] = useState<MessageInfo | null>(null);
   /** T-16.4: the message being replied to. */
   const [replyingTo, setReplyingTo] = useState<{ id: number; author: string; body: string } | null>(null);
   /** T-16.4: the pinned messages of the open room. */
@@ -278,6 +294,8 @@ export default function TeamChat({ user, initialRoom }: Props) {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   /** T-16.2: a long press on a bubble opens its action row (phone). */
   const pressTimer = useRef<number | undefined>(undefined);
+  /** The message whose info panel is open — for live updates from the socket. */
+  const infoIdRef = useRef<number | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -327,12 +345,14 @@ export default function TeamChat({ user, initialRoom }: Props) {
       setConversations(list.conversations);
       setMembers(people.members);
       setUnreadFromConversations(list.conversations);
+      // A 1:1 message that reached this device is delivered to its owner.
+      confirmDirectDelivered(list.conversations, user?.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     void loadConversations();
@@ -410,6 +430,30 @@ export default function TeamChat({ user, initialRoom }: Props) {
       setGroupMembers([]);
     }
   }, []);
+
+  /** Message info (the 1:1 fix): the recipients and receipts of one message. */
+  async function loadInfo(messageId: number) {
+    try {
+      setInfoData(await api.chatMessageInfo(messageId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Open the Message info panel of one message. */
+  function openInfo(message: ViewMessage) {
+    setInfoMessage(message);
+    infoIdRef.current = message.id;
+    setInfoData(null);
+    void loadInfo(message.id);
+  }
+
+  /** Close the Message info panel. */
+  function closeInfo() {
+    setInfoMessage(null);
+    setInfoData(null);
+    infoIdRef.current = null;
+  }
 
   useEffect(() => {
     if (room !== SHARED_ROOM) void loadGroupMembers(room);
@@ -549,8 +593,11 @@ export default function TeamChat({ user, initialRoom }: Props) {
             } else {
               scrollToBottom();
             }
-            // The message reached this device — tell the sender.
-            void api.markChatDelivered(frame.message.id).catch(() => undefined);
+            // The message reached this device — tell the sender. NEVER for my
+            // own message: the sender gets no receipt for it.
+            if (frame.message.userId !== user?.id) {
+              void api.markChatDelivered(frame.message.id).catch(() => undefined);
+            }
             // Mark the messages that are actually on screen as read, but only
             // while the tab is visible and focused.
             if (document.visibilityState === "visible" && document.hasFocus()) {
@@ -592,6 +639,9 @@ export default function TeamChat({ user, initialRoom }: Props) {
                 markRoomReadByOther(room);
               }
             }
+            // The open Message info panel follows live — no refresh needed.
+            const openId = infoIdRef.current;
+            if (openId != null && ids.includes(openId)) void loadInfo(openId);
           }
           if (frame.type === "rename") {
             // Read the name from the list (the database), never a local copy.
@@ -1237,17 +1287,32 @@ export default function TeamChat({ user, initialRoom }: Props) {
   );
   const otherMemberIds = useMemo(() => {
     if (activeConversation?.kind === "direct") {
-      return activeConversation.other ? [activeConversation.other.id] : [];
+      // The 1:1 fix: the other person comes from the ROOM NAME (dm-<a>-<b>),
+      // so a broken member row can never mis-match the ticks or the receipts.
+      const dm = membersOf(room);
+      const otherId = dm
+        ? dm.userId === user?.id
+          ? dm.otherId
+          : dm.userId
+        : (activeConversation.other?.id ?? null);
+      return otherId != null ? [otherId] : [];
     }
     return members.map((member) => member.id).filter((id) => id !== user?.id);
-  }, [activeConversation, members, user?.id]);
-  /** Members of this room who have not yet received the open message. */
-  const pendingMembers = useMemo(
-    () =>
-      members.filter(
-        (m) => m.id !== user?.id && !(infoMessage?.deliveredBy ?? []).includes(m.id),
-      ),
-    [members, user?.id, infoMessage],
+  }, [activeConversation, members, room, user?.id]);
+  /** The Message info panel's rows (the 1:1 fix). */
+  const isDirectInfo = activeConversation?.kind === "direct";
+  const infoReceipts = useMemo(() => infoData?.receipts ?? [], [infoData]);
+  const infoRead = useMemo(() => infoReceipts.filter((r) => r.readAt !== null), [infoReceipts]);
+  const infoDelivered = useMemo(
+    () => infoReceipts.filter((r) => r.deliveredAt !== null),
+    [infoReceipts],
+  );
+  /** The group's members still waiting — the conversation's people, never the team. */
+  const infoPending = useMemo(() => (infoData ? pendingRecipients(infoData) : []), [infoData]);
+  /** The two times of a 1:1 chat — the ONE recipient's receipt. */
+  const infoTimes = useMemo(
+    () => (infoData ? directTimes(infoData) : { deliveredAt: null, readAt: null }),
+    [infoData],
   );
   // ---- Phase 2: the list with its search, pinned chats first ----
   const visibleConversations = useMemo(() => {
@@ -2121,7 +2186,7 @@ export default function TeamChat({ user, initialRoom }: Props) {
                                       className="grid size-7 place-items-center rounded-lg border border-line bg-surface-2 text-[12px] transition-colors hover:bg-surface-3"
                                       onClick={() => {
                                         setActionsMessage(null);
-                                        setInfoMessage(message);
+                                        openInfo(message);
                                       }}
                                     >
                                       ⓘ
@@ -2670,75 +2735,113 @@ export default function TeamChat({ user, initialRoom }: Props) {
           <div className="card w-full max-w-sm space-y-2 p-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-ink">Message info</h2>
-              <button type="button" className="btn-mini" onClick={() => setInfoMessage(null)}>
+              <button type="button" className="btn-mini" onClick={() => closeInfo()}>
                 Close
               </button>
             </div>
-            <p className="text-xs text-muted">
-              {infoMessage.author} · sent {formatChatTime(infoMessage.createdAt)}
-            </p>
-            <div className="space-y-1">
-              <p className="text-xs font-semibold text-ink">Seen by (read)</p>
-              {(infoMessage.readBy ?? []).length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {(infoMessage.readBy ?? []).map((id) => {
-                    const m = members.find((x) => x.id === id);
-                    return (
-                      <span
-                        key={id}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px]"
-                      >
-                        <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
-                          {m ? initials(m.name) : "#"}
-                        </span>
-                        {m ? m.name : `#${id}`}
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted">nobody yet</p>
-              )}
-              <p className="text-xs font-semibold text-ink">Delivered to</p>
-              {(infoMessage.deliveredBy ?? []).length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {(infoMessage.deliveredBy ?? []).map((id) => {
-                    const m = members.find((x) => x.id === id);
-                    return (
-                      <span
-                        key={id}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px]"
-                      >
-                        <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
-                          {m ? initials(m.name) : "#"}
-                        </span>
-                        {m ? m.name : `#${id}`}
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted">nobody yet</p>
-              )}
-              {/* Members who have not received the message yet. */}
-              <p className="text-xs font-semibold text-ink">Pending</p>
-              <div className="flex flex-wrap gap-1.5">
-                {pendingMembers.map((m) => (
-                  <span
-                    key={m.id}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] text-muted"
+            {isDirectInfo ? (
+              <>
+                {/* WhatsApp-style 1:1: the bubble preview, then two rows. */}
+                <div
+                  className={`flex ${infoMessage.userId === user?.id ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl rounded-br-md px-[14px] py-[10px] text-sm ${
+                      infoMessage.userId === user?.id
+                        ? "bg-primary text-on-primary"
+                        : "border border-line bg-surface text-ink"
+                    }`}
                   >
-                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
-                      {initials(m.name)}
+                    <span className="whitespace-pre-wrap">{infoMessage.body}</span>
+                    <span
+                      className={`ml-2 inline-block align-baseline text-[10px] ${
+                        infoMessage.userId === user?.id ? "text-on-primary/70" : "text-muted"
+                      }`}
+                    >
+                      {formatChatTime(infoMessage.createdAt)}
                     </span>
-                    {m.name}
-                  </span>
-                ))}
-                {pendingMembers.length === 0 && <p className="text-xs text-muted">none</p>}
-              </div>
-              </div>
-            </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5 border-t border-line pt-2">
+                  <div className="flex items-center gap-2">
+                    <span className="tick-read text-[11px] leading-none">✓✓</span>
+                    <span className="text-xs font-semibold text-ink">Read</span>
+                    <span className="ml-auto text-xs text-muted">
+                      {receiptTimeLabel(infoTimes.readAt, new Date(nowTick))}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] leading-none opacity-70">✓✓</span>
+                    <span className="text-xs font-semibold text-ink">Delivered</span>
+                    <span className="ml-auto text-xs text-muted">
+                      {receiptTimeLabel(infoTimes.deliveredAt, new Date(nowTick))}
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted">
+                  {infoMessage.author} · sent {formatChatTime(infoMessage.createdAt)}
+                </p>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-ink">Seen by (read)</p>
+                  {infoRead.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {infoRead.map((receipt) => (
+                        <span
+                          key={receipt.userId}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px]"
+                        >
+                          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
+                            {receipt.user?.initials ?? "?"}
+                          </span>
+                          {receiptUserLabel(receipt.user)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted">nobody yet</p>
+                  )}
+                  <p className="text-xs font-semibold text-ink">Delivered to</p>
+                  {infoDelivered.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {infoDelivered.map((receipt) => (
+                        <span
+                          key={receipt.userId}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px]"
+                        >
+                          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
+                            {receipt.user?.initials ?? "?"}
+                          </span>
+                          {receiptUserLabel(receipt.user)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted">nobody yet</p>
+                  )}
+                  {/* Members of THIS conversation who have not received it yet. */}
+                  <p className="text-xs font-semibold text-ink">Pending</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {infoPending.map((member) => (
+                      <span
+                        key={member.id}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[10px] text-muted"
+                      >
+                        <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[8px] font-semibold">
+                          {member.initials ?? "?"}
+                        </span>
+                        {receiptUserLabel(member)}
+                      </span>
+                    ))}
+                    {infoPending.length === 0 && <p className="text-xs text-muted">none</p>}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
+        </div>
       )}
 
       {error && (
