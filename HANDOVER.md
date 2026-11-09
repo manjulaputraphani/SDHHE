@@ -4,8 +4,8 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `648781ba`** (1:1 Message info fix + repair: 6 sender receipts deleted). This session's
-mobile layout + loading mark are built and tested but NOT yet deployed.
+**LIVE `41b713aa`** (deployed 2026-11-09: mobile layout + round loading mark + 1:1 Message info
+fix; repair ran — 6 sender receipts deleted). Owner's real-device pass (Safari / Android Chrome) is due.
 
 ## Next task
 None queued — the owner picks the next task. Next: deploy + a real-device pass (iPhone Safari,
