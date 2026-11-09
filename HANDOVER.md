@@ -4,7 +4,7 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `db5978c0` (read receipts / unread badges shipped).**
+**LIVE `50e15cc7` (read receipts + unread badges fix deployed — `max(m.id)` crash on empty rooms fixed).**
 
 ## Next task
 None queued — the owner picks the next task.
@@ -31,6 +31,7 @@ None queued — the owner picks the next task.
   Bubble `min-w-[80px]` + time/ticks `nowrap` bottom-right.
 - **unread.ts**: `markRoomRead` returns rollback; new `markRoomReadByOther`.
 - No route/schema change (tables existed). 498 unit tests + typechecks green.
+- Hotfix: `markRead` high-water computation used `sql<number>\`max(m.id)\`` which crashed on empty rooms; replaced with `orderBy(desc(id)).limit(1)` pattern.
 
 ## This + last session (UI work)
 - **Chat**: edge-to-edge mobile, WhatsApp composer, `100dvh`+safe areas, bubble max-w 80/65% +

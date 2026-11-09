@@ -5,7 +5,7 @@
  * seen it. The rows are per (message, member), so a shop room with five
  * people can show "read by 3".
  */
-import { eq, inArray, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db, TxDb } from "./client";
 import {
   chatConversationMembers,
@@ -60,11 +60,13 @@ export async function markRead(
   if (messageId != null && Number.isInteger(messageId) && messageId > 0) {
     highWater = messageId;
   } else {
-    const [maxRow] = await db
-      .select({ maxId: sql<number>`max(m.id)` })
+    const [newest] = await db
+      .select({ id: chatMessages.id })
       .from(chatMessages)
-      .where(eq(chatMessages.room, room));
-    highWater = Number(maxRow?.maxId ?? 0);
+      .where(eq(chatMessages.room, room))
+      .orderBy(desc(chatMessages.id))
+      .limit(1);
+    highWater = newest?.id ?? 0;
   }
 
   const target = sql`select m.id from chat_messages m where m.room = ${room} and m.id <= ${highWater} and m.user_id is distinct from ${userId}`;
