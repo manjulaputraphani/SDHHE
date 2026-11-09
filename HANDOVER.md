@@ -4,8 +4,8 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `d01e573f`. Mobile-login polish (cream sheet, −28px hero overlap, no border, autofill fix,
-forgot link, spacing, field/button styles) is committed, NOT deployed yet.**
+**LIVE `d0085094` (mobile-login polish shipped: cream sheet, −28px hero overlap, no border,
+autofill fix, forgot link, spacing, field/button styles).**
 
 ## Next task
 None queued — the owner picks the next task.
