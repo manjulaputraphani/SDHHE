@@ -58,7 +58,8 @@ export async function ensurePushSubscription(): Promise<PushOutcome> {
       auth: json.keys.auth,
     });
     return "on";
-  } catch {
+  } catch (err) {
+    console.error("push: subscription failed:", err instanceof Error ? err.message : String(err));
     return "error";
   }
 }
