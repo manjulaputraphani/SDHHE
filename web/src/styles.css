@@ -571,12 +571,8 @@
   min-width: 0;
 }
 .chat-bubble .chat-time {
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-.chat-bubble:hover .chat-time,
-.chat-bubble:focus-within .chat-time {
-  opacity: 1;
+  /* WhatsApp shows the timestamp with every bubble — always visible, muted. */
+  opacity: 0.72;
 }
 
 /* A message that was jumped to (T-16.4 — replies, pins, search) flashes once. */
@@ -646,28 +642,41 @@
 }
 
 /*
- * The chat page must end exactly at the viewport bottom on a phone:
- * the top bar (3.5rem) + the main paddings (3rem = py-6). On md+ the
- * top bar is hidden and the main uses py-8 (4rem). The safe-area insets
- * keep the composer above the home bar and below the notch.
+ * The chat shell fills the viewport height with every fallback that iOS
+ * supports: plain 100vh first, then -webkit-fill-available (iOS layout
+ * viewport), then 100svh and finally 100dvh (the dynamic unit that tracks
+ * the collapsing address bar). On a phone the shell bleeds edge-to-edge
+ * (the main padding is negated in the component), so the height subtracts
+ * only the 3.5rem top bar + the safe areas. On md+ the top bar is hidden
+ * and the shell sits inside the main's py-8 (4rem).
  */
 .chat-shell {
-  height: calc(100vh - 3.5rem - 3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  height: 100vh;
+  height: -webkit-fill-available;
+  min-height: 0;
+}
+@supports (height: 100svh) {
+  .chat-shell {
+    height: 100svh;
+  }
 }
 @supports (height: 100dvh) {
   .chat-shell {
-    height: calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    height: calc(
+      100dvh - 3.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+    );
   }
 }
 @media (min-width: 768px) {
   .chat-shell {
-    height: calc(100vh - 4rem);
+    height: 100vh;
   }
 }
-/* Browsers without dvh drop this rule and keep the 100vh one above. */
 @media (min-width: 768px) {
-  .chat-shell {
-    height: calc(100dvh - 4rem);
+  @supports (height: 100dvh) {
+    .chat-shell {
+      height: calc(100dvh - 4rem);
+    }
   }
 }
 
@@ -689,5 +698,70 @@
   .theme-switch button {
     width: 40px;
     height: 40px;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Team Chat — WhatsApp-style responsive polish
+   ------------------------------------------------------------------ */
+
+/* No grey flash on taps anywhere (mobile). */
+button,
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The conversation backdrop: a faint coffee-bean dot lattice, WhatsApp-style,
+   tinted for light and dark so the contrast never changes. */
+.chat-bg {
+  background-color: var(--c-bg);
+  background-image: radial-gradient(
+      color-mix(in oklab, var(--c-accent) 14%, transparent) 1px,
+      transparent 1.4px
+    ),
+    radial-gradient(
+      color-mix(in oklab, var(--c-primary) 9%, transparent) 1px,
+      transparent 1.4px
+    );
+  background-size: 22px 22px, 22px 22px;
+  background-position: 0 0, 11px 11px;
+}
+
+/* Long words, links and numbers wrap inside the message list and composer —
+   nothing may stretch a bubble or the composer wider than the viewport. */
+.chat-bubble {
+  word-break: break-word;
+}
+
+/* The message list must swallow its own momentum (no chaining scrolls) and
+   never let its content push the page sideways. */
+.chat-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The composer textarea stays 16px on phones so iOS never auto-zooms on
+   focus (the desktop edition shares .chat-composer; only bump on touch). */
+@media (max-width: 767px) {
+  .chat-composer {
+    font-size: 16px;
+  }
+}
+
+/* The auto-grow composer: cap at ~5 lines then scroll, keep it on one line
+   when empty so the circular send button sits on the baseline. */
+.chat-composer {
+  max-height: 132px;
+}
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble,
+  .chat-shell *,
+  .theme-anim,
+  .theme-anim * {
+    transition: none !important;
+    animation: none !important;
   }
 }

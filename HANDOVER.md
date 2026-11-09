@@ -4,23 +4,18 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `5e7683d2` (Android install button + APK shipped; D1 binding `DB` registered).**
-Phase 17 STARTED: Neon Postgres → Cloudflare D1. T-17.0 plan + T-17.1 database created
-(`sdhhe`, APAC, id a111542a-461f-4cda-a756-a5eca215ca48, binding `DB` in wrangler.toml).
-better-sqlite3 added for local int tests.
-The app still runs on Neon until the cutover (T-17.5) — no data migration shipped yet.
+**LIVE `5e7683d2` (Android install button + APK shipped).**
+The database is Neon Postgres (Drizzle) and stays that way — no database migration is planned
+or in progress.
 
-## Next task — T-17.2 port the schema (tests first)
-Rewrite `src/db/schema.ts` on drizzle sqlite-core (serial → autoincrement pk; timestamptz →
-ISO text; booleans → 0/1; money/qty stay integer). Then T-17.3 ports the raw-SQL modules
-(chatRooms listConversations json_build_object → manual assembly, `interval`/`::` casts in
-reports/rotation/cash ledger, client.ts getDb → env.DB in the worker), T-17.4 exports Neon →
-imports D1 with row/total verification, T-17.5 cutover deploy, T-17.6 desktop becomes an API
-client (also unblocks its chat via the Access service token), T-17.7/17.8 verify + cleanup.
-Full task list in docs/BUILD_PLAN.md (Phase 17).
+**Chat UI redesigned (WhatsApp-style, responsive) — committed, NOT deployed yet.** See
+"What this session changed" below.
+
+## Next task
+None queued — the owner picks the next task.
 
 ## Owner steps that are still open
-1. Cloudflare Access service token for the desktop app (needed by T-17.6).
+1. Cloudflare Access service token for the desktop app (for desktop chat).
 2. Desktop 1-hour auto-logout (owner has not answered). 3. Roasting screen missing in desktop.
 4. Keep ~/sdhhe-android-twa safe (the APK signing keystore, password sdhhe2026).
 
@@ -47,6 +42,18 @@ Full task list in docs/BUILD_PLAN.md (Phase 17).
 
 ## Blockers
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
+
+## What this session changed (chat UI, code-only — deploy pending)
+- Fixed horizontal overflow: mobile chat edge-to-edge (main padding negated, `min-w-0` on
+  grid/flex, `word-break`/`overflow-wrap` on bubbles, `overflow-x:hidden` on the list).
+- WhatsApp composer: [emoji] [pill: textarea+attach+camera] [circular 48px send]; mic ⇄ send
+  icon swap; 16px on phones (no iOS auto-zoom).
+- `100dvh` height + `100svh`/`-webkit-fill-available` fallbacks + safe areas +
+  `overscroll-behavior: contain`; `.chat-bg` coffee dot-lattice backdrop.
+- Bubbles: max-w 80%/65%, timestamp + ticks always visible. Mobile header: short "SDHHE"
+  mark (icon-only <360px), theme toggle moved into the drawer; Call icon (desktop only).
+- Viewport meta `interactive-widget=resizes-content`; `prefers-reduced-motion` respected.
+- No backend / chat-logic / data changes. 494 unit + 70 e2e green before commit.
 
 ## Commands
 - Tests: `npx vitest run --reporter=dot` (494) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·

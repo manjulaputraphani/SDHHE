@@ -57,10 +57,13 @@ import {
 import {
   IconArrowLeft,
   IconBellOff,
+  IconCamera,
   IconChevronDown,
   IconDownload,
+  IconMic,
   IconMoreVertical,
   IconPaperclip,
+  IconPhone,
   IconPin,
   IconSearch,
   IconSend,
@@ -258,6 +261,8 @@ export default function TeamChat({ user }: Props) {
   const isMd = useIsMd();
   /** A phone keyboard: the return key makes a new line, the button sends. */
   const isCoarse = useIsCoarse();
+  /** The composer has text to send (drives the mic → send icon swap). */
+  const hasDraftText = Boolean((editing ? editDraft : draft).trim());
   /** Pinned / muted chats — a local preference of this browser only. */
   const [pinned, setPinned] = useState<string[]>([]);
   const [muted, setMuted] = useState<string[]>([]);
@@ -1153,11 +1158,14 @@ export default function TeamChat({ user }: Props) {
 
   return (
     <section
-      className="chat-shell relative flex flex-col"
+      // On a phone the chat bleeds edge-to-edge (the main's px-4/py-6 is
+      // negated here) so it fills the screen like WhatsApp — no card margin,
+      // no outer rounded border. On md+ it sits back inside the main padding.
+      className="chat-shell relative flex min-w-0 flex-col -mx-4 -mt-6 -mb-6 sm:-mx-6 md:mx-0 md:my-0"
       style={
         keyboardOffset > 0
           ? {
-              height: `calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardOffset}px)`,
+              height: `calc(100dvh - 3.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardOffset}px)`,
             }
           : undefined
       }
@@ -1234,7 +1242,7 @@ export default function TeamChat({ user }: Props) {
       )}
 
       <div
-        className={`relative grid min-h-0 flex-1 gap-4 md:grid-cols-[240px_minmax(0,1fr)] ${
+        className={`relative grid min-h-0 min-w-0 flex-1 gap-4 md:grid-cols-[240px_minmax(0,1fr)] ${
           showApprovals && approvalsOpen
             ? "lg:grid-cols-[300px_minmax(0,1fr)_340px]"
             : "lg:grid-cols-[300px_minmax(0,1fr)]"
@@ -1244,7 +1252,7 @@ export default function TeamChat({ user }: Props) {
         <aside
           className={`${
             mobileView === "list" ? "flex" : "hidden md:flex"
-          } card min-h-0 flex-col space-y-2 p-3`}
+          } card min-h-0 min-w-0 flex-col space-y-2 p-3 max-md:rounded-none max-md:border-0 max-md:shadow-none`}
         >
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ink">Chats</h2>
@@ -1360,9 +1368,9 @@ export default function TeamChat({ user }: Props) {
         <div
           className={`relative ${
             mobileView === "room" ? "flex" : "hidden md:flex"
-          } min-h-0 flex-1 flex-col`}
+          } min-h-0 min-w-0 flex-1 flex-col`}
         >
-          <div className="card flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="card flex min-h-0 flex-1 flex-col overflow-hidden max-md:rounded-none max-md:border-0 max-md:shadow-none">
           <div className="relative z-10 flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-2">
             <button
               type="button"
@@ -1442,6 +1450,15 @@ export default function TeamChat({ user }: Props) {
               }}
             >
               <IconSearch size={16} />
+            </button>
+            <button
+              type="button"
+              aria-label="Call"
+              title="Voice call"
+              className="tap-44 hidden size-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink lg:grid"
+              onClick={() => showToast("Voice calls aren't available yet")}
+            >
+              <IconPhone size={16} />
             </button>
             {activeConversation?.kind !== "direct" && (
               <button
@@ -1658,7 +1675,7 @@ export default function TeamChat({ user }: Props) {
           )}
           <div
             ref={listRef}
-            className="relative z-0 min-h-0 flex-1 space-y-1 overflow-y-auto bg-bg p-4"
+            className="chat-bg chat-scroll relative z-0 min-h-0 min-w-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4"
             onScroll={onScroll}
           >
             {loadingRoom &&
@@ -1705,7 +1722,7 @@ export default function TeamChat({ user }: Props) {
                             {initials(group.author)}
                           </span>
                         )}
-                        <div className={`flex max-w-[70%] flex-col md:max-w-[70%] ${group.mine ? "items-end" : "items-start"}`}>
+                        <div className={`flex max-w-[80%] flex-col sm:max-w-[65%] ${group.mine ? "items-end" : "items-start"}`}>
                           {!group.mine && (
                             <span className="mb-0.5 px-1 text-[11px] font-medium text-accent-ink">
                               {group.author}
@@ -1770,7 +1787,7 @@ export default function TeamChat({ user }: Props) {
                             return (
                               <div
                                 key={message.id}
-                                className="group/msg relative max-w-[70%] md:max-w-[70%]"
+                                className="group/msg relative max-w-[80%] min-w-0 sm:max-w-[65%]"
                                 onPointerDown={() => {
                                   // A long press opens the action row on a phone.
                                   pressTimer.current = window.setTimeout(
@@ -2118,24 +2135,15 @@ export default function TeamChat({ user }: Props) {
                 )}
               </div>
             )}
-            <div className="flex w-full items-end gap-2 rounded-[20px] border border-line bg-surface-2 px-2 py-2 transition-colors focus-within:border-primary">
-              <button
-                type="button"
-                aria-label="Attach receipt"
-                title="Attach receipt"
-                className="tap-44 grid size-9 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink"
-                onClick={() => setShowReceiptForm((open) => !open)}
-              >
-                <IconPaperclip size={17} />
-              </button>
+            <div className="flex w-full items-end gap-1.5">
               <details className="group/emoji relative shrink-0">
                 <summary
-                  className="tap-44 grid size-9 cursor-pointer list-none place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink [&::-webkit-details-marker]:hidden"
+                  className="tap-44 grid size-11 cursor-pointer list-none place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink [&::-webkit-details-marker]:hidden"
                   aria-label="Emoji"
                 >
-                  <IconSmile size={17} />
+                  <IconSmile size={20} />
                 </summary>
-                <div className="absolute bottom-11 left-0 z-20 hidden w-44 flex-wrap gap-1 rounded-xl border border-line bg-surface p-2 shadow-lg group-open/emoji:flex">
+                <div className="absolute bottom-14 left-0 z-20 hidden w-44 flex-wrap gap-1 rounded-xl border border-line bg-surface p-2 shadow-lg group-open/emoji:flex">
                   {EMOJI.map((emoji) => (
                     <button
                       key={emoji}
@@ -2151,56 +2159,76 @@ export default function TeamChat({ user }: Props) {
                   ))}
                 </div>
               </details>
-              <textarea
-                ref={composerRef}
-                className="chat-composer flex-1 px-3.5 py-2.5 text-sm"
-                rows={1}
-                placeholder={editing ? "Edit your message…" : "Message…"}
-                aria-label="Message"
-                value={editing ? editDraft : draft}
-                onChange={(e) => {
-                  if (editing) setEditDraft(e.currentTarget.value);
-                  else {
-                    setDraft(e.currentTarget.value);
-                    sendTyping();
-                  }
-                }}
-                onKeyDown={(e) => {
-                  // Editing: Enter saves, Esc cancels (T-16.2).
-                  if (editing) {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void saveEdit();
+              <div className="flex min-w-0 flex-1 items-end gap-1 rounded-[22px] border border-line bg-surface-2 px-2 py-1.5 transition-colors focus-within:border-primary">
+                <textarea
+                  ref={composerRef}
+                  className="chat-composer min-w-0 flex-1 px-2.5 py-2 text-sm"
+                  rows={1}
+                  placeholder={editing ? "Edit your message…" : "Message…"}
+                  aria-label="Message"
+                  value={editing ? editDraft : draft}
+                  onChange={(e) => {
+                    if (editing) setEditDraft(e.currentTarget.value);
+                    else {
+                      setDraft(e.currentTarget.value);
+                      sendTyping();
                     }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      cancelEdit();
+                  }}
+                  onKeyDown={(e) => {
+                    // Editing: Enter saves, Esc cancels (T-16.2).
+                    if (editing) {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void saveEdit();
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelEdit();
+                      }
+                      return;
                     }
-                    return;
-                  }
-                  // Enter sends, Shift+Enter makes a new line — but on a
-                  // touch phone the return key ALWAYS makes a new line
-                  // (WhatsApp behaviour): the send button sends.
-                  if (e.key === "Enter" && !e.shiftKey && !isCoarse) {
-                    e.preventDefault();
-                    void submitDraft();
-                  }
-                  // Escape closes the AI polish card (the draft stays).
-                  if (e.key === "Escape" && polishCard) {
-                    e.preventDefault();
-                    setPolishCard(null);
-                  }
-                }}
-                disabled={busy}
-                maxLength={2000}
-              />
+                    // Enter sends, Shift+Enter makes a new line — but on a
+                    // touch phone the return key ALWAYS makes a new line
+                    // (WhatsApp behaviour): the send button sends.
+                    if (e.key === "Enter" && !e.shiftKey && !isCoarse) {
+                      e.preventDefault();
+                      void submitDraft();
+                    }
+                    // Escape closes the AI polish card (the draft stays).
+                    if (e.key === "Escape" && polishCard) {
+                      e.preventDefault();
+                      setPolishCard(null);
+                    }
+                  }}
+                  disabled={busy}
+                  maxLength={2000}
+                />
+                <button
+                  type="button"
+                  aria-label="Attach receipt"
+                  title="Attach receipt"
+                  className="tap-44 grid size-10 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink"
+                  onClick={() => setShowReceiptForm((open) => !open)}
+                >
+                  <IconPaperclip size={18} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Send a photo"
+                  title="Send a photo"
+                  className="tap-44 grid size-10 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink"
+                  onClick={() => setShowReceiptForm((open) => !open)}
+                >
+                  <IconCamera size={18} />
+                </button>
+              </div>
               <button
                 type="submit"
                 aria-label={editing ? "Save edit" : "Send"}
-                disabled={busy || !(editing ? editDraft.trim() : draft.trim())}
-                className="tap-44 grid size-10 shrink-0 place-items-center rounded-full bg-primary text-on-primary transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted"
+                disabled={busy || !hasDraftText}
+                className="tap-44 grid size-12 shrink-0 place-items-center rounded-full bg-primary text-on-primary shadow-md transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted disabled:shadow-none"
               >
-                <IconSend size={16} />
+                {!editing && !hasDraftText ? <IconMic size={19} /> : <IconSend size={19} />}
               </button>
             </div>
           </form>
@@ -2274,7 +2302,7 @@ export default function TeamChat({ user }: Props) {
             mobileView === "approvals"
               ? "flex md:absolute md:inset-y-0 md:right-0 md:z-20 md:w-80 md:shadow-2xl"
               : "hidden"
-          } card min-h-0 flex-col space-y-3 p-4 lg:static lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none lg:flex`}
+          } card min-h-0 min-w-0 flex-col space-y-3 p-4 max-md:rounded-none max-md:border-0 max-md:shadow-none lg:static lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none lg:flex`}
         >
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-ink">Receipt approvals</h2>

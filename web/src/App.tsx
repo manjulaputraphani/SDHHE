@@ -1758,14 +1758,14 @@ export default function App() {
             <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-nav-text/15 text-nav-text">
               <IconCoffeeNav size={22} />
             </span>
-            <p className="min-w-0 text-[9px] font-semibold uppercase leading-[1.3] tracking-[0.12em]">
-              SREE DURGA HARIHARA
-              <br />
-              ENTERPRISES
+            {/* The full brand name crowds tiny phones — a short mark from 360px
+                up, the icon alone below that. The theme switch moved into the
+                drawer so the header keeps only menu + sign out. */}
+            <p className="hidden min-w-0 text-xs font-semibold uppercase tracking-[0.12em] min-[360px]:block">
+              SDHHE
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <ThemeToggle onDark />
             <button
               type="button"
               aria-label={menuOpen ? "Close menu" : "Open menu"}
@@ -1852,6 +1852,7 @@ export default function App() {
                     📲 Install the Android app
                   </a>
                 )}
+                <ThemeToggle onDark />
                 <p className="text-nav-muted">{user.name} · {user.role}</p>
                 <button
                   className="flex items-center gap-1.5 text-nav-muted underline"
