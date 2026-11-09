@@ -2,7 +2,9 @@
  * API client for the SDHHE native mobile app.
  *
  * Connects to the SAME Cloudflare Worker backend as the web app — zero
- * backend changes. Auth uses a token stored in SecureStore (not cookies).
+ * backend changes. The Worker uses cookie auth (`sdhhe_session` cookie)
+ * created at login; the mobile client stores that token in SecureStore and
+ * sends it as the cookie header on every request.
  */
 import * as SecureStore from "expo-secure-store";
 
@@ -22,25 +24,39 @@ export async function clearAuthToken(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 
+export type PermissionSet = {
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canExport: boolean;
+};
+
 export type ApiUser = {
   id: number;
   name: string;
   role: "owner" | "ca" | "staff";
-  permissions: Record<string, { canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; canExport: boolean }>;
+  permissions: Record<string, PermissionSet>;
 };
 
 type RequestOptions = { method?: "POST" | "PUT" | "PATCH" | "DELETE"; body?: Record<string, unknown> };
 
-async function request<T>(path: string, options?: RequestOptions): Promise<T> {
+/** Send the stored session token as the cookie (same as the Worker expects). */
+async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAuthToken();
   if (!token) throw new Error("Not signed in");
+  return {
+    "content-type": "application/json",
+    accept: "application/json",
+    cookie: `sdhhe_session=${token}`,
+  };
+}
+
+async function request<T>(path: string, options?: RequestOptions): Promise<T> {
+  const headers = await authHeaders();
   const res = await fetch(`${WORKER_URL}${path}`, {
     method: options?.method ?? "GET",
-    headers: {
-      "content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      cookie: `sdhhe_session=${token}`,
-    },
+    headers,
     body: options?.body ? JSON.stringify(options.body) : undefined,
   });
   if (res.status === 401) {
@@ -48,8 +64,8 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
     throw new Error("Session expired — sign in again");
   }
   if (!res.ok) {
-    const detail = await res.json().catch(() => ({}));
-    throw new Error((detail as { error?: string }).error ?? `Request failed (${res.status})`);
+    const detail = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(detail.error ?? `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
 }
@@ -57,26 +73,44 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
 // ---- Auth ----
 
 export const api = {
-  me: () =>
-    request<{ user: ApiUser; session: { expiresAt: string } }>("/api/auth/me"),
+  me: () => request<{ user: ApiUser }>("/api/auth/me"),
 
-  login: async (phone: string, password: string) => {
-    
+  /** Login — the Worker returns `{ user }` and the token in the Set-Cookie header. */
+  login: async (phone: string, password: string): Promise<ApiUser> => {
     const res = await fetch(`${WORKER_URL}/api/auth/login`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ phone, password }),
     });
-    if (!res.ok) {
-      const detail = await res.json().catch(() => ({}));
-      throw new Error(detail.error ?? `Login failed (${res.status})`);
+    const text = await res.text();
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      // HTML response (Cloudflare SPA fallback / challenge page) — the route
+      // didn't match, or an upstream error page was returned.
+      throw new Error(`Unexpected response (${res.status}) — try again`);
     }
-    return res.json() as Promise<{ user: ApiUser; token: string; session: { expiresAt: string } }>;
+    if (!res.ok) {
+      throw new Error((parsed.error as string) ?? `Login failed (${res.status})`);
+    }
+    // The token is set in the Set-Cookie header: sdhhe_session=<payload>.<signature>
+    const cookie = res.headers.get("set-cookie") ?? "";
+    const match = /sdhhe_session=([^;]+)/.exec(cookie);
+    const token = match?.[1];
+    if (!token) throw new Error("Login succeeded but no session token returned");
+    await setAuthToken(token);
+    return parsed.user as unknown as ApiUser;
   },
 
-  logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+  logout: async () => {
+    try { await clearAuthToken(); } catch { /* already gone */ }
+    try {
+      await request<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+    } catch { /* server may not be reachable */ }
+  },
 
-  // ---- Conversations (direct chat) ----
+  // ---- Conversations (direct + group chat) ----
 
   chatConversations: () =>
     request<{
@@ -88,7 +122,7 @@ export const api = {
         other: { id: number; name: string; role: string } | null;
         unread: number;
         lastMessageAt: string | null;
-        lastMessage?: { id: number; userId: number | null; author: string; body: string; kind: string; createdAt: string } | null;
+        lastMessage?: { id?: number; userId?: number | null; author?: string; body?: string; kind?: string; createdAt?: string } | null;
       }[];
     }>("/api/chat/conversations"),
 
@@ -102,22 +136,7 @@ export const api = {
     }),
 
   chatMessages: (room?: string) =>
-    request<{
-      messages: {
-        id: number;
-        room: string;
-        userId: number | null;
-        author: string;
-        role: string;
-        kind: "text" | "receipt" | "system";
-        body: string;
-        receiptId: number | null;
-        createdAt: string;
-        deliveredBy?: number[];
-        readBy?: number[];
-        reactions?: { emoji: string; userId: number; name: string }[];
-      }[];
-    }>(`/api/chat/messages${room ? `?room=${encodeURIComponent(room)}` : ""}`),
+    request<{ messages: ChatMessage[] }>(`/api/chat/messages${room ? `?room=${encodeURIComponent(room)}` : ""}`),
 
   markChatRead: (room: string, messageId?: number) =>
     request<{ ok: boolean; unread: number; read?: number[] }>("/api/chat/read", {
@@ -134,8 +153,6 @@ export const api = {
   chatToken: () =>
     request<{ token: string; expiresAt: number; user: ApiUser }>("/api/chat/token"),
 
-  // ---- Push ----
-
   pushKey: () => request<{ publicKey: string | null }>("/api/push/key"),
 
   pushSubscribe: (body?: { endpoint: string; p256dh: string; auth: string }) =>
@@ -144,11 +161,10 @@ export const api = {
   pushUnsubscribe: (endpoint: string) =>
     request<{ ok: boolean }>("/api/push/subscribe", { method: "DELETE", body: { endpoint } }),
 
-  // ---- Stats ----
-
   stats: () => request<Record<string, unknown>>("/api/stats"),
 
-  // ---- Group management ----
+  users: () =>
+    request<{ users: { id: number; name: string; phone: string; role: string; active: boolean }[] }>("/api/users"),
 
   chatGroupMembers: (room: string) =>
     request<{ members: { id: number; name: string; role: string; lastSeenAt?: string | null }[] }>(
@@ -160,4 +176,19 @@ export const api = {
       recipients: { id: number; name: string | null; initials: string | null; avatar: string | null }[];
       receipts: { userId: number; user: { id: number; name: string | null; initials: string | null; avatar: string | null } | null; deliveredAt: string | null; readAt: string | null }[];
     }>(`/api/chat/messages/${messageId}/info`),
+};
+
+export type ChatMessage = {
+  id: number;
+  room: string;
+  userId: number | null;
+  author: string;
+  role: string;
+  kind: "text" | "receipt" | "system";
+  body: string;
+  receiptId: number | null;
+  createdAt: string;
+  deliveredBy?: number[];
+  readBy?: number[];
+  reactions?: { emoji: string; userId: number; name: string }[];
 };

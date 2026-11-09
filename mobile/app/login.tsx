@@ -8,7 +8,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 
-import { api, setAuthToken } from "../lib/api";
+import { api } from "../lib/api";
 import { useAuth } from "./_layout";
 
 export default function LoginScreen() {
@@ -23,9 +23,8 @@ export default function LoginScreen() {
     setBusy(true);
     setError(null);
     try {
-      const response = await api.login(phone, password);
-      await setAuthToken(response.token as string);
-      setUser(response.user);
+      const user = await api.login(phone, password);
+      setUser(user);
       router.replace("/(tabs)/home");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
