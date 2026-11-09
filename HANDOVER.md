@@ -4,11 +4,12 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `2cb408cf`** + this session's 1:1 Message info fix (built, NOT yet deployed to the worker).
+**LIVE `648781ba`** (deployed 2026-11-09: 1:1 Message info fix + repair script run — 6 sender
+receipts deleted, 1:1 member rows were already correct). Previous: `2cb408cf` (AI key on Worker).
 
 ## Next task
-None queued — the owner picks the next task. First: the two-browser manual test of the 1:1
-Message info fix (me + Chaluvaraj) — run the repair script below BEFORE testing.
+None queued — the owner picks the next task. Next: the two-browser manual test of the 1:1
+Message info (me + Chaluvaraj) against the LIVE site (hard-refresh both browsers).
 
 ## Owner steps that are still open
 1. Cloudflare Access service token for the desktop app (for desktop chat).
@@ -34,13 +35,12 @@ Message info fix (me + Chaluvaraj) — run the repair script below BEFORE testin
 - **Delivered sync**: an unread 1:1 whose newest message is the other person's is confirmed delivered
   when the app syncs conversations (unread.ts `confirmDirectDelivered`) → "comes online = grey ✓✓,
   opens the chat = blue ✓✓".
-- **REPAIR (run once, before the manual test)**: `node scripts/repair-direct-chat.mjs --dry-run`, then
-  without the flag — makes every `dm-<a>-<b>` have exactly its 2 members, deletes receipts where
-  user_id = sender_id.
-- Tests: 505 unit + all typechecks green; 72 e2e web green (2 new Message info tests); new DB int
+- **REPAIR (DONE 2026-11-09)**: `node scripts/repair-direct-chat.mjs` ran on the live DB — deleted
+  6 sender receipts (user_id = sender_id); 0 member rows needed fixing.
+- Tests: 505 unit + all typechecks green; 72 e2e web green (2 Message info tests); new DB int
   test in `src/db/chatStates.int.test.ts` (`npm run test:db`, needs DATABASE_URL_TEST).
-- NOT deployed: worker changed → `nvm use 22 && cd web && npm run build && cd ../web-worker && npx
-  wrangler deploy` (ask first).
+- DEPLOYED `648781ba` (2026-11-09): `nvm use 22 && cd web && npm run build && cd ../web-worker &&
+  npx wrangler deploy`.
 
 ## This session (deployed): read receipts + unread badges
 - **Root cause**: `POST /api/chat/read` wrote `chat_message_states.read_at` but never bumped
