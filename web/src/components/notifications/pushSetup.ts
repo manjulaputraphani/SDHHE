@@ -42,7 +42,13 @@ export async function ensurePushSubscription(): Promise<PushOutcome> {
     // Always create a FRESH subscription — the old one may be bound to a
     // different VAPID key (VapidPkHashMismatch), so reuse is never safe.
     const old = await registration.pushManager.getSubscription();
-    if (old) await old.unsubscribe();
+    if (old) {
+      try {
+        await old.unsubscribe();
+      } catch {
+        // Old subscription already gone — that's fine.
+      }
+    }
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: key as unknown as BufferSource,
