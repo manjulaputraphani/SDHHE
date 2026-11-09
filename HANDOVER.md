@@ -4,12 +4,12 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `41b713aa`** (deployed 2026-11-09: mobile layout + round loading mark + 1:1 Message info
-fix; repair ran — 6 sender receipts deleted). Owner's real-device pass (Safari / Android Chrome) is due.
+**LIVE `25ed9b13`** (deployed 2026-11-09: push notification diagnostics). Previous: `41b713aa`
+(mobile layout + round loading mark + 1:1 Message info fix; repair ran — 6 sender receipts
+deleted). Owner's real-device pass (Safari / Android Chrome) is due.
 
 ## Next task
-None queued — the owner picks the next task. Next: deploy + a real-device pass (iPhone Safari,
-Android Chrome) of the mobile layout checklist (keyboard, safe areas, back gestures).
+None queued — the owner picks the next task. Push notification testing on real devices.
 
 ## Owner steps that are still open
 1. Cloudflare Access service token (desktop chat). 2. Desktop 1-hour auto-logout (no answer).
@@ -46,3 +46,12 @@ Android Chrome) of the mobile layout checklist (keyboard, safe areas, back gestu
   `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (94, mocked worker)
 - Deploy (ask first): `nvm use 22` (wrangler 4.158 requires Node ≥22) then
   `cd web && npm run build && cd ../web-worker && npx wrangler deploy`
+- Push diagnostics: `wrangler tail` runs in background → `/tmp/wrangler-tail.log`
+
+## Push notification root cause + test steps
+- **Root cause**: `sendWebPush` treated every non-404/410 response as "delivered" — VAPID/auth
+  failures were silently swallowed. Now returns `{delivered, gone}` and logs status + body.
+- **1:1 chats never push** (by design — private text). Only shop room / group messages push.
+- Ticks (✓/✓✓) work in 1:1 regardless.
+- Test: hard-refresh → bell toggle "🔔 Notifications on" → send in shop room with app
+  closed/backgrounded → check `/tmp/wrangler-tail.log` for 401/403/500 if no notification.
