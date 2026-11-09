@@ -1625,7 +1625,7 @@ export default function App() {
           <div className="auth-hero">
             <button
               type="button"
-              aria-label="Change theme"
+              aria-label={`Theme: ${resolved === "dark" ? "Dark" : resolved === "contrast" ? "Contrast" : "Light"}`}
               className="auth-theme-btn"
               onClick={() =>
                 setMode(resolved === "light" ? "dark" : resolved === "dark" ? "contrast" : "light")
@@ -1652,48 +1652,57 @@ export default function App() {
 
           <div className={`auth-sheet ${authShake ? "auth-shake" : ""}`}>
             {authMode === "login" ? (
-              <form className="space-y-4" onSubmit={mobileSubmitLogin} noValidate>
-                <div>
+              <form className="auth-form" onSubmit={mobileSubmitLogin} noValidate>
+                <div className="auth-head">
                   <h2 className="auth-heading">Welcome back</h2>
                   <p className="auth-subtitle">Sign in to continue</p>
                 </div>
-                <div>
-                  <label className="label" htmlFor="m-phone">Phone number</label>
-                  <div className="auth-input">
-                    <span className="prefix">+91</span>
-                    <input
-                      id="m-phone"
-                      type="tel"
-                      inputMode="numeric"
-                      autoComplete="tel"
-                      maxLength={10}
-                      placeholder="10-digit mobile"
-                      value={phone}
-                      onChange={(e) => {
-                        setPhone(e.currentTarget.value.replace(/\D/g, "").slice(0, 10));
-                        setPhoneError(null);
-                      }}
-                    />
+                <div className="auth-fields">
+                  <div>
+                    <label className="label" htmlFor="m-phone">Phone number</label>
+                    <div className={`auth-input ${phoneError ? "has-error" : ""}`}>
+                      <span className="prefix">+91</span>
+                      <input
+                        id="m-phone"
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel"
+                        maxLength={10}
+                        placeholder="10-digit mobile"
+                        value={phone}
+                        onChange={(e) => {
+                          setPhone(e.currentTarget.value.replace(/\D/g, "").slice(0, 10));
+                          setPhoneError(null);
+                        }}
+                      />
+                    </div>
+                    {phoneError && <p className="auth-field-error" role="alert">{phoneError}</p>}
                   </div>
-                  {phoneError && <p className="auth-field-error" role="alert">{phoneError}</p>}
-                </div>
-                <div>
-                  <label className="label" htmlFor="m-password">Password</label>
-                  <div className="auth-input">
-                    <input
-                      id="m-password"
-                      type={showLoginPw ? "text" : "password"}
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={(e) => setPassword(e.currentTarget.value)}
-                    />
+                  <div>
+                    <label className="label" htmlFor="m-password">Password</label>
+                    <div className={`auth-input ${error ? "has-error" : ""}`}>
+                      <input
+                        id="m-password"
+                        type={showLoginPw ? "text" : "password"}
+                        autoComplete="current-password"
+                        value={password}
+                        onChange={(e) => setPassword(e.currentTarget.value)}
+                      />
+                      <button
+                        type="button"
+                        className="peek"
+                        aria-label={showLoginPw ? "Hide password" : "Show password"}
+                        onClick={() => setShowLoginPw((v) => !v)}
+                      >
+                        {showLoginPw ? <IconEyeOff size={18} /> : <IconEyeOpen size={18} />}
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      className="peek"
-                      aria-label={showLoginPw ? "Hide password" : "Show password"}
-                      onClick={() => setShowLoginPw((v) => !v)}
+                      className="auth-forgot"
+                      onClick={() => showToast("Ask the shop owner to reset your password")}
                     >
-                      {showLoginPw ? <IconEyeOff size={18} /> : <IconEyeOpen size={18} />}
+                      Forgot password?
                     </button>
                   </div>
                 </div>
@@ -1715,72 +1724,74 @@ export default function App() {
                 </button>
               </form>
             ) : (
-              <form className="space-y-4" onSubmit={mobileSubmitSignup} noValidate>
-                <div>
+              <form className="auth-form" onSubmit={mobileSubmitSignup} noValidate>
+                <div className="auth-head">
                   <h2 className="auth-heading">Create account</h2>
                   <p className="auth-subtitle">Join the team</p>
                 </div>
-                <div>
-                  <label className="label" htmlFor="m-name">Your name</label>
-                  <div className="auth-input">
-                    <input
-                      id="m-name"
-                      autoComplete="name"
-                      value={signupName}
-                      onChange={(e) => setSignupName(e.currentTarget.value)}
-                    />
+                <div className="auth-fields">
+                  <div>
+                    <label className="label" htmlFor="m-name">Your name</label>
+                    <div className="auth-input">
+                      <input
+                        id="m-name"
+                        autoComplete="name"
+                        value={signupName}
+                        onChange={(e) => setSignupName(e.currentTarget.value)}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="label" htmlFor="m-sphone">Phone number</label>
-                  <div className="auth-input">
-                    <span className="prefix">+91</span>
-                    <input
-                      id="m-sphone"
-                      type="tel"
-                      inputMode="numeric"
-                      autoComplete="tel"
-                      maxLength={10}
-                      placeholder="10-digit mobile"
-                      value={signupPhone}
-                      onChange={(e) => {
-                        setSignupPhone(e.currentTarget.value.replace(/\D/g, "").slice(0, 10));
-                        setPhoneError(null);
-                      }}
-                    />
+                  <div>
+                    <label className="label" htmlFor="m-sphone">Phone number</label>
+                    <div className={`auth-input ${phoneError ? "has-error" : ""}`}>
+                      <span className="prefix">+91</span>
+                      <input
+                        id="m-sphone"
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel"
+                        maxLength={10}
+                        placeholder="10-digit mobile"
+                        value={signupPhone}
+                        onChange={(e) => {
+                          setSignupPhone(e.currentTarget.value.replace(/\D/g, "").slice(0, 10));
+                          setPhoneError(null);
+                        }}
+                      />
+                    </div>
+                    {phoneError && <p className="auth-field-error" role="alert">{phoneError}</p>}
                   </div>
-                  {phoneError && <p className="auth-field-error" role="alert">{phoneError}</p>}
-                </div>
-                <div>
-                  <label className="label" htmlFor="m-spassword">Password (6+)</label>
-                  <div className="auth-input">
-                    <input
-                      id="m-spassword"
-                      type={showSignupPw ? "text" : "password"}
-                      autoComplete="new-password"
-                      value={signupPassword}
-                      onChange={(e) => setSignupPassword(e.currentTarget.value)}
-                    />
-                    <button
-                      type="button"
-                      className="peek"
-                      aria-label={showSignupPw ? "Hide password" : "Show password"}
-                      onClick={() => setShowSignupPw((v) => !v)}
-                    >
-                      {showSignupPw ? <IconEyeOff size={18} /> : <IconEyeOpen size={18} />}
-                    </button>
+                  <div>
+                    <label className="label" htmlFor="m-spassword">Password (6+)</label>
+                    <div className="auth-input">
+                      <input
+                        id="m-spassword"
+                        type={showSignupPw ? "text" : "password"}
+                        autoComplete="new-password"
+                        value={signupPassword}
+                        onChange={(e) => setSignupPassword(e.currentTarget.value)}
+                      />
+                      <button
+                        type="button"
+                        className="peek"
+                        aria-label={showSignupPw ? "Hide password" : "Show password"}
+                        onClick={() => setShowSignupPw((v) => !v)}
+                      >
+                        {showSignupPw ? <IconEyeOff size={18} /> : <IconEyeOpen size={18} />}
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="label" htmlFor="m-confirm">Confirm password</label>
-                  <div className="auth-input">
-                    <input
-                      id="m-confirm"
-                      type={showSignupPw ? "text" : "password"}
-                      autoComplete="new-password"
-                      value={signupConfirm}
-                      onChange={(e) => setSignupConfirm(e.currentTarget.value)}
-                    />
+                  <div>
+                    <label className="label" htmlFor="m-confirm">Confirm password</label>
+                    <div className={`auth-input ${error ? "has-error" : ""}`}>
+                      <input
+                        id="m-confirm"
+                        type={showSignupPw ? "text" : "password"}
+                        autoComplete="new-password"
+                        value={signupConfirm}
+                        onChange={(e) => setSignupConfirm(e.currentTarget.value)}
+                      />
+                    </div>
                   </div>
                 </div>
                 {error && <p className="auth-field-error" role="alert">{error}</p>}
