@@ -8,6 +8,7 @@
  */
 
 import { api } from "./api";
+import { membersOf } from "../../src/logic/chatPrivacy";
 
 export type UnreadState = { total: number; byRoom: Record<string, number> };
 
@@ -46,8 +47,9 @@ export async function refreshUnread(myId?: number | null): Promise<void> {
     const byRoom: Record<string, number> = {};
     for (const conversation of conversations) byRoom[conversation.room] = conversation.unread;
     setByRoom(byRoom);
-    // A 1:1 message that reached this device is delivered to its owner.
-    confirmDirectDelivered(conversations, myId);
+    // A 1:1 message that reached this device is delivered to its owner —
+    // even when the member is on another screen, not in the chat room.
+    await confirmDirectDelivered(conversations, myId);
   } catch {
     // Offline or not signed in — keep whatever we have.
   }
@@ -85,57 +87,54 @@ export function setUnreadFromConversations(conversations: { room: string; unread
 // ---- "Delivered" for 1:1 chats (the Message info fix) ----
 
 /**
- * The messages that just reached THIS device: the newest message of a 1:1
- * chat with unread messages from the other person. Pure — the caller decides
- * what to do with the ids (see `confirmDirectDelivered`).
+ * Tell the sender "my device has it" for ALL unread messages of every 1:1
+ * chat — even when the member is on another screen, not in the chat room.
  *
  * Groups keep their socket-only delivered flow; only private chats confirm
  * from the conversation sync.
+ *
+ * Fire-and-forget and idempotent (the server keeps the first delivered time).
  */
-export function directMessagesToConfirm(
+export async function confirmDirectDelivered(
   conversations: {
     kind: "group" | "direct";
     unread: number;
     lastMessage?: { id?: number; userId?: number | null } | null;
+    other?: { id?: number } | null;
+    room: string;
   }[],
   myId: number | null | undefined,
-): number[] {
-  if (myId == null) return [];
-  const ids: number[] = [];
+): Promise<void> {
+  if (myId == null) return;
+
   for (const conversation of conversations) {
     if (conversation.kind !== "direct") continue;
     if (!(conversation.unread > 0)) continue;
-    const last = conversation.lastMessage;
-    if (!last || typeof last.id !== "number") continue;
-    // Never confirm my OWN message — the sender gets no receipt.
-    if (last.userId == null || last.userId === myId) continue;
-    ids.push(last.id);
+
+    const room = conversation.room;
+    const dm = membersOf(room);
+    if (!dm) continue;
+    const otherId = dm.userId === myId ? dm.otherId : dm.userId;
+    if (otherId == null) continue;
+
+    try {
+      const { messages } = await api.chatMessages(room);
+      for (const message of messages) {
+        if (message.userId !== otherId) continue;
+        const id = message.id;
+        if (confirmedDelivered.has(id)) continue;
+        confirmedDelivered.add(id);
+        void api.markChatDelivered(id).catch(() => {
+          // A failed call is retried at the next sync.
+          confirmedDelivered.delete(id);
+        });
+      }
+    } catch {
+      // Failed to fetch messages — will retry on the next sync (30 s, focus,
+      // visibility change).
+    }
   }
-  return ids;
 }
 
 /** Ids already confirmed in this browser (a sync repeats every 30 s). */
 const confirmedDelivered = new Set<number>();
-
-/**
- * Tell the sender "my device has it" for the newest message of every 1:1 chat
- * with unread messages. Fire-and-forget and idempotent (the server keeps the
- * first delivered time).
- */
-export function confirmDirectDelivered(
-  conversations: {
-    kind: "group" | "direct";
-    unread: number;
-    lastMessage?: { id?: number; userId?: number | null } | null;
-  }[],
-  myId: number | null | undefined,
-): void {
-  for (const id of directMessagesToConfirm(conversations, myId)) {
-    if (confirmedDelivered.has(id)) continue;
-    confirmedDelivered.add(id);
-    void api.markChatDelivered(id).catch(() => {
-      // A failed call is retried at the next sync.
-      confirmedDelivered.delete(id);
-    });
-  }
-}

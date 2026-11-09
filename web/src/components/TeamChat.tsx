@@ -367,8 +367,9 @@ export default function TeamChat({ user, initialRoom }: Props) {
       setConversations(list.conversations);
       setMembers(people.members);
       setUnreadFromConversations(list.conversations);
-      // A 1:1 message that reached this device is delivered to its owner.
-      confirmDirectDelivered(list.conversations, user?.id);
+      // A 1:1 message that reached this device is delivered to its owner —
+      // even on another screen, not just in the chat room.
+      await confirmDirectDelivered(list.conversations, user?.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

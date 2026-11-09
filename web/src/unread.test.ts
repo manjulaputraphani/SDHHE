@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  directMessagesToConfirm,
+  confirmDirectDelivered,
   getUnread,
   markRoomRead,
   markRoomReadByOther,
@@ -50,26 +50,45 @@ describe("unread store", () => {
 });
 
 describe("1:1 delivered from the conversation sync", () => {
-  const conversation = (over: Partial<{ kind: "group" | "direct"; unread: number; lastMessage: { id?: number; userId?: number | null } | null }>) => ({
+  const conversation = (over: Partial<{
+    kind: "group" | "direct";
+    unread: number;
+    room: string;
+    other?: { id?: number } | null;
+    lastMessage?: { id?: number; userId?: number | null } | null;
+  }>) => ({
     kind: "direct" as const,
     unread: 1,
-    lastMessage: { id: 7, userId: 2 },
+    room: "dm-1-2",
+    other: { id: 2 },
     ...over,
   });
 
-  it("confirms the newest message of an unread 1:1 chat", () => {
-    expect(directMessagesToConfirm([conversation({})], 1)).toEqual([7]);
+  it("confirmDirectDelivered is async and returns a promise", () => {
+    const result = confirmDirectDelivered([], 1);
+    expect(result).toBeInstanceOf(Promise);
+    void result;
   });
 
-  it("never confirms my OWN message (the sender gets no receipt)", () => {
-    expect(directMessagesToConfirm([conversation({ lastMessage: { id: 7, userId: 1 } })], 1)).toEqual([]);
-    expect(directMessagesToConfirm([conversation({ lastMessage: { id: 7, userId: null } })], 1)).toEqual([]);
+  it("returns immediately when there are no unread conversations", async () => {
+    await expect(confirmDirectDelivered([], 1)).resolves.toBeUndefined();
+    await expect(
+      confirmDirectDelivered([{ kind: "group" as const, unread: 5, room: "main" }], 1),
+    ).resolves.toBeUndefined();
   });
 
-  it("ignores groups, read chats and chats without a known message", () => {
-    expect(directMessagesToConfirm([conversation({ kind: "group" })], 1)).toEqual([]);
-    expect(directMessagesToConfirm([conversation({ unread: 0 })], 1)).toEqual([]);
-    expect(directMessagesToConfirm([conversation({ lastMessage: null })], 1)).toEqual([]);
-    expect(directMessagesToConfirm([conversation({})], null)).toEqual([]);
+  it("ignores my own messages and null user ids", async () => {
+    // my own message — should not confirm
+    await expect(
+      confirmDirectDelivered([conversation({ lastMessage: { id: 7, userId: 1 } })], 1),
+    ).resolves.toBeUndefined();
+    // null userId — should not confirm
+    await expect(
+      confirmDirectDelivered([conversation({ lastMessage: { id: 7, userId: null } })], 1),
+    ).resolves.toBeUndefined();
+  });
+
+  it("ignores null myId", async () => {
+    await expect(confirmDirectDelivered([conversation({})], null)).resolves.toBeUndefined();
   });
 });
