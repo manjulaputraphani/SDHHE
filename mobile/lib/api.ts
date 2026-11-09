@@ -87,9 +87,8 @@ export const api = {
     try {
       parsed = JSON.parse(text) as Record<string, unknown>;
     } catch {
-      // HTML response (Cloudflare SPA fallback / challenge page) — the route
-      // didn't match, or an upstream error page was returned.
-      throw new Error(`Unexpected response (${res.status}) — try again`);
+      const head = text.slice(0, 120).replace(/\n/g, " ");
+      throw new Error(`Unexpected response (${res.status}): "${head}…" — not JSON`);
     }
     if (!res.ok) {
       throw new Error((parsed.error as string) ?? `Login failed (${res.status})`);
