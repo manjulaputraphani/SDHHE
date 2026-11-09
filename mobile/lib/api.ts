@@ -12,6 +12,22 @@ const WORKER_URL = "https://sdhhe-api.blvphani.workers.dev";
 
 const TOKEN_KEY = "sdhhe_auth_token";
 
+// ---- Cloudflare Access service token (the OWNER creates these) ----
+// Without them the Worker is behind Cloudflare Access → every request gets a
+// 302 redirect to the Access login page (HTML) → the app can't call the API.
+// Create at: one.dash.cloudflare.com → Zero Trust → Access → Service Tokens
+// Then set BOTH of the values below. They travel with EVERY request.
+const CF_ACCESS_CLIENT_ID = ""; // e.g. "mobileapp.access" — set from the dashboard
+const CF_ACCESS_CLIENT_SECRET = ""; // the secret shown once at creation
+
+function accessHeaders(): Record<string, string> {
+  if (!CF_ACCESS_CLIENT_ID || !CF_ACCESS_CLIENT_SECRET) return {};
+  return {
+    "CF-Access-Client-Id": CF_ACCESS_CLIENT_ID,
+    "CF-Access-Client-Secret": CF_ACCESS_CLIENT_SECRET,
+  };
+}
+
 export async function getAuthToken(): Promise<string | null> {
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
@@ -46,10 +62,16 @@ async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAuthToken();
   if (!token) throw new Error("Not signed in");
   return {
+    ...accessHeaders(),
     "content-type": "application/json",
     accept: "application/json",
     cookie: `sdhhe_session=${token}`,
   };
+}
+
+/** Headers for UNAUTHENTICATED requests (like login itself). */
+function accessOnly(): Record<string, string> {
+  return { ...accessHeaders(), "content-type": "application/json", accept: "application/json" };
 }
 
 async function request<T>(path: string, options?: RequestOptions): Promise<T> {
@@ -79,7 +101,7 @@ export const api = {
   login: async (phone: string, password: string): Promise<ApiUser> => {
     const res = await fetch(`${WORKER_URL}/api/auth/login`, {
       method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json" },
+      headers: accessOnly(),
       body: JSON.stringify({ phone, password }),
     });
     const text = await res.text();
