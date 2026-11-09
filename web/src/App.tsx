@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import {
   api,
   money,
@@ -21,6 +21,7 @@ import {
 } from "./api";
 import { buildBillHtml } from "../../src/lib/printBill";
 import { clearWelcomeFlag, setWelcomeFlag } from "../../src/logic/welcomeBanner";
+import { normalizePhone } from "../../src/logic/auth";
 import { planRoast } from "../../src/logic/roasting";
 import { billWhatsAppText, buildWhatsAppLink } from "../../src/lib/whatsapp";
 import type { ShopDetails } from "../../src/db/settings";
@@ -37,7 +38,7 @@ import {
 } from "../../src/logic/permissions";
 import { formatDate, formatDateTime } from "./format";
 import ThemeToggle from "./ThemeToggle";
-import { watchSystemTheme } from "./theme";
+import { getMode, resolveTheme, setMode, subscribeMode, watchSystemTheme } from "./theme";
 import EmptyState from "./components/EmptyState";
 import FormRow from "./components/FormRow";
 import ItemPicker from "./components/ItemPicker";
@@ -47,6 +48,8 @@ import ResponsiveTable from "./components/ResponsiveTable";
 import SalesChart from "./components/SalesChart";
 import RotationChart from "./components/RotationChart";
 import TeamChat from "./components/TeamChat";
+import ChatFab from "./components/ChatFab";
+import { getUnread, onlyUnreadRoom, refreshUnread, subscribeUnread } from "./unread";
 import ToastHost from "./components/notifications/ToastHost";
 import NotificationsHost from "./components/notifications/NotificationsHost";
 import AnnouncementsAdmin from "./components/AnnouncementsAdmin";
@@ -63,17 +66,23 @@ import {
   IconCalendar,
   IconClose,
   IconCoffee as IconCoffeeNav,
+  IconContrast,
   IconCrown,
   IconDashboard,
   IconExpenses,
+  IconEye as IconEyeOpen,
+  IconEyeOff,
   IconImage,
   IconIndianRupee,
   IconInvestments,
   IconInvoice,
   IconItems,
   IconKey,
+  IconLoader,
   IconLock,
   IconMenu,
+  IconMessageCircle,
+  IconMoon,
   IconPackage,
   IconPhone,
   IconPlus,
@@ -86,6 +95,7 @@ import {
   IconStickyNote,
   IconStock,
   IconStore,
+  IconSun,
   IconTag,
   IconTeam,
   IconTruck,
@@ -280,6 +290,9 @@ export default function App() {
     }
     return "dashboard";
   });
+  /** The room the FAB wants to open (set when exactly one thread is unread). */
+  const [chatTargetRoom, setChatTargetRoom] = useState<string | null>(null);
+  const unread = useSyncExternalStore(subscribeUnread, getUnread, getUnread);
   const [bills, setBills] = useState<BillRow[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
@@ -404,6 +417,11 @@ export default function App() {
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirm, setSignupConfirm] = useState("");
   const [signupStatus, setSignupStatus] = useState<string | null>(null);
+  const [showLoginPw, setShowLoginPw] = useState(false);
+  const [showSignupPw, setShowSignupPw] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [authShake, setAuthShake] = useState(false);
+  const themeMode = useSyncExternalStore(subscribeMode, getMode, getMode);
   const [emailStatus, setEmailStatus] = useState<string | null>(null);
   const [loginPhotoOk, setLoginPhotoOk] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -466,6 +484,42 @@ export default function App() {
       .catch(() => setUser(null))
       .finally(() => setChecking(false));
   }, []);
+
+  // Unread chat counts: pull once on sign-in, again on focus, and lightly on a
+  // timer so the badges stay fresh without a page refresh.
+  useEffect(() => {
+    if (!user) return;
+    void refreshUnread();
+    const onFocus = () => void refreshUnread();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshUnread();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(() => void refreshUnread(), 30000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(timer);
+    };
+  }, [user]);
+
+  // The browser tab title mirrors the unread count, e.g. "(3) SDHHE …".
+  useEffect(() => {
+    const base = "SREE DURGA HARIHARA ENTERPRISES";
+    document.title = unread.total > 0 ? `(${unread.total > 99 ? "99+" : unread.total}) ${base}` : base;
+  }, [unread.total]);
+
+  // The PWA taskbar badge (Android / Chrome) — setAppBadge where supported.
+  useEffect(() => {
+    if (!("setAppBadge" in navigator)) return;
+    try {
+      if (unread.total > 0) void (navigator as unknown as { setAppBadge: (n: number) => Promise<void> }).setAppBadge(unread.total);
+      else void (navigator as unknown as { clearAppBadge: () => Promise<void> }).clearAppBadge();
+    } catch {
+      // Not supported in this browser — the in-app badges still work.
+    }
+  }, [unread.total]);
 
   /**
    * The session warning: five minutes before the half-hour idle timeout the
@@ -1350,6 +1404,69 @@ export default function App() {
     }
   }
 
+  /** Shake the auth form on a bad phone or wrong credentials. */
+  function shakeAuth() {
+    setAuthShake(true);
+    window.setTimeout(() => setAuthShake(false), 450);
+  }
+
+  /** Mobile login: client-side phone validation, then the same API call. */
+  async function mobileSubmitLogin(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const check = normalizePhone(phone);
+    if (!check.valid) {
+      setPhoneError(check.reason);
+      shakeAuth();
+      return;
+    }
+    setPhoneError(null);
+    setBusy(true);
+    try {
+      const { user } = await api.login(check.phone, password);
+      setUser(user);
+      setWelcomeFlag();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      shakeAuth();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Mobile create-account: validation, then the same signup request. */
+  async function mobileSubmitSignup(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSignupStatus(null);
+    const check = normalizePhone(signupPhone);
+    if (!check.valid) {
+      setPhoneError(check.reason);
+      shakeAuth();
+      return;
+    }
+    setPhoneError(null);
+    if (signupPassword !== signupConfirm) {
+      setError("Passwords do not match");
+      shakeAuth();
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.signup(signupName, check.phone, signupPassword);
+      setSignupStatus("Request sent — the owner must approve this account before you can sign in.");
+      setSignupName("");
+      setSignupPhone("");
+      setSignupPassword("");
+      setSignupConfirm("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      shakeAuth();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveNotify() {
     setNotifyStatus(null);
     try {
@@ -1499,8 +1616,201 @@ export default function App() {
   }
 
   if (!user) {
+    const resolved = resolveTheme(themeMode);
     return (
-      <main className="grid min-h-viewport md:grid-cols-2">
+      <>
+      {/* MOBILE: bottom-sheet auth (max-width 767px only) */}
+      <main className="md:hidden">
+        <div className="auth-screen">
+          <div className="auth-hero">
+            <button
+              type="button"
+              aria-label="Change theme"
+              className="auth-theme-btn"
+              onClick={() =>
+                setMode(resolved === "light" ? "dark" : resolved === "dark" ? "contrast" : "light")
+              }
+            >
+              {resolved === "dark" ? (
+                <IconMoon size={20} />
+              ) : resolved === "contrast" ? (
+                <IconContrast size={20} />
+              ) : (
+                <IconSun size={20} />
+              )}
+            </button>
+            <span className="auth-logo">
+              <IconCoffeeNav size={30} />
+            </span>
+            <h1 className="auth-brand">
+              SREE DURGA HARIHARA
+              <br />
+              ENTERPRISES
+            </h1>
+            <p className="auth-tagline">Billing, stock &amp; accounts for the shop</p>
+          </div>
+
+          <div className={`auth-sheet ${authShake ? "auth-shake" : ""}`}>
+            {authMode === "login" ? (
+              <form className="space-y-4" onSubmit={mobileSubmitLogin} noValidate>
+                <div>
+                  <h2 className="auth-heading">Welcome back</h2>
+                  <p className="auth-subtitle">Sign in to continue</p>
+                </div>
+                <div>
+                  <label className="label" htmlFor="m-phone">Phone number</label>
+                  <div className="auth-input">
+                    <span className="prefix">+91</span>
+                    <input
+                      id="m-phone"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      maxLength={10}
+                      placeholder="10-digit mobile"
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.currentTarget.value.replace(/\D/g, "").slice(0, 10));
+                        setPhoneError(null);
+                      }}
+                    />
+                  </div>
+                  {phoneError && <p className="auth-field-error" role="alert">{phoneError}</p>}
+                </div>
+                <div>
+                  <label className="label" htmlFor="m-password">Password</label>
+                  <div className="auth-input">
+                    <input
+                      id="m-password"
+                      type={showLoginPw ? "text" : "password"}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.currentTarget.value)}
+                    />
+                    <button
+                      type="button"
+                      className="peek"
+                      aria-label={showLoginPw ? "Hide password" : "Show password"}
+                      onClick={() => setShowLoginPw((v) => !v)}
+                    >
+                      {showLoginPw ? <IconEyeOff size={18} /> : <IconEyeOpen size={18} />}
+                    </button>
+                  </div>
+                </div>
+                {error && <p className="auth-field-error" role="alert">{error}</p>}
+                <button className="auth-submit" type="submit" disabled={busy}>
+                  {busy ? <IconLoader size={20} className="animate-spin" /> : "Sign in"}
+                </button>
+                <button
+                  type="button"
+                  className="auth-switch"
+                  onClick={() => {
+                    setAuthMode("signup");
+                    setError(null);
+                    setPhoneError(null);
+                    setSignupStatus(null);
+                  }}
+                >
+                  New here? Create account
+                </button>
+              </form>
+            ) : (
+              <form className="space-y-4" onSubmit={mobileSubmitSignup} noValidate>
+                <div>
+                  <h2 className="auth-heading">Create account</h2>
+                  <p className="auth-subtitle">Join the team</p>
+                </div>
+                <div>
+                  <label className="label" htmlFor="m-name">Your name</label>
+                  <div className="auth-input">
+                    <input
+                      id="m-name"
+                      autoComplete="name"
+                      value={signupName}
+                      onChange={(e) => setSignupName(e.currentTarget.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="label" htmlFor="m-sphone">Phone number</label>
+                  <div className="auth-input">
+                    <span className="prefix">+91</span>
+                    <input
+                      id="m-sphone"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      maxLength={10}
+                      placeholder="10-digit mobile"
+                      value={signupPhone}
+                      onChange={(e) => {
+                        setSignupPhone(e.currentTarget.value.replace(/\D/g, "").slice(0, 10));
+                        setPhoneError(null);
+                      }}
+                    />
+                  </div>
+                  {phoneError && <p className="auth-field-error" role="alert">{phoneError}</p>}
+                </div>
+                <div>
+                  <label className="label" htmlFor="m-spassword">Password (6+)</label>
+                  <div className="auth-input">
+                    <input
+                      id="m-spassword"
+                      type={showSignupPw ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={signupPassword}
+                      onChange={(e) => setSignupPassword(e.currentTarget.value)}
+                    />
+                    <button
+                      type="button"
+                      className="peek"
+                      aria-label={showSignupPw ? "Hide password" : "Show password"}
+                      onClick={() => setShowSignupPw((v) => !v)}
+                    >
+                      {showSignupPw ? <IconEyeOff size={18} /> : <IconEyeOpen size={18} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="label" htmlFor="m-confirm">Confirm password</label>
+                  <div className="auth-input">
+                    <input
+                      id="m-confirm"
+                      type={showSignupPw ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={signupConfirm}
+                      onChange={(e) => setSignupConfirm(e.currentTarget.value)}
+                    />
+                  </div>
+                </div>
+                {error && <p className="auth-field-error" role="alert">{error}</p>}
+                {signupStatus && (
+                  <p className="auth-field-error" role="status" style={{ color: "var(--c-success-ink)" }}>
+                    {signupStatus}
+                  </p>
+                )}
+                <button className="auth-submit" type="submit" disabled={busy}>
+                  {busy ? <IconLoader size={20} className="animate-spin" /> : "Request account"}
+                </button>
+                <button
+                  type="button"
+                  className="auth-switch"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setError(null);
+                    setPhoneError(null);
+                  }}
+                >
+                  Already have an account? Sign in
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* DESKTOP: split-screen card (unchanged) */}
+      <main className="hidden min-h-viewport md:grid md:grid-cols-2">
         {/* Left: the café photo with a brown gradient overlay (desktop only) */}
         <div className="relative hidden overflow-hidden bg-[#4a3325] md:block">
           {loginPhotoOk ? (
@@ -1602,6 +1912,7 @@ export default function App() {
           </div>
         </div>
       </main>
+      </>
     );
   }
 
@@ -1715,6 +2026,11 @@ export default function App() {
                   >
                     <span className="shrink-0 opacity-90">{link.icon}</span>
                     {link.label}
+                    {link.key === "team-chat" && unread.total > 0 && (
+                      <span className="unread-badge ml-auto">
+                        {unread.total > 99 ? "99+" : unread.total}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1770,10 +2086,11 @@ export default function App() {
               type="button"
               aria-label={menuOpen ? "Close menu" : "Open menu"}
               aria-expanded={menuOpen}
-              className="tap-44 grid size-11 place-items-center rounded-lg text-nav-text hover:bg-nav-hover"
+              className="tap-44 relative grid size-11 place-items-center rounded-lg text-nav-text hover:bg-nav-hover"
               onClick={() => setMenuOpen((open) => !open)}
             >
               {menuOpen ? <IconClose size={20} /> : <IconMenu size={20} />}
+              {!menuOpen && unread.total > 0 && <span className="unread-dot" aria-hidden="true" />}
             </button>
             <button
               type="button"
@@ -1836,6 +2153,11 @@ export default function App() {
                         >
                           <span className="shrink-0 opacity-90">{link.icon}</span>
                           {link.label}
+                          {link.key === "team-chat" && unread.total > 0 && (
+                            <span className="unread-badge ml-auto">
+                              {unread.total > 99 ? "99+" : unread.total}
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -4188,7 +4510,9 @@ export default function App() {
           </section>
         )}
 
-        {view === "team-chat" && can("chat", "view") && <TeamChat user={user} />}
+        {view === "team-chat" && can("chat", "view") && (
+          <TeamChat user={user} initialRoom={chatTargetRoom ?? undefined} />
+        )}
 
         {view === "settings" && (
           <section className="space-y-3 card p-4">
@@ -4355,6 +4679,15 @@ export default function App() {
           );
         })()}
       </main>
+      {/* The floating chat button — everywhere except Team Chat / Login / Register. */}
+      {view !== "team-chat" && (
+        <ChatFab
+          onOpen={() => {
+            setChatTargetRoom(onlyUnreadRoom());
+            setView("team-chat");
+          }}
+        />
+      )}
     </div>
     </>
   );

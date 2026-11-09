@@ -7,15 +7,17 @@
  * - index.html runs the same resolution inline before first paint, so there is no flash.
  */
 
-export type ThemeMode = "light" | "dark" | "system";
-export type ResolvedTheme = "light" | "dark";
+export type ThemeMode = "light" | "dark" | "system" | "contrast";
+export type ResolvedTheme = "light" | "dark" | "contrast";
 
 const STORAGE_KEY = "sdhhe-theme";
 
 function readStoredMode(): ThemeMode {
   try {
     const value = localStorage.getItem(STORAGE_KEY);
-    return value === "light" || value === "dark" || value === "system" ? value : "system";
+    return value === "light" || value === "dark" || value === "system" || value === "contrast"
+      ? value
+      : "system";
   } catch {
     return "system";
   }
@@ -38,7 +40,6 @@ export function resolveTheme(mode: ThemeMode): ResolvedTheme {
   if (mode === "system") return prefersDark() ? "dark" : "light";
   return mode;
 }
-
 /** Writes the resolved theme onto <html>. Returns the resolved theme. */
 export function applyTheme(mode: ThemeMode): ResolvedTheme {
   const resolved = resolveTheme(mode);

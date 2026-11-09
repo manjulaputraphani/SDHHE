@@ -38,6 +38,7 @@ import { formatRupees } from "../../../src/logic/units";
 
 import { showToast } from "./notifications/toastStore";
 import PushToggle from "./notifications/PushToggle";
+import { markRoomRead, setUnreadFromConversations } from "../unread";
 import {
   chatDaySections,
   conversationName,
@@ -66,12 +67,12 @@ import {
   IconPhone,
   IconPin,
   IconSearch,
-  IconSend,
+  IconSendHorizontal,
   IconSmile,
   IconUsers,
 } from "./icons";
 
-type Props = { user: User | null };
+type Props = { user: User | null; initialRoom?: string };
 
 const BADGE_CLASS: Record<string, string> = {
   warn: "bg-accent-soft text-accent-ink",
@@ -160,10 +161,10 @@ function useIsCoarse(): boolean {
   return coarse;
 }
 
-export default function TeamChat({ user }: Props) {
+export default function TeamChat({ user, initialRoom }: Props) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [members, setMembers] = useState<ChatMember[]>([]);
-  const [room, setRoom] = useState<string>(SHARED_ROOM);
+  const [room, setRoom] = useState<string>(initialRoom ?? SHARED_ROOM);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [receipts, setReceipts] = useState<ChatReceipt[]>([]);
   const [presence, setPresence] = useState<ChatUser[]>([]);
@@ -293,6 +294,7 @@ export default function TeamChat({ user }: Props) {
       const [list, people] = await Promise.all([api.chatConversations(), api.chatMembers()]);
       setConversations(list.conversations);
       setMembers(people.members);
+      setUnreadFromConversations(list.conversations);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -687,6 +689,7 @@ export default function TeamChat({ user }: Props) {
     setRoom(next);
     setMobileView("room");
     setError(null);
+    markRoomRead(next);
     try {
       await api.markChatRead(next);
       await loadConversations();
@@ -1339,20 +1342,24 @@ export default function TeamChat({ user }: Props) {
                         >
                           {name}
                         </span>
-                        <span className="shrink-0 text-[10px] text-muted">
+                        <span
+                          className={`shrink-0 text-[10px] ${
+                            conversation.unread > 0 ? "unread-time" : "text-muted"
+                          }`}
+                        >
                           {formatChatListTimeRow(conversation.lastMessageAt, new Date(nowTick))}
                         </span>
                       </span>
                       <span className="mt-0.5 flex items-center justify-between gap-2">
                         <span
                           className={`truncate text-xs ${
-                            conversation.unread > 0 ? "font-medium text-ink" : "text-muted"
+                            conversation.unread > 0 ? "font-semibold text-ink" : "text-muted"
                           }`}
                         >
                           {preview || "No messages yet"}
                         </span>
                         {conversation.unread > 0 && (
-                          <span className="badge bg-accent-soft px-1.5 text-[10px] text-accent-ink">
+                          <span className="badge unread-contact-badge px-1.5 text-[10px]">
                             {conversation.unread}
                           </span>
                         )}
@@ -1857,7 +1864,7 @@ export default function TeamChat({ user }: Props) {
                                       {group.mine && isLast && tick && (
                                         <span
                                           className={`ml-1 text-[10px] ${
-                                            tick === "read" ? "text-accent-ink" : "opacity-70"
+                                            tick === "read" ? "tick-read" : "opacity-70"
                                           }`}
                                           title={
                                             tick === "read"
@@ -2228,7 +2235,7 @@ export default function TeamChat({ user }: Props) {
                 disabled={busy || !hasDraftText}
                 className="tap-44 grid size-12 shrink-0 place-items-center rounded-full bg-primary text-on-primary shadow-md transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted disabled:shadow-none"
               >
-                {!editing && !hasDraftText ? <IconMic size={19} /> : <IconSend size={19} />}
+                {!editing && !hasDraftText ? <IconMic size={19} /> : <IconSendHorizontal size={19} />}
               </button>
             </div>
           </form>

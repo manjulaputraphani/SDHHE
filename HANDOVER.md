@@ -4,9 +4,8 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `388e3ee9` (chat UI redesign shipped).**
-The database is Neon Postgres (Drizzle) and stays that way — no database migration is planned
-or in progress.
+**LIVE `388e3ee9`. New work (mobile login redesign + unread badges/FAB + contrast theme) is
+committed, NOT deployed yet.**
 
 ## Next task
 None queued — the owner picks the next task.
@@ -40,17 +39,19 @@ None queued — the owner picks the next task.
 ## Blockers
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
 
-## What this session changed (chat UI — now live)
-- Fixed horizontal overflow: mobile chat edge-to-edge (main padding negated, `min-w-0` on
-  grid/flex, `word-break`/`overflow-wrap` on bubbles, `overflow-x:hidden` on the list).
-- WhatsApp composer: [emoji] [pill: textarea+attach+camera] [circular 48px send]; mic ⇄ send
-  icon swap; 16px on phones (no iOS auto-zoom).
-- `100dvh` height + `100svh`/`-webkit-fill-available` fallbacks + safe areas +
-  `overscroll-behavior: contain`; `.chat-bg` coffee dot-lattice backdrop.
-- Bubbles: max-w 80%/65%, timestamp + ticks always visible. Mobile header: short "SDHHE"
-  mark (icon-only <360px), theme toggle moved into the drawer; Call icon (desktop only).
-- Viewport meta `interactive-widget=resizes-content`; `prefers-reduced-motion` respected.
-- No backend / chat-logic / data changes. 494 unit + 70 e2e green before commit.
+## This + last session (UI work)
+- **Chat (live `388e3ee9`)**: edge-to-edge mobile, WhatsApp composer (emoji·pill·circular send,
+  mic⇄send), `100dvh`+safe areas, bubble max-w 80/65% + always-visible time/ticks (blue read),
+  `.chat-bg` pattern, mobile header short mark, theme toggle into drawer.
+- **Contrast theme**: `contrast` ThemeMode + `[data-theme=contrast]` palette (solid, 2px borders).
+- **Mobile login** (<768px only): bottom-sheet hero+form; +91 prefix (10-digit, 6–9, normalizePhone);
+  password show/hide; spinner; inline errors + shake; light→dark→contrast cycle. Desktop unchanged.
+- **Unread + FAB**: `unread.ts` store + `ChatFab.tsx`. Total pill on "Team Chat" (nav+drawer),
+  8px hamburger dot, per-contact green badge/time + bold preview, FAB (pulse, keyboard-hide,
+  setAppBadge, "(N)…" tab title). Refresh on login/focus/30s; clears on open.
+- **No "Forgot password?"** — no self-service reset flow exists. Unread already existed (no backend
+  change). FAB label "Open the chat…" (not "Open Team Chat…") to avoid a nav-button e2e substring clash.
+- No backend / chat-logic / data-structure changes. 494 unit + 70 e2e green.
 
 ## Commands
 - Tests: `npx vitest run --reporter=dot` (494) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·

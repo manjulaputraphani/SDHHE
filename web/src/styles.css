@@ -62,6 +62,12 @@
   /* elevation — soft shadow in light mode, thin borders in dark mode */
   --c-shadow: 0 1px 2px rgb(59 42 32 / 0.05), 0 14px 30px -20px rgb(59 42 32 / 0.3);
   --c-ring: rgb(111 78 55 / 0.28);
+
+  /* unread badges (fixed colours across themes) */
+  --badge-total: #c2410c; /* terracotta — total unread */
+  --badge-contact: #2e8b57; /* green — per-contact unread */
+  --badge-text: #ffffff;
+  --c-read: #53bdeb; /* WhatsApp-style read-receipt blue */
 }
 
 [data-theme="dark"] {
@@ -110,6 +116,70 @@
 
   --c-shadow: none; /* dark mode uses borders, not shadows */
   --c-ring: rgb(200 162 124 / 0.3);
+}
+
+/* High-contrast theme — solid colours, 2px borders, no patterns or translucency. */
+[data-theme="contrast"] {
+  color-scheme: light;
+
+  --c-bg: #ffffff;
+  --c-surface: #ffffff;
+  --c-surface-2: #f4ede4;
+  --c-surface-3: #e9dfd3;
+
+  --c-primary: #3e2a1f;
+  --c-primary-hover: #2a1c14;
+  --c-on-primary: #ffffff;
+
+  --c-accent: #6b4f3a;
+  --c-accent-ink: #3e2a1f;
+  --c-accent-soft: #efe6da;
+
+  --c-secondary: #2e8b57;
+  --c-secondary-ink: #1f6b40;
+  --c-secondary-soft: #e2f1e8;
+
+  --c-ink: #1a0f08;
+  --c-muted: #4a3b30;
+  --c-line: #3e2a1f;
+
+  --c-success: #1f7a3d;
+  --c-success-ink: #155c2d;
+  --c-success-soft: #e2f1e8;
+  --c-error: #b84a3a;
+  --c-error-ink: #9c2f20;
+  --c-error-soft: #fdeae4;
+
+  --c-nav-bg: #1a0f08;
+  --c-nav-text: #ffffff;
+  --c-nav-muted: #d8cbbd;
+  --c-nav-active: rgb(255 255 255 / 0.18);
+  --c-nav-hover: rgb(255 255 255 / 0.1);
+
+  --c-chart-1: #3e2a1f;
+  --c-chart-2: #2e8b57;
+  --c-chart-3: #c2410c;
+  --c-chart-4: #b84a3a;
+  --c-chart-5: #6b4f3a;
+  --c-chart-6: #8a6f5a;
+
+  --c-shadow: none;
+  --c-ring: rgb(62 42 31 / 0.5);
+}
+
+/* Contrast: 2px borders, no card shadow, no side-rail texture, no page gradient. */
+[data-theme="contrast"] .card {
+  border-width: 2px;
+  box-shadow: none;
+}
+[data-theme="contrast"] .card-hover:hover {
+  box-shadow: 0 0 0 2px var(--c-line);
+}
+[data-theme="contrast"] .nav-texture::before {
+  display: none;
+}
+[data-theme="contrast"] body {
+  background: var(--c-bg);
 }
 
 /* Map the tokens onto Tailwind utilities (bg-surface, text-ink, border-line …) */
@@ -764,4 +834,286 @@ summary {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* ------------------------------------------------------------------
+   Mobile auth (login / create account) — bottom-sheet, max-width 767px only.
+   The desktop split-screen card stays untouched.
+   ------------------------------------------------------------------ */
+@media (max-width: 767px) {
+  .auth-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: -webkit-fill-available;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--c-bg);
+  }
+  @supports (height: 100svh) {
+    .auth-screen { height: 100svh; }
+  }
+  @supports (height: 100dvh) {
+    .auth-screen { height: 100dvh; }
+  }
+
+  .auth-hero {
+    position: relative;
+    flex: 1.55;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: calc(env(safe-area-inset-top, 0px) + 20px) 24px 18px;
+    background: linear-gradient(160deg, #3e2a1f 0%, #6b4f3a 100%);
+    text-align: center;
+    isolation: isolate;
+  }
+  .auth-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.07;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='1.3' stroke-linecap='round'%3E%3Cellipse cx='13' cy='13' rx='6.5' ry='9.5' transform='rotate(35 13 13)'/%3E%3Cpath d='M9 7.5c4.5 2.5 4.5 8.5 0 11'/%3E%3Cellipse cx='39' cy='39' rx='6.5' ry='9.5' transform='rotate(35 39 39)'/%3E%3Cpath d='M35 33.5c4.5 2.5 4.5 8.5 0 11'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 56px 56px;
+  }
+  [data-theme="dark"] .auth-hero { background: linear-gradient(160deg, #1e1511 0%, #3a2a20 100%); }
+  [data-theme="contrast"] .auth-hero { background: #3e2a1f; }
+  [data-theme="contrast"] .auth-hero::before { display: none; }
+
+  .auth-theme-btn {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    right: 12px;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    color: #f7f1e8;
+    background: rgb(255 255 255 / 0.12);
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.2s ease;
+  }
+  .auth-theme-btn:hover { background: rgb(255 255 255 / 0.2); }
+
+  .auth-logo {
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    background: #f7f1e8;
+    color: #6b4f3a;
+    box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.45);
+  }
+  .auth-brand {
+    font-family: var(--font-display);
+    color: #f7f1e8;
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+    max-width: 340px;
+  }
+  .auth-tagline {
+    color: #f7f1e8;
+    opacity: 0.7;
+    font-size: 13px;
+  }
+
+  .auth-sheet {
+    flex: 2.45;
+    background: var(--c-surface);
+    border-radius: 28px 28px 0 0;
+    box-shadow: 0 -18px 42px -20px rgb(0 0 0 / 0.4);
+    padding: 28px 24px calc(24px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    animation: auth-slide 250ms ease-out;
+  }
+  [data-theme="dark"] .auth-sheet { background: #241b16; }
+  [data-theme="contrast"] .auth-sheet {
+    background: #ffffff;
+    border: 2px solid #3e2a1f;
+    border-bottom: 0;
+    box-shadow: none;
+  }
+
+  @keyframes auth-slide {
+    from { transform: translateY(26px); opacity: 0.4; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes auth-shake-kf {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-6px); }
+    40%, 60% { transform: translateX(6px); }
+  }
+  .auth-shake { animation: auth-shake-kf 450ms ease; }
+
+  .auth-heading { font-family: var(--font-display); font-size: 22px; letter-spacing: -0.01em; }
+  .auth-subtitle { color: var(--c-muted); font-size: 14px; margin-top: 2px; }
+
+  .auth-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 52px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid var(--c-line);
+    background: var(--c-surface-2);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .auth-input:focus-within {
+    border-color: var(--c-primary);
+    box-shadow: 0 0 0 3px var(--c-ring);
+  }
+  .auth-input .prefix {
+    color: var(--c-muted);
+    font-weight: 600;
+    font-size: 16px;
+    padding-right: 10px;
+    border-right: 1px solid var(--c-line);
+  }
+  .auth-input input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: 16px;
+    color: var(--c-ink);
+  }
+  .auth-input input::placeholder { color: var(--c-muted); opacity: 0.7; }
+  .auth-input .peek {
+    display: grid;
+    place-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -8px -6px -8px 0;
+    color: var(--c-muted);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .auth-submit {
+    width: 100%;
+    height: 52px;
+    border-radius: 14px;
+    background: var(--c-primary);
+    color: var(--c-on-primary);
+    font-weight: 600;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+  }
+  .auth-submit:disabled { opacity: 0.6; }
+  .auth-switch {
+    width: 100%;
+    min-height: 44px;
+    text-align: center;
+    color: var(--c-muted);
+    font-size: 14px;
+    text-decoration: underline;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .auth-field-error { color: var(--c-error-ink); font-size: 13px; margin-top: 6px; }
+}
+
+/* ------------------------------------------------------------------
+   Unread badges + the floating chat button
+   ------------------------------------------------------------------ */
+
+/* The total-unread pill next to "Team Chat" (sidebar / drawer). */
+.unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--badge-total);
+  color: var(--badge-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* The 8px terracotta dot on the hamburger while the menu is closed. */
+.unread-dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--badge-total);
+}
+
+/* Per-contact unread (WhatsApp style): green count + green time. */
+.unread-contact-badge {
+  background: var(--badge-contact);
+  color: var(--badge-text);
+}
+.unread-time {
+  color: var(--badge-contact);
+}
+
+/* Read receipt tick — WhatsApp blue. */
+.tick-read {
+  color: var(--c-read);
+}
+
+/* The floating chat button — bottom-right, brand circle + total badge. */
+.chat-fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 10px 26px -10px rgb(0 0 0 / 0.5);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.chat-fab:hover { transform: translateY(-2px); }
+.chat-fab:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 3px; }
+.chat-fab-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--badge-total);
+  color: var(--badge-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid var(--c-bg);
+}
+@media (min-width: 768px) {
+  .chat-fab { right: 32px; bottom: 32px; width: 60px; height: 60px; }
+}
+@keyframes chat-fab-pulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.chat-fab-pulse { animation: chat-fab-pulse 0.6s ease; }
+.chat-fab-hidden { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-fab-pulse { animation: none; }
 }
