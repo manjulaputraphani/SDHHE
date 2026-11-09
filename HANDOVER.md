@@ -19,7 +19,16 @@ Message info (me + Chaluvaraj) against the LIVE site (hard-refresh both browsers
 ## Blockers
 - Mail secrets (SMTP_USER / SMTP_PASS) still not on the worker.
 
-## This session: 1:1 Message info fix (Seen by / Delivered to)
+## This session: round loading mark (cup tile) — web + desktop
+- **`src/components/LoadingMark.tsx`** (shared): espresso tile `#3E2A1F`, caramel disc `#C68A4E`,
+  cream cup `#F3E6D2`, two animated steam wisps + gentle tile pulse (CSS in `src/App.css` AND
+  `web/src/styles.css`; honours prefers-reduced-motion).
+- Shown on EVERY screen load: both boot screens, Dashboard/Reports/Suppliers/Suggestions/Settings,
+  the table loaders (Purchases/Items/Bills/Expenses), web roles panel, chat list + room skeletons.
+  Button labels ("Loading lots…", Lock unlock, "Load more") stay plain text. NOT yet deployed.
+- Group "Pending" (undelivered names) stays as is — confirmed okay by the owner.
+
+## This session (deployed `648781ba`): 1:1 Message info fix + repair
 - **Bugs**: 1:1 panel listed the whole team as Pending; "Delivered to #1" (sender's own receipt +
   `/api/chat/members` excludes self so the name lookup failed); receipts stale/missing for 1:1.
 - **New API** `GET /api/chat/messages/:id/info`: `recipients` = conversation_members of THAT room
@@ -42,13 +51,12 @@ Message info (me + Chaluvaraj) against the LIVE site (hard-refresh both browsers
 - DEPLOYED `648781ba` (2026-11-09): `nvm use 22 && cd web && npm run build && cd ../web-worker &&
   npx wrangler deploy`.
 
-## This session (deployed): read receipts + unread badges
-- **Root cause**: `POST /api/chat/read` wrote `chat_message_states.read_at` but never bumped
-  `chat_conversation_members.last_read_message_id` — badges never cleared. `chatStates.markRead` now
-  does both; front end marks visible messages read (IntersectionObserver) and clears badges live.
+## This session (deployed): read receipts + unread badges (summary)
+- `chatStates.markRead` writes `read_at` AND bumps `last_read_message_id` (badges clear); the web
+  client marks visible messages read (IntersectionObserver) and clears badges live.
 
 ## Commands
-- Tests: `npx vitest run --reporter=dot` (505) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
+- Tests: `npx vitest run --reporter=dot` (507) · `npx tsc --noEmit` · `cd web && npm run typecheck` ·
   `cd web-worker && npx tsc --noEmit` · `npm run test:e2e:web` (72, mocked worker)
 - Deploy (ask first): `nvm use 22` (wrangler 4.158 requires Node ≥22) then
   `cd web && npm run build && cd ../web-worker && npx wrangler deploy`
