@@ -28,6 +28,8 @@ self.addEventListener("push", (event) => {
       icon: "/icons/icon-192.png",
       badge: "/favicon.svg",
       tag: "team-chat",
+      requireInteraction: true,
+      silent: false,
       data: { url: data.url || "/team-chat?notify=1" },
     }).then(() => {
       console.log("sw: notification shown", data.title);
