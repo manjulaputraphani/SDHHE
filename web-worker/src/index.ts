@@ -2281,6 +2281,19 @@ const handler = {
                   `New message from ${session.name}`,
                   "Open the chat to read it",
                 );
+                // IMMEDIATE delivery: the push service accepted the message,
+                // so the receiver's phone has it — mark it delivered and tell
+                // the sender at once (WhatsApp behaviour: ✓✓ when the push
+                // service confirms, not when the receiver opens the app).
+                const pushed = await markDelivered(db, message.id, otherId);
+                if (pushed) {
+                  await broadcastToChat(env, {
+                    type: "delivered",
+                    messageIds: [message.id],
+                    userId: otherId,
+                    name: "push service",
+                  }, room);
+                }
               }
             }
           }

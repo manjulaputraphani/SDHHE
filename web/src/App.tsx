@@ -503,7 +503,7 @@ export default function App() {
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
-    const timer = window.setInterval(() => void refreshUnread(user.id), 30000);
+    const timer = window.setInterval(() => void refreshUnread(user.id), 5000);
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
