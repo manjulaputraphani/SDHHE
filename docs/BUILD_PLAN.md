@@ -582,6 +582,34 @@ Reconciliation with the interim work of 2026-10-30:
 - [x] **e2e race fixed (welcome banner)** — the login-flag helper re-set the flag on every reload
   (init scripts re-run); it now sets it once per tab, so "a refresh shows no banner" is real.
 
+## Phase 17 — Migrate Neon Postgres → Cloudflare D1 (added 2026-11-09, owner's decision)
+*Everything becomes an API client of the one Worker: web, Android TWA and (after a rework) the
+Tauri desktop app. D1 is SQLite — the schema and raw-SQL modules are ported; Neon stays as a
+read-only backup through the cutover.*
+- [x] **T-17.0 Plan + decision** — this section; DECISIONS.md entry (why D1, desktop fate,
+  better-sqlite3 for local tests). Commit "T-17.0: plan D1 migration".
+- [x] **T-17.1 Create the database** — `wrangler d1 create sdhhe` (apac), `[[d1_databases]]`
+  binding `DB` in wrangler.toml; `better-sqlite3` dev-dependency added (DECISIONS has the reason).
+  Acceptance: binding present, deploy still works.
+- [ ] **T-17.2 Port the schema (tests first)** — rewrite `src/db/schema.ts` on sqlite-core
+  (integer paise stays integer; serial → autoincrement pk; timestamps → integer ms/ISO text;
+  booleans → 0/1); generate SQLite migrations (drizzle-kit, dialect sqlite); int-test helpers
+  against a local `:memory:`/file SQLite via better-sqlite3.
+- [ ] **T-17.3 Port the DB modules** — client.ts (`getDb` → D1 binding in the worker; desktop
+  shim later), chatRooms/chat raw SQL (json_build_object → manual assembly, `interval` → date
+  math), reports/rotation/cash-ledger aggregates, sessions/permissions. Unit tests stay green
+  (pure logic unchanged); int suites pass on local SQLite.
+- [ ] **T-17.4 Data migration** — export Neon (INSERT statements or JSON per table) → import
+  into D1; verify per-table row counts and money totals (cash ledger sum, stock value, dues).
+- [ ] **T-17.5 Worker cutover** — swap `DATABASE_URL` for `env.DB` across routes; keep both
+  paths behind a flag during the cutover; deploy.
+- [ ] **T-17.6 Desktop → API client** — Tauri app calls the worker for all data (service token
+  for Cloudflare Access — also unblocks desktop chat); remove the direct Neon/keyring DB path.
+- [ ] **T-17.7 Verify + backup** — full battery (unit + int + e2e), Neon kept read-only as the
+  rollback path, backup SQL snapshot archived.
+- [ ] **T-17.8 Cleanup** — remove the old Postgres schema/migrations and Neon references;
+  README/BLUEPRINT updated.
+
 ## Phase 16 — Chat polish (added 2026-11-07)
 *Spec adapted to this codebase: there is no useChat hook / App.css / CoffeeIcon.tsx — the chat is
 one component (`web/src/components/TeamChat.tsx`), tokens live in `web/src/styles.css`, icons are

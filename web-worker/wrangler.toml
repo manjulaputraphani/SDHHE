@@ -28,3 +28,10 @@ class_name = "ChatRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ChatRoom"]
+
+# Phase 17 — the database moved from Neon Postgres to Cloudflare D1.
+# (The DATABASE_URL secret stays until the cutover in T-17.5.)
+[[d1_databases]]
+binding = "DB"
+database_name = "sdhhe"
+database_id = "a111542a-461f-4cda-a756-a5eca215ca48"

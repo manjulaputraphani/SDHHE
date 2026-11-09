@@ -163,3 +163,9 @@
    refused). All three broadcast live through the Durable Object (`reaction` / `pins` frames) and every route first checks the room membership;
    pinning is owner-only. @mentions are computed on the client from the room roster and travel as ids in the send payload — the worker pushes
    "X mentioned you" to exactly those members, so a mention notifies even when the room would not push that member.
+- 2026-11-09 · **Migrating Neon Postgres → Cloudflare D1** (owner's decision) — the web worker, the Android TWA and (after a rework)
+   the Tauri desktop app all become API clients of ONE Worker backend; the desktop app's direct Neon connection goes away (which also
+   finally unblocks its chat once a Cloudflare Access service token exists). D1 is SQLite, so the schema (pg-core) and every module with
+   raw Postgres SQL are ported to sqlite-core; the shop's data is exported from Neon and imported into D1 with row-count/total
+   verification; Neon stays as a read-only backup during the cutover. Integration tests move from a Postgres branch to a LOCAL SQLite
+   file via `better-sqlite3` (added as a dev dependency for exactly this reason — faster tests, no cloud test DB, mirrors D1's engine).
