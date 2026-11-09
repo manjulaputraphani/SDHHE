@@ -4,14 +4,24 @@ Last updated: 2026-11-07 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE version `51bbd70a-8496-406e-a0ab-7147009824e7` (2026-11-09) — Android app shipped.**
-A TWA APK (`web/public/sdhhe.apk`, 1.1 MB, signed: CN=Phani Kumar, O=SDHHE, C=IN) is hosted by
-the worker and downloadable in-app ("📲 Install the Android app" in the sidebar footer, Android
-devices only — opens the live web app full-screen with notifications). Built with Google
-bubblewrap (JDK 17 + Android SDK installed at ~/.bubblewrap). The TWA project + signing keystore
-(android.keystore, password sdhhe2026) live at **~/sdhhe-android-twa** — NOT in git; keep the
-keystore safe, future APK updates must be signed with it. 494 unit + 70/70 e2e green before
-shipping, tsc clean, tree clean.
+**LIVE `51bbd70a` (Android APK shipped). Phase 17 STARTED: Neon Postgres → Cloudflare D1.**
+T-17.0 plan + T-17.1 database created (`sdhhe`, APAC, id a111542a-461f-4cda-a756-a5eca215ca48,
+binding `DB` in wrangler.toml, deploy dry-run verified). better-sqlite3 added for local int tests.
+The app still runs on Neon until the cutover (T-17.5) — nothing user-visible changed yet.
+
+## Next task — T-17.2 port the schema (tests first)
+Rewrite `src/db/schema.ts` on drizzle sqlite-core (serial → autoincrement pk; timestamptz →
+ISO text; booleans → 0/1; money/qty stay integer). Then T-17.3 ports the raw-SQL modules
+(chatRooms listConversations json_build_object → manual assembly, `interval`/`::` casts in
+reports/rotation/cash ledger, client.ts getDb → env.DB in the worker), T-17.4 exports Neon →
+imports D1 with row/total verification, T-17.5 cutover deploy, T-17.6 desktop becomes an API
+client (also unblocks its chat via the Access service token), T-17.7/17.8 verify + cleanup.
+Full task list in docs/BUILD_PLAN.md (Phase 17).
+
+## Owner steps that are still open
+1. Cloudflare Access service token for the desktop app (needed by T-17.6).
+2. Desktop 1-hour auto-logout (owner has not answered). 3. Roasting screen missing in desktop.
+4. Keep ~/sdhhe-android-twa safe (the APK signing keystore, password sdhhe2026).
 
 ## What Phase 16 delivered
 - **T-16.1** line breaks kept exactly (bubble `white-space: pre-wrap`; composer grows to 8 lines).
