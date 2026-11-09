@@ -4,7 +4,7 @@ Last updated: 2026-11-09 by OpenCode
 Tool: OpenCode
 
 ## Current state
-**LIVE `ae4ffebd` (AI key moved to Cloudflare Worker — desktop app calls `/api/ai/chat` instead of ollama.com directly; no local key storage).**
+**LIVE `2cb408cf` (OLLAMA_API_KEY set on Cloudflare Worker; desktop app calls `/api/ai/chat` instead of ollama.com directly; no local key storage).**
 
 ## Next task
 None queued — the owner picks the next task.
