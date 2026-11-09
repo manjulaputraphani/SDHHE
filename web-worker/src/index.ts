@@ -625,6 +625,7 @@ async function pushToTheTeam(
   message: { title: string; body: string; url?: string },
 ): Promise<void> {
   const db = getDb(env.DATABASE_URL as string);
+  console.log("push: pushToTheTeam, exceptUserId", exceptUserId);
   await pushToSubscriptions(env, db, await pushSubscriptionsForRoom(db, exceptUserId), message);
 }
 
@@ -636,6 +637,7 @@ async function pushToUsers(
   message: { title: string; body: string; url?: string },
 ): Promise<void> {
   const db = getDb(env.DATABASE_URL as string);
+  console.log("push: pushToUsers, userIds", JSON.stringify(userIds), "exceptUserId", exceptUserId);
   await pushToSubscriptions(env, db, await pushSubscriptionsForUsers(db, userIds, exceptUserId), message);
 }
 
@@ -658,6 +660,8 @@ async function pushToSubscriptions(
           console.log("push: removed dead subscription", subscription.endpoint);
         } else if (!result.delivered) {
           console.log("push: delivery failed for", subscription.endpoint);
+        } else {
+          console.log("push: delivered to", subscription.endpoint);
         }
       }),
     );
@@ -2260,9 +2264,11 @@ const handler = {
           } else {
             // Direct chat (1:1): push to the other member only — text-free alert
             // so the private message text never reaches the push service.
+            console.log("push: entering 1:1 push path for room", room, "sender", session.uid);
             const dm = membersOf(room);
             if (dm) {
               const otherId = dm.userId === session.uid ? dm.otherId : dm.userId;
+              console.log("push: 1:1 dm members", JSON.stringify(dm), "otherId", otherId);
               if (otherId) {
                 await pushToUsers(env, [otherId], session.uid, {
                   title: "New message",
