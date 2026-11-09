@@ -5,13 +5,16 @@
  * pushes. No third-party app is needed. The plumbing lives in pushSetup —
  * the app also subscribes by default (once), this button shows the state
  * and lets the member switch it off.
+ *
+ * `usePushToggle` is the ONE source of this setting: the header pill and the
+ * mobile Group info / Contact info row both use it, so they always agree.
  */
 import { useEffect, useState } from "react";
 import { ensurePushSubscription, pushSupported } from "./pushSetup";
 import { api } from "../../api";
 import { showToast } from "./toastStore";
 
-export default function PushToggle() {
+export function usePushToggle() {
   const [on, setOn] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -61,14 +64,20 @@ export default function PushToggle() {
     }
   }
 
-  if (!pushSupported()) return null;
+  return { on, busy, supported: pushSupported(), toggle: () => (on ? void unsubscribe() : void subscribe()) };
+}
+
+export default function PushToggle() {
+  const { on, busy, supported, toggle } = usePushToggle();
+
+  if (!supported) return null;
 
   return (
     <button
       type="button"
       className="btn-mini"
       disabled={busy}
-      onClick={() => (on ? void unsubscribe() : void subscribe())}
+      onClick={toggle}
       title="Notifications on your phone, even when the app is closed"
     >
       {on ? "🔔 Notifications on" : "🔕 Turn on notifications"}

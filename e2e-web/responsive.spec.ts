@@ -208,18 +208,29 @@ const PAGES: Array<{ label: string; title: RegExp | string }> = [
   { label: "Items", title: /Items/ },
   { label: "Purchases", title: /Purchases/ },
   { label: "Roasting", title: /Roasting/ },
-  { label: "Team Chat", title: /Team Chat/ },
+  { label: "Team Chat", title: /Team Chat|Chats/ },
   { label: "Settings", title: /Settings/ },
 ];
 
-/** Open a view: on a phone through the drawer, on md+ through the sidebar. */
+/** Open a view: on a phone through the bottom nav (+ More sheet), on md+ through the sidebar. */
 async function goTo(page: Page, label: string) {
   if ((page.viewportSize()?.width ?? 1280) < 768) {
-    await page.getByRole("button", { name: "Open menu" }).click();
-    // The header toggle and the overlay share the "Close menu" label.
-    await expect(page.getByRole("button", { name: "Close menu" }).first()).toBeVisible();
-    await page.getByRole("button", { name: label, exact: true }).click();
-    await expect(page.getByRole("button", { name: "Close menu" })).toHaveCount(0);
+    const nav = page.getByRole("navigation", { name: "Main" });
+    const tabs: Record<string, string> = {
+      Dashboard: "Home",
+      "New Bill": "New Bill",
+      "Team Chat": "Chats",
+    };
+    const tab = tabs[label];
+    if (tab) {
+      await nav.getByRole("button", { name: tab, exact: true }).click();
+    } else {
+      await nav.getByRole("button", { name: "More", exact: true }).click();
+      const sheet = page.getByRole("dialog", { name: "More" });
+      await expect(sheet).toBeVisible();
+      await sheet.getByRole("button", { name: label, exact: true }).click();
+      await expect(sheet).toHaveCount(0);
+    }
   } else {
     await page.getByRole("button", { name: label, exact: true }).click();
   }
@@ -234,8 +245,7 @@ for (const width of [360, 375, 390, 430]) {
       await page.addInitScript(() => window.localStorage.setItem("sdhhe-theme", "dark"));
       await mockApp(page);
       await page.goto("/");
-      await page.getByRole("button", { name: "Open menu" }).click();
-      await page.getByRole("button", { name: "Team Chat" }).click();
+      await goTo(page, "Team Chat");
       await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
       await page.getByRole("button", { name: /Shop room/ }).click();
       await expectFits(page, `the dark chat at ${width}px`);
@@ -267,32 +277,35 @@ for (const width of [360, 375, 390, 430]) {
       }
     });
 
-    test("the drawer opens over a dark overlay and closes on a link tap", async ({ page }) => {
+    test("the More sheet opens over a dark overlay and closes on a link tap", async ({ page }) => {
       await mockApp(page);
       await page.goto("/");
-      await page.getByRole("button", { name: "Open menu" }).click();
-      await expect(page.getByRole("button", { name: "Close menu" }).first()).toBeVisible();
-      await page.getByRole("button", { name: "Invoices", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Close menu" })).toHaveCount(0);
+      const nav = page.getByRole("navigation", { name: "Main" });
+      await nav.getByRole("button", { name: "More", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "More" })).toBeVisible();
+      await page
+        .getByRole("dialog", { name: "More" })
+        .getByRole("button", { name: "Invoices", exact: true })
+        .click();
+      await expect(page.getByRole("dialog", { name: "More" })).toHaveCount(0);
       await expect(page.getByRole("heading", { name: /Invoices/ })).toBeVisible();
-      await expectFits(page, `Invoices after the drawer at ${width}px`);
-      // The overlay itself closes the drawer too (second "Close menu" = the
-      // overlay). Tap the dimmed area OUTSIDE the drawer (its centre is
-      // under the drawer), like a thumb would.
-      await page.getByRole("button", { name: "Open menu" }).click();
+      await expectFits(page, `Invoices after the More sheet at ${width}px`);
+      // The backdrop itself closes the sheet too (its label is "Close menu",
+      // like the old drawer overlay). Tap outside the sheet — its centre is
+      // under it, like a thumb would.
+      await nav.getByRole("button", { name: "More", exact: true }).click();
       await page
         .getByRole("button", { name: "Close menu" })
-        .nth(1)
-        .click({ position: { x: 350, y: 400 } });
-      await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
+        .first()
+        .click({ position: { x: 5, y: 5 } });
+      await expect(page.getByRole("dialog", { name: "More" })).toHaveCount(0);
     });
 
     test("the chat shows one panel at a time with the composer pinned", async ({ page }) => {
       await mockApp(page);
-      // The app opens on the Dashboard now — the drawer leads into the chat.
+      // The bottom nav's Chats tab leads into the chat.
       await page.goto("/");
-      await page.getByRole("button", { name: "Open menu" }).click();
-      await page.getByRole("button", { name: "Team Chat" }).click();
+      await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Chats", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Chats" })).toBeVisible();
       // The list is the screen — no room, no back arrow yet.
       await expect(page.getByRole("button", { name: "Back to chats" })).toHaveCount(0);

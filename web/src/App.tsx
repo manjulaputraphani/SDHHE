@@ -50,6 +50,8 @@ import SalesChart from "./components/SalesChart";
 import RotationChart from "./components/RotationChart";
 import TeamChat from "./components/TeamChat";
 import ChatFab from "./components/ChatFab";
+import BottomNav from "./components/BottomNav";
+import { isSilentPop, useImmersive } from "./lib/mobile";
 import { getUnread, onlyUnreadRoom, refreshUnread, subscribeUnread } from "./unread";
 import ToastHost from "./components/notifications/ToastHost";
 import NotificationsHost from "./components/notifications/NotificationsHost";
@@ -294,6 +296,9 @@ export default function App() {
   /** The room the FAB wants to open (set when exactly one thread is unread). */
   const [chatTargetRoom, setChatTargetRoom] = useState<string | null>(null);
   const unread = useSyncExternalStore(subscribeUnread, getUnread, getUnread);
+  /** Mobile: an open chat / info page owns the screen — header and bottom nav
+   *  step aside (desktop is never immersive). */
+  const immersive = useImmersive();
   const [bills, setBills] = useState<BillRow[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
@@ -801,6 +806,9 @@ export default function App() {
   /** Back / forward between the chat and the rest of the app. */
   useEffect(() => {
     const onPop = () => {
+      // A mobile layer (More sheet / open chat / info page) dropped its own
+      // sentinel entry — the URL did not change, nothing to navigate.
+      if (isSilentPop()) return;
       setView(window.location.pathname === "/team-chat" ? "team-chat" : "dashboard");
     };
     window.addEventListener("popstate", onPop);
@@ -2082,7 +2090,9 @@ export default function App() {
       </aside>
 
       {/* Mobile: icon-only header + a side drawer that opens when the menu is tapped */}
-      <div className="md:hidden">
+      {/* Mobile (max-width 767px): the app header hides while an open chat or
+          its info page owns the screen; otherwise it keeps its desktop look. */}
+      <div className={immersive ? "hidden" : "md:hidden"}>
         {/* The top bar is 3.5rem tall + the notch inset; the chat page's
             height calc in styles.css (.chat-shell) counts on exactly this. */}
         <header className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-nav px-3 pb-1.5 pt-[calc(0.375rem+env(safe-area-inset-top))] text-nav-text">
@@ -2091,36 +2101,11 @@ export default function App() {
               <IconCoffeeNav size={22} />
             </span>
             {/* The full brand name crowds tiny phones — a short mark from 360px
-                up, the icon alone below that. The theme switch moved into the
-                drawer so the header keeps only menu + sign out. */}
+                up, the icon alone below that. The hamburger and Sign out moved
+                to the bottom navigation (More sheet) on mobile. */}
             <p className="hidden min-w-0 text-xs font-semibold uppercase tracking-[0.12em] min-[360px]:block">
               SDHHE
             </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              aria-label={menuOpen ? "Close menu" : "Open menu"}
-              aria-expanded={menuOpen}
-              className="tap-44 relative grid size-11 place-items-center rounded-lg text-nav-text hover:bg-nav-hover"
-              onClick={() => setMenuOpen((open) => !open)}
-            >
-              {menuOpen ? <IconClose size={20} /> : <IconMenu size={20} />}
-              {!menuOpen && unread.total > 0 && <span className="unread-dot" aria-hidden="true" />}
-            </button>
-            <button
-              type="button"
-              aria-label="Sign out"
-              className="tap-44 grid size-11 place-items-center rounded-lg text-nav-text hover:bg-nav-hover"
-              onClick={() =>
-                void api.logout().then(() => {
-                  clearWelcomeFlag();
-                  setUser(null);
-                })
-              }
-            >
-              <IconSignOut size={19} />
-            </button>
           </div>
         </header>
 
@@ -2209,7 +2194,9 @@ export default function App() {
         ) : null}
       </div>
 
-      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 md:px-8 md:py-8">
+      <main
+        className={`min-w-0 flex-1 px-4 py-6 sm:px-6 md:px-8 md:py-8 ${immersive ? "" : "mobile-nav-pad"}`}
+      >
         {error && <p role="alert" className="mb-4 rounded bg-error-soft px-3 py-2 text-sm text-error-ink">{error}</p>}
 
         {view === "dashboard" && (
@@ -4704,6 +4691,25 @@ export default function App() {
           }}
         />
       )}
+      {/* Mobile (max-width 767px): the bottom navigation replaces the hamburger
+          menu — 5 tabs with labels + the More sheet (the rest of the screens,
+          the theme switch and Sign out). Desktop keeps the rail unchanged. */}
+      <BottomNav
+        view={view}
+        onNavigate={(key) => {
+          setView(key as View);
+          setBill(null);
+        }}
+        groups={navGroups}
+        userName={user.name}
+        userRole={user.role}
+        onSignOut={() => {
+          void api.logout().then(() => {
+            clearWelcomeFlag();
+            setUser(null);
+          });
+        }}
+      />
     </div>
     </>
   );

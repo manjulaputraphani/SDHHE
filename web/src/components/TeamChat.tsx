@@ -53,6 +53,14 @@ import {
 } from "../../../src/logic/messageInfo";
 import { membersOf } from "../../../src/logic/chatPrivacy";
 import LoadingMark from "../../../src/components/LoadingMark";
+import ChatHeader from "./ChatHeader";
+import GroupInfo, { type GroupInfoMember } from "./GroupInfo";
+import { IconMessageSquarePlus } from "./icons";
+import {
+  setImmersive,
+  useBackGuard,
+  useIsMobile,
+} from "../lib/mobile";
 import {
   chatDaySections,
   conversationName,
@@ -222,6 +230,16 @@ export default function TeamChat({ user, initialRoom }: Props) {
   /** The Message info panel's data (the 1:1 fix) — the API's recipients and
    *  receipts with the joined user data (never a raw "#id"). */
   const [infoData, setInfoData] = useState<MessageInfo | null>(null);
+  /** Mobile: the full-screen Group info / Contact info page. */
+  const [infoOpen, setInfoOpen] = useState(false);
+  /** Mobile: "Clear chat" is confirmed first (the history stays on the server). */
+  const [confirmClear, setConfirmClear] = useState(false);
+  /** Mobile: the MessageSquarePlus sheet (New chat / New group). */
+  const [newSheetOpen, setNewSheetOpen] = useState(false);
+  /** Mobile: the chat-list search expands from the title row. */
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  /** Mobile: the large "Chats" title collapses to the 56px bar on scroll down. */
+  const [listCollapsed, setListCollapsed] = useState(false);
   /** T-16.4: the message being replied to. */
   const [replyingTo, setReplyingTo] = useState<{ id: number; author: string; body: string } | null>(null);
   /** T-16.4: the pinned messages of the open room. */
@@ -255,6 +273,8 @@ export default function TeamChat({ user, initialRoom }: Props) {
   const [showMembers, setShowMembers] = useState(false);
   /** On mobile only one panel is the screen at a time. */
   const [mobileView, setMobileView] = useState<MobileView>("list");
+  /** The new mobile layout (max-width 767px ONLY) — desktop is untouched. */
+  const isMobile = useIsMobile();
   /** The approvals panel is collapsible — and the choice is remembered (T-16.3). */
   const [approvalsOpen, setApprovalsOpen] = useState(() => {
     try {
@@ -840,6 +860,51 @@ export default function TeamChat({ user, initialRoom }: Props) {
     );
   }, [user?.id, user?.name]);
 
+  // ---- Mobile (max-width 767px): full-screen chat + back navigation ----
+
+  // An open conversation or its info page owns the whole screen — the app
+  // header and the bottom nav step aside (desktop is never immersive).
+  useEffect(() => {
+    if (!isMobile) return;
+    setImmersive(mobileView === "room" || infoOpen);
+    return () => setImmersive(false);
+  }, [isMobile, mobileView, infoOpen]);
+
+  // Android back / iOS swipe-back: info page → chat → chat list (the More
+  // sheet keeps its own guard and closes first).
+  useBackGuard(isMobile && mobileView === "room", () => setMobileView("list"));
+  useBackGuard(isMobile && infoOpen, () => setInfoOpen(false));
+
+  /** Mobile: the "Chats" title collapses on scroll down, returns on scroll up. */
+  const listScrollTop = useRef(0);
+  const onListScroll = useCallback((event: { currentTarget: { scrollTop: number } }) => {
+    const top = event.currentTarget.scrollTop;
+    if (top <= 8) setListCollapsed(false);
+    else setListCollapsed(top > listScrollTop.current);
+    listScrollTop.current = top;
+  }, []);
+
+  /** Mobile Group info: leave the group (the server keeps the history). */
+  async function exitGroup() {
+    if (!user) return;
+    try {
+      await api.removeChatGroupMember(room, user.id);
+      showToast("You left the group", "info");
+      setInfoOpen(false);
+      setMobileView("list");
+      await loadConversations();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Mobile menu "Clear chat": drops the messages from THIS screen only. */
+  function clearChat() {
+    setConfirmClear(false);
+    setMessages([]);
+    showToast("Chat cleared on this device — the history stays on the server", "info");
+  }
+
   /** Open a conversation and mark it as read (optimistically, with rollback). */
   async function openRoom(next: string) {
     setRoom(next);
@@ -1341,6 +1406,31 @@ export default function TeamChat({ user, initialRoom }: Props) {
       ? "Shop room"
       : room;
 
+  /** The one-line status under the name (mobile chat header). */
+  const headerSubtitle = typing
+    ? `${typing} is typing…`
+    : activeConversation?.kind === "direct"
+      ? presenceLabel(
+          members.find((entry) => entry.id === activeConversation.other?.id)?.lastSeenAt,
+          new Date(nowTick),
+        )
+      : activeConversation?.kind === "group" && room !== SHARED_ROOM
+        ? `${roster.length} members · ${presence.length || onlineCount} online`
+        : `${members.length + 1} members · ${onlineCount} online`;
+
+  /** Group info's member rows (avatar dot = online right now). */
+  const infoMembers: GroupInfoMember[] = roster.map((member) => ({
+    id: member.id,
+    name: member.name,
+    role: member.role,
+    online: isOnline(member.lastSeenAt, nowTick),
+  }));
+
+  /** The other person of a 1:1 chat (their room name encodes both ids). */
+  const dm = membersOf(room);
+  const contactId =
+    dm ? (dm.userId === user?.id ? dm.otherId : dm.userId) : (activeConversation?.other?.id ?? null);
+
   return (
     <section
       // On a phone the chat bleeds edge-to-edge (the main's px-4/py-6 is
@@ -1355,6 +1445,11 @@ export default function TeamChat({ user, initialRoom }: Props) {
           : undefined
       }
     >
+      {/* Mobile (max-width 767px): the page title block is desktop layout
+          only — the chat list brings its own "Chats" header and an open
+          conversation brings the WhatsApp-style chat header. */}
+      {!isMobile && (
+      <>
       <div className="flex flex-wrap items-end justify-between gap-2 pb-2 md:gap-3 md:pb-3">
         <div>
           <h1 className="page-title text-base font-semibold tracking-tight md:text-2xl">Team Chat</h1>
@@ -1425,6 +1520,8 @@ export default function TeamChat({ user, initialRoom }: Props) {
           )}
         </div>
       )}
+      </>
+      )}
 
       <div
         className={`relative grid min-h-0 min-w-0 flex-1 gap-4 md:grid-cols-[240px_minmax(0,1fr)] ${
@@ -1439,6 +1536,61 @@ export default function TeamChat({ user, initialRoom }: Props) {
             mobileView === "list" ? "flex" : "hidden md:flex"
           } card min-h-0 min-w-0 flex-col space-y-2 p-3 max-md:rounded-none max-md:border-0 max-md:shadow-none`}
         >
+          {isMobile ? (
+            <>
+              {/* Mobile chat list: a large "Chats" title that collapses into
+                  the 56px bar on scroll down and returns on scroll up. */}
+              <div className={`chatlist-header ${listCollapsed ? "chatlist-header--collapsed" : ""}`}>
+                <h2 className="chatlist-title">Chats</h2>
+                <div className="chatlist-actions">
+                  {showApprovals && (
+                    <button
+                      type="button"
+                      className="chat-header__icon tap-44 chatlist-badgebtn"
+                      aria-label="Receipt approvals"
+                      onClick={() => setMobileView("approvals")}
+                    >
+                      🧾
+                      {pending.length > 0 && <span className="chatlist-badge">{pending.length}</span>}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="chat-header__icon tap-44"
+                    aria-label="Search chats"
+                    onClick={() => setMobileSearchOpen((open) => !open)}
+                  >
+                    <IconSearch size={20} />
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-header__icon tap-44"
+                    aria-label="New chat"
+                    onClick={() => setNewSheetOpen(true)}
+                  >
+                    <IconMessageSquarePlus size={20} />
+                  </button>
+                </div>
+              </div>
+              {mobileSearchOpen && (
+                <div className="relative">
+                  <IconSearch
+                    size={14}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
+                  />
+                  <input
+                    className="input input-icon h-9"
+                    placeholder="Search chats"
+                    aria-label="Search chats"
+                    value={listQuery}
+                    autoFocus
+                    onChange={(event) => setListQuery(event.currentTarget.value)}
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ink">Chats</h2>
             <div className="flex items-center gap-1.5">
@@ -1465,7 +1617,9 @@ export default function TeamChat({ user, initialRoom }: Props) {
               onChange={(event) => setListQuery(event.currentTarget.value)}
             />
           </div>
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+            </>
+          )}
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto" onScroll={onListScroll}>
             {loadingList && (
               <div className="grid place-items-center py-8">
                 <LoadingMark label={null} />
@@ -1555,6 +1709,23 @@ export default function TeamChat({ user, initialRoom }: Props) {
           } min-h-0 min-w-0 flex-1 flex-col`}
         >
           <div className="card flex min-h-0 flex-1 flex-col overflow-hidden max-md:rounded-none max-md:border-0 max-md:shadow-none">
+          {/* Mobile (max-width 767px): the WhatsApp-style chat header (56px) —
+              avatar / name open Group info (Contact info for a 1:1). */}
+          {isMobile ? (
+            <ChatHeader
+              name={roomName}
+              subtitle={headerSubtitle}
+              isGroup={activeConversation?.kind !== "direct"}
+              avatarInitials={activeConversation?.kind === "direct" ? initials(roomName) : null}
+              onBack={() => setMobileView("list")}
+              onOpenInfo={() => setInfoOpen(true)}
+              onSearch={() => setShowRoomSearch(true)}
+              muted={muted.includes(room)}
+              onToggleMute={() => void toggleMute()}
+              onClearChat={() => setConfirmClear(true)}
+            />
+          ) : (
+            <>
           <div className="relative z-10 flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-2">
             <button
               type="button"
@@ -1785,6 +1956,8 @@ export default function TeamChat({ user, initialRoom }: Props) {
               </>
             )}
           </div>
+            </>
+          )}
           {showRoomSearch && (
             <div className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2">
               <IconSearch size={14} className="shrink-0 text-muted" />
@@ -1907,7 +2080,7 @@ export default function TeamChat({ user, initialRoom }: Props) {
                         )}
                         <div className={`flex max-w-[80%] flex-col sm:max-w-[65%] ${group.mine ? "items-end" : "items-start"}`}>
                           {!group.mine && (
-                            <span className="mb-0.5 px-1 text-[11px] font-medium text-accent-ink">
+                            <span className="chat-author mb-0.5 px-1 text-[11px] font-medium text-accent-ink">
                               {group.author}
                             </span>
                           )}
@@ -2322,7 +2495,10 @@ export default function TeamChat({ user, initialRoom }: Props) {
                 )}
               </div>
             )}
-            <div className="flex w-full items-end gap-1.5">
+            <div className="composer-row flex w-full items-end gap-1.5">
+              {/* Mobile: Smile, the textarea, Paperclip and Camera live in ONE
+                  pill; on desktop this wrapper is display:contents (unchanged). */}
+              <div className="composer-pill">
               <details className="group/emoji relative shrink-0">
                 <summary
                   className="tap-44 grid size-11 cursor-pointer list-none place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-ink [&::-webkit-details-marker]:hidden"
@@ -2409,11 +2585,12 @@ export default function TeamChat({ user, initialRoom }: Props) {
                   <IconCamera size={18} />
                 </button>
               </div>
+              </div>
               <button
                 type="submit"
                 aria-label={editing ? "Save edit" : "Send"}
                 disabled={busy || !hasDraftText}
-                className="tap-44 grid size-12 shrink-0 place-items-center rounded-full bg-primary text-on-primary shadow-md transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted disabled:shadow-none"
+                className="composer-send tap-44 grid size-12 shrink-0 place-items-center rounded-full bg-primary text-on-primary shadow-md transition-all duration-150 hover:bg-primary-hover disabled:bg-surface-3 disabled:text-muted disabled:shadow-none"
               >
                 {!editing && !hasDraftText ? <IconMic size={19} /> : <IconSendHorizontal size={19} />}
               </button>
@@ -2837,6 +3014,97 @@ export default function TeamChat({ user, initialRoom }: Props) {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile (max-width 767px): the full-screen Group info / Contact info
+          page — the SAME settings and state as the desktop menu (AI polish,
+          push notifications, the member list). */}
+      {isMobile && infoOpen && (
+        <GroupInfo
+          mode={activeConversation?.kind === "direct" ? "contact" : "group"}
+          name={roomName}
+          avatarInitials={activeConversation?.kind === "direct" ? initials(roomName) : null}
+          subtitle={
+            activeConversation?.kind === "direct"
+              ? headerSubtitle
+              : room === SHARED_ROOM
+                ? `Group · ${members.length + 1} members`
+                : `Group · ${roster.length} members`
+          }
+          members={infoMembers}
+          currentUserId={user?.id ?? 0}
+          contactId={contactId}
+          mediaCount={messages.filter((message) => message.kind === "receipt").length}
+          aiPolish={Boolean(activeConversation?.aiPolish)}
+          canEditAiPolish={user?.role === "owner" && activeConversation?.kind === "group"}
+          onToggleAiPolish={() => void togglePolish()}
+          canAddMember={isOwnerGroup}
+          onAddMember={() => setShowAddMembers(true)}
+          onSearch={() => {
+            setInfoOpen(false);
+            setShowRoomSearch(true);
+          }}
+          onBack={() => setInfoOpen(false)}
+          onExit={() => void exitGroup()}
+        />
+      )}
+
+      {/* Mobile: the MessageSquarePlus sheet — New chat / New group. */}
+      {newSheetOpen && (
+        <div className="sheet-layer">
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="sheet-backdrop"
+            onClick={() => setNewSheetOpen(false)}
+          />
+          <div className="more-sheet">
+            <div className="sheet-grabber" />
+            <button
+              type="button"
+              className="more-sheet__row tap-44"
+              onClick={() => {
+                setNewSheetOpen(false);
+                setShowNewChat(true);
+              }}
+            >
+              New chat
+            </button>
+            {user?.role === "owner" && (
+              <button
+                type="button"
+                className="more-sheet__row tap-44"
+                onClick={() => {
+                  setNewSheetOpen(false);
+                  setShowNewGroup(true);
+                }}
+              >
+                New group
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile: "Clear chat" is confirmed first (the history stays on the server). */}
+      {confirmClear && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-bg/60 p-4">
+          <div className="card w-full max-w-sm space-y-3 p-4">
+            <h2 className="text-sm font-semibold text-ink">Clear this chat?</h2>
+            <p className="text-xs text-muted">
+              The messages leave this screen now. The history stays on the server and comes back on
+              the next load.
+            </p>
+            <div className="flex gap-2">
+              <button type="button" className="btn-mini bg-error-soft text-error-ink" onClick={clearChat}>
+                Clear
+              </button>
+              <button type="button" className="btn-mini" onClick={() => setConfirmClear(false)}>
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
