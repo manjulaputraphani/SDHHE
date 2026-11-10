@@ -39,6 +39,7 @@ import {
   groupReactions,
   isOnline,
   mentionIdsFor,
+  polishSkipReason,
   presenceLabel,
   withinEditWindow,
 } from "../../../lib/chatView";
@@ -120,6 +121,19 @@ export default function ChatRoomScreen() {
   /** The message just flashed by a reply/pin jump. */
   const [flashId, setFlashId] = useState<number | null>(null);
   const [pins, setPins] = useState<ChatPin[]>([]);
+  // ---- unread divider + jump FAB (client-only, web newSinceScroll) ----
+  const [atBottom, setAtBottom] = useState(true);
+  const [newIds, setNewIds] = useState<number[]>([]);
+  /** Ref mirror of atBottom — the WS handler runs outside React renders. */
+  const atBottomRef = useRef(true);
+  // ---- AI polish (owner turned it on for this group) ----
+  const [aiPolishEnabled, setAiPolishEnabled] = useState(false);
+  const [polish, setPolish] = useState<
+    | null
+    | { stage: "waiting"; original: string }
+    | { stage: "ready"; original: string; suggested: string; keptOriginal?: boolean }
+    | { stage: "failed"; original: string }
+  >(null);
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSent = useRef(0);
@@ -160,6 +174,13 @@ export default function ChatRoomScreen() {
       void api
         .chatGroupMembers(room)
         .then((r) => { if (alive) setRoster(r.members); })
+        .catch(() => undefined);
+      // The owner's AI-polish toggle for this group (gates the polish card).
+      void api
+        .chatConversations()
+        .then((r) => {
+          if (alive) setAiPolishEnabled(Boolean(r.conversations.find((c) => c.room === room)?.aiPolish));
+        })
         .catch(() => undefined);
     }
     return () => { alive = false; };
@@ -220,6 +241,10 @@ export default function ChatRoomScreen() {
               if (f.message.userId !== user?.id) {
                 void api.markChatDelivered(f.message.id).catch(() => undefined);
                 void playNotificationSound();
+                // Not at the bottom → remember it for the "New messages" divider.
+                if (!atBottomRef.current) {
+                  setNewIds((prev) => (prev.includes(f.message!.id) ? prev : [...prev, f.message!.id]));
+                }
               }
             }
             if (f.type === "delivered" || f.type === "read") {
@@ -296,6 +321,31 @@ export default function ChatRoomScreen() {
     const text = draft.trim();
     if (!text) return;
     setDraft("");
+
+    // AI polish (owner on): ask first, the card offers Suggested / Original.
+    if (aiPolishEnabled && isGroup && polishSkipReason(text) === null) {
+      setPolish({ stage: "waiting", original: text });
+      try {
+        const res = await api.polishChatMessage(room, text);
+        if (res.skipped) {
+          setPolish(null);
+          await sendText(text, false);
+        } else if (res.polished) {
+          setPolish({ stage: "ready", original: text, suggested: res.polished, keptOriginal: res.keptOriginal });
+        } else {
+          setPolish({ stage: "failed", original: text });
+        }
+      } catch {
+        setPolish({ stage: "failed", original: text });
+      }
+      return;
+    }
+
+    await sendText(text, false);
+  }
+
+  /** The actual POST (aiPolished marks the ✨ badge — web sendMessage). */
+  async function sendText(text: string, aiPolished: boolean) {
     try {
       const mentions = mentionIdsFor(text, members);
       const { message } = await api.sendChatMessage({
@@ -304,6 +354,7 @@ export default function ChatRoomScreen() {
         room,
         replyToId: replyingTo?.id,
         mentions: mentions.length ? mentions : undefined,
+        aiPolished: aiPolished || undefined,
       });
       setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       setReplyingTo(null);
@@ -466,6 +517,44 @@ export default function ChatRoomScreen() {
       ? roster
       : members;
   const infoSubtitle = isDm ? presence : `Group · ${memberCount} members`;
+
+  // @mention autocomplete (web: trailing @token → up to 6 member chips).
+  const mentionToken = editing
+    ? null
+    : (/@([^\s@]*)$/.exec(draft)?.[1]?.toLowerCase() ?? null);
+  const mentionCandidates =
+    mentionToken === null
+      ? []
+      : (isGroup && roster.length ? roster : members)
+          .filter((m) => m.name.toLowerCase().startsWith(mentionToken))
+          .slice(0, 6);
+
+  function pickMention(name: string) {
+    setDraft((prev) => prev.replace(/@[^\s@]*$/, `@${name} `));
+  }
+
+  // The first message that arrived while scrolled up → the divider sits above it.
+  const firstNew = newIds.length ? Math.min(...newIds) : null;
+
+  /** FlatList onScroll — track the bottom for the divider + jump FAB. */
+  function handleScroll(event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    const bottom = distanceFromBottom < 80;
+    if (bottom !== atBottomRef.current) {
+      atBottomRef.current = bottom;
+      setAtBottom(bottom);
+      if (bottom) setNewIds([]); // reaching the bottom wipes the divider (web behaviour)
+    }
+  }
+
+  /** FAB: jump to the newest message. */
+  function jumpToLatest() {
+    listRef.current?.scrollToEnd({ animated: true });
+    atBottomRef.current = true;
+    setAtBottom(true);
+    setNewIds([]);
+  }
 
   if (loading) {
     return (
@@ -869,6 +958,8 @@ export default function ChatRoomScreen() {
         }}
         contentContainerStyle={{ padding: 12, paddingBottom: 80 }}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         onScrollToIndexFailed={(info) =>
           listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true })
         }
@@ -895,21 +986,27 @@ export default function ChatRoomScreen() {
             ? messages.find((m) => m.id === message.replyToId) ?? null
             : null;
           const flash = flashId === message.id;
+          const showNewDivider = firstNew === message.id;
 
           if (message.deleted) {
             return (
-              <View style={[styles.bubbleRow, { justifyContent: mine ? "flex-end" : "flex-start" }]}>
-                <View style={[styles.bubble, { backgroundColor: theme.surface2, maxWidth: "80%" }]}>
-                  <Text style={{ color: theme.muted, fontSize: 14, fontStyle: "italic", opacity: 0.8 }}>
-                    🚫 This message was deleted
-                  </Text>
+              <View>
+                {showNewDivider && <NewMessagesChip theme={theme} />}
+                <View style={[styles.bubbleRow, { justifyContent: mine ? "flex-end" : "flex-start" }]}>
+                  <View style={[styles.bubble, { backgroundColor: theme.surface2, maxWidth: "80%" }]}>
+                    <Text style={{ color: theme.muted, fontSize: 14, fontStyle: "italic", opacity: 0.8 }}>
+                      🚫 This message was deleted
+                    </Text>
+                  </View>
                 </View>
               </View>
             );
           }
 
           return (
-            <View style={[styles.bubbleRow, { justifyContent: mine ? "flex-end" : "flex-start" }]}>
+            <View>
+              {showNewDivider && <NewMessagesChip theme={theme} />}
+              <View style={[styles.bubbleRow, { justifyContent: mine ? "flex-end" : "flex-start" }]}>
               {!mine && (
                 <View style={[styles.avatar, { backgroundColor: theme.accentSoft }]}>
                   <Text style={{ fontSize: 12, fontWeight: "700", color: theme.accentInk }}>{initials(message.author)}</Text>
@@ -996,10 +1093,24 @@ export default function ChatRoomScreen() {
                   </View>
                 )}
               </View>
+              </View>
             </View>
           );
         }}
       />
+
+      {/* ---- Jump FAB: "New messages ↓" while scrolled up (web pill) ---- */}
+      {!atBottom && newIds.length > 0 && (
+        <TouchableOpacity
+          style={[styles.jumpFab, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}
+          onPress={jumpToLatest}
+          activeOpacity={0.8}
+        >
+          <Text style={{ fontSize: 12, fontWeight: "600", color: theme.accentInk }}>
+            New messages ↓ ({newIds.length})
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* ---- Typing indicator ---- */}
       {typing && (
@@ -1043,6 +1154,94 @@ export default function ChatRoomScreen() {
         </View>
       )}
 
+      {/* ---- @mention chips (web: up to 6, tap inserts "@Name ") ---- */}
+      {mentionCandidates.length > 0 && (
+        <View style={[styles.mentionRow, { backgroundColor: theme.surface2, borderColor: theme.line }]}>
+          {mentionCandidates.map((member) => (
+            <TouchableOpacity
+              key={member.id}
+              style={[styles.mentionChip, { backgroundColor: theme.surface, borderColor: theme.line }]}
+              onPress={() => pickMention(member.name)}
+              activeOpacity={0.7}
+            >
+              <Text numberOfLines={1} style={{ fontSize: 12, color: theme.ink }}>
+                @{member.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* ---- AI polish card (web: Polishing… / Suggested / failed) ---- */}
+      {polish && (
+        <View style={[styles.polishCard, { backgroundColor: theme.surface, borderColor: theme.line }]}>
+          {polish.stage === "waiting" ? (
+            <Text style={{ fontSize: 13, color: theme.muted }}>✨ Polishing…</Text>
+          ) : null}
+
+          {polish.stage === "failed" ? (
+            <>
+              <Text style={{ fontSize: 13, color: theme.ink }}>AI not available — send original?</Text>
+              <View style={styles.polishActions}>
+                <TouchableOpacity
+                  style={[styles.polishBtn, { backgroundColor: theme.primary }]}
+                  onPress={() => {
+                    const original = polish.original;
+                    setPolish(null);
+                    void sendText(original, false);
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: theme.onPrimary }}>Send original</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.polishBtn, { backgroundColor: theme.surface3 }]} onPress={() => setPolish(null)}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: theme.ink }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : null}
+
+          {polish.stage === "ready" ? (
+            <>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: theme.accentInk }}>
+                ✨ {polish.keptOriginal ? "Kept original — numbers changed" : "Suggested"}
+              </Text>
+              <Text style={{ fontSize: 13, color: theme.ink, marginVertical: 6 }}>{polish.suggested}</Text>
+              <View style={styles.polishActions}>
+                <TouchableOpacity
+                  style={[styles.polishBtn, { backgroundColor: theme.primary }]}
+                  onPress={() => {
+                    const suggested = polish.suggested;
+                    setPolish(null);
+                    void sendText(suggested, true);
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: theme.onPrimary }}>Send suggested</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.polishBtn, { backgroundColor: theme.surface3 }]}
+                  onPress={() => {
+                    const original = polish.original;
+                    setPolish(null);
+                    void sendText(original, false);
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: theme.ink }}>Send original</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.polishBtn, { backgroundColor: theme.surface3 }]}
+                  onPress={() => {
+                    setDraft(polish.suggested);
+                    setPolish(null);
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: theme.ink }}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : null}
+        </View>
+      )}
+
       {/* ---- Composer ---- */}
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[styles.composer, { borderTopColor: theme.line, backgroundColor: theme.surface2 }]}>
         <TextInput
@@ -1071,6 +1270,17 @@ export default function ChatRoomScreen() {
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** The centered "New messages" divider above the first missed message. */
+function NewMessagesChip({ theme }: { theme: { accentSoft: string; accentInk: string } }) {
+  return (
+    <View style={styles.newChipWrap}>
+      <View style={[styles.newChip, { backgroundColor: theme.accentSoft }]}>
+        <Text style={{ fontSize: 11, fontWeight: "600", color: theme.accentInk }}>New messages</Text>
+      </View>
+    </View>
   );
 }
 
@@ -1283,6 +1493,48 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: 10,
     borderRadius: 10,
+  },
+  newChipWrap: { alignItems: "center", marginVertical: 8 },
+  newChip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 3 },
+  mentionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginHorizontal: 10,
+    marginTop: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 6,
+  },
+  mentionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    maxWidth: 160,
+  },
+  polishCard: {
+    marginHorizontal: 10,
+    marginTop: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 10,
+  },
+  polishActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  polishBtn: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  jumpFab: {
+    position: "absolute",
+    right: 16,
+    bottom: 96,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    elevation: 6,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    zIndex: 15,
   },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 },
   infoCard: { borderRadius: 16, padding: 20, width: "100%", maxWidth: 340, elevation: 8, shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
