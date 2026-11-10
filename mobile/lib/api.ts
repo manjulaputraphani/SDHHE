@@ -357,8 +357,6 @@ export const api = {
     request<{ categories: Array<{ category: string; total: string }> }>("/api/stats/expense-categories"),
   rotation: () => request<{ rotation: RotationSummary }>("/api/rotation"),
   activity: (limit = 4) => request<{ activity: ActivityRow[] }>(`/api/activity?limit=${limit}`),
-  addExpense: (body: Record<string, unknown>) =>
-    request<{ expense: unknown }>("/api/expenses", { method: "POST", body }),
   aiChat: (message: string, history: AiTurn[]) =>
     request<{ answer: string }>("/api/ai/chat", { method: "POST", body: { message, history } }),
 
@@ -404,8 +402,30 @@ export const api = {
   // ---- Expenses ----
 
   expenses: () => request<{ expenses: ExpenseRow[] }>("/api/expenses"),
-  createExpense: (body: Record<string, unknown>) =>
-    request<{ expense: ExpenseRow }>("/api/expenses", { method: "POST", body }),
+
+  /** POST /api/expenses (src/db/expenses.ts expenseInputSchema). */
+  addExpense: (body: {
+    category: string;
+    expenseType: "general" | "purchase" | "sale";
+    amountPaise: number;
+    date: string;
+    paymentMode?: "Cash" | "Card" | "UPI" | "Credit";
+    paidTo?: string;
+    note?: string;
+  }) => request<{ expense: ExpenseRow }>("/api/expenses", { method: "POST", body }),
+
+  updateExpense: (id: number, body: {
+    category: string;
+    expenseType: "general" | "purchase" | "sale";
+    amountPaise: number;
+    date: string;
+    paymentMode?: "Cash" | "Card" | "UPI" | "Credit";
+    paidTo?: string;
+    note?: string;
+  }) => request<{ expense: ExpenseRow }>(`/api/expenses/${id}`, { method: "PUT", body }),
+
+  deleteExpense: (id: number) =>
+    request<{ ok: boolean }>(`/api/expenses/${id}`, { method: "DELETE" }),
 
   // ---- Stock Check ----
 
@@ -561,12 +581,19 @@ export type PurchaseRow = {
 
 export type ExpenseRow = {
   id: number;
-  title: string;
+  category: string;
+  /** purchase (into stock cost) | sale (charged to a deal) | general. */
+  expenseType: "general" | "purchase" | "sale";
   amountPaise: number;
-  category: string | null;
-  status: "pending" | "approved" | "rejected";
+  /** YYYY-MM-DD */
+  date: string;
+  paymentMode: string | null;
+  paidTo: string | null;
   note: string | null;
-  createdAt: string;
+  relatedSaleId: number | null;
+  relatedPurchaseId: number | null;
+  billId: number | null;
+  billFilename: string | null;
 };
 
 export type StockRow = {

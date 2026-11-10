@@ -6,7 +6,7 @@
  * a search bar, web-style rows (2-letter initials or group icon, online dot,
  * green time + pill when unread) and the web empty states.
  */
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -111,9 +111,13 @@ export default function ChatsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Load on mount AND on every focus — coming back from a room clears its
+  // unread pill and re-sorts the list (web refetches on room close too).
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   // Refresh the online dots every 30s (web uses a 1s tick; 30s is enough here).
   useEffect(() => {

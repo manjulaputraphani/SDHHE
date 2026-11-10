@@ -91,14 +91,35 @@ function tickFor(message: ChatMessage, otherId: number | null): "sent" | "delive
   return "sent";
 }
 
+/**
+ * A message row on this screen: a server row plus client-only flags.
+ * `pending` = optimistic bubble waiting for the POST (⏱);
+ * `failed` = the POST failed (⚠, tap to retry).
+ */
+type LocalMessage = ChatMessage & { pending?: boolean; failed?: boolean };
+
+/** A client-only id for an optimistic message (module scope — Date.now is safe here). */
+function nextTempId(): number {
+  return -Date.now();
+}
+
 export default function ChatRoomScreen() {
   const { theme, user } = useAuth();
   const router = useRouter();
   const { room, title } = useLocalSearchParams<{ room: string; title?: string }>();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [typing, setTyping] = useState<string | null>(null);
+  /** The send that just failed — backs the ⚠ bubble's Retry / Discard. */
+  const [failedSend, setFailedSend] = useState<{
+    tempId: number;
+    text: string;
+    aiPolished: boolean;
+    replyToId?: number;
+    mentions: number[];
+    error: string;
+  } | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   /** Which message the Message-info panel is open for (was: always the last own one). */
   const [infoFor, setInfoFor] = useState<ChatMessage | null>(null);
@@ -337,11 +358,11 @@ export default function ChatRoomScreen() {
       try {
         const { message } = await api.editChatMessage(editing.id, text);
         setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, ...message } : m)));
-      } catch (err) {
-        Alert.alert("Couldn't edit", err instanceof Error ? err.message : String(err));
-      } finally {
         setEditing(null);
         setEditDraft("");
+      } catch (err) {
+        // Keep the composer in edit mode so nothing is lost.
+        Alert.alert("Couldn't edit", err instanceof Error ? err.message : String(err));
       }
       return;
     }
@@ -374,23 +395,82 @@ export default function ChatRoomScreen() {
 
   /** The actual POST (aiPolished marks the ✨ badge — web sendMessage). */
   async function sendText(text: string, aiPolished: boolean) {
+    const tempId = nextTempId();
+    const replyToId = replyingTo?.id;
+    const mentions = mentionIdsFor(text, members);
+    // Optimistic, WhatsApp-style: the bubble appears the instant Send is
+    // tapped (⏱) — the server row replaces it when the POST lands.
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        room,
+        userId: user?.id ?? null,
+        author: user?.name ?? "",
+        role: user?.role ?? "",
+        kind: "text",
+        body: text,
+        receiptId: null,
+        createdAt: new Date().toISOString(),
+        replyToId,
+        pending: true,
+      },
+    ]);
+    setReplyingTo(null);
+    await deliverText(text, aiPolished, tempId, replyToId, mentions);
+  }
+
+  /** POST the message and settle the optimistic bubble (id < 0) it belongs to. */
+  async function deliverText(
+    text: string,
+    aiPolished: boolean,
+    tempId: number,
+    replyToId?: number,
+    mentions?: number[],
+  ) {
     try {
-      const mentions = mentionIdsFor(text, members);
       const { message } = await api.sendChatMessage({
         kind: "text",
         body: text,
         room,
-        replyToId: replyingTo?.id,
-        mentions: mentions.length ? mentions : undefined,
+        replyToId,
+        mentions: mentions?.length ? mentions : undefined,
         aiPolished: aiPolished || undefined,
       });
-      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
-      setReplyingTo(null);
+      setMessages((prev) => {
+        const withoutTemp = prev.filter((m) => m.id !== tempId);
+        // The WS echo may have landed the real row first — never show both.
+        return withoutTemp.some((m) => m.id === message.id) ? withoutTemp : [...withoutTemp, message];
+      });
     } catch (err) {
-      // Show the error as a system message so the user knows.
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setMessages((prev) => [...prev, { id: -Date.now(), room: "", userId: null, author: "", kind: "system", body: `Error: ${errorMessage}`, receiptId: null, createdAt: new Date().toISOString(), role: "" }]);
+      // Keep the bubble (⚠) so nothing is lost — tap it to retry or discard.
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: true } : m)));
+      setFailedSend({
+        tempId,
+        text,
+        aiPolished,
+        replyToId,
+        mentions: mentions ?? [],
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
+  }
+
+  /** Retry the last failed send — the ⚠ bubble goes back to ⏱. */
+  function retryFailedSend() {
+    if (!failedSend) return;
+    const { tempId, text, aiPolished, replyToId, mentions } = failedSend;
+    setFailedSend(null);
+    setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, pending: true, failed: false } : m)));
+    void deliverText(text, aiPolished, tempId, replyToId, mentions);
+  }
+
+  /** Discard the failed bubble (user chose not to retry). */
+  function discardFailedSend() {
+    if (!failedSend) return;
+    const { tempId } = failedSend;
+    setFailedSend(null);
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
   }
 
   /** Toggle my reaction on a message (one per member — a new emoji replaces the old). */
@@ -1053,7 +1133,7 @@ export default function ChatRoomScreen() {
               </View>
             );
           }
-          const message = item as ChatMessage;
+          const message = item as LocalMessage;
           if (message.kind === "system") {
             return (
               <View style={styles.daySeparator}>
@@ -1171,11 +1251,20 @@ export default function ChatRoomScreen() {
                     styles.bubble,
                     {
                       backgroundColor: mine ? theme.primary : theme.surface,
-                      borderColor: flash ? theme.accent : "transparent",
-                      borderWidth: flash ? 2 : 0,
+                      borderColor: message.failed ? theme.errorInk : flash ? theme.accent : "transparent",
+                      borderWidth: message.failed || flash ? 2 : 0,
                     },
                   ]}
-                  onLongPress={message.kind === "text" ? () => setActionFor(message) : undefined}
+                  onLongPress={message.kind === "text" && message.id > 0 ? () => setActionFor(message) : undefined}
+                  onPress={
+                    message.failed
+                      ? () =>
+                          Alert.alert("Couldn't send", failedSend?.error ?? "The message was not delivered.", [
+                            { text: "Discard", style: "destructive", onPress: discardFailedSend },
+                            { text: "Retry", onPress: retryFailedSend },
+                          ])
+                      : undefined
+                  }
                 >
                   {/* Reply quote — tap to jump to the original (web: border-l-2 accent). */}
                   {quoted && (
@@ -1200,7 +1289,9 @@ export default function ChatRoomScreen() {
                   </Text>
                   <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "flex-end", gap: 4, marginTop: 4 }}>
                     <Text style={{ color: mine ? theme.onPrimary : theme.muted, fontSize: 10, opacity: 0.7 }}>{timeLabel(message.createdAt)}</Text>
-                    {mine && tick && (
+                    {mine && message.pending && <Ionicons name="time-outline" size={12} color={theme.onPrimary} style={{ opacity: 0.7 }} />}
+                    {mine && message.failed && <Ionicons name="alert-circle" size={13} color={theme.errorInk} />}
+                    {mine && !message.pending && !message.failed && tick && (
                       <Text style={{ fontSize: 10, color: tick === "read" ? theme.readTick : theme.onPrimary, opacity: tick === "read" ? 1 : 0.7 }}>{tick === "sent" ? "✓" : "✓✓"}</Text>
                     )}
                   </View>
