@@ -218,6 +218,28 @@ export const api = {
       recipients: { id: number; name: string | null; initials: string | null; avatar: string | null }[];
       receipts: { userId: number; user: { id: number; name: string | null; initials: string | null; avatar: string | null } | null; deliveredAt: string | null; readAt: string | null }[];
     }>(`/api/chat/messages/${messageId}/info`),
+
+  // ---- Items ----
+
+  items: () => request<{ items: ItemRow[] }>("/api/items"),
+  createItem: (body: Record<string, unknown>) =>
+    request<{ item: ItemRow }>("/api/items", { method: "POST", body }),
+
+  // ---- Purchases ----
+
+  purchases: () => request<{ purchases: PurchaseRow[] }>("/api/purchases"),
+  createPurchase: (body: Record<string, unknown>) =>
+    request<{ purchase: PurchaseRow }>("/api/purchases", { method: "POST", body }),
+
+  // ---- Expenses ----
+
+  expenses: () => request<{ expenses: ExpenseRow[] }>("/api/expenses"),
+  createExpense: (body: Record<string, unknown>) =>
+    request<{ expense: ExpenseRow }>("/api/expenses", { method: "POST", body }),
+
+  // ---- Stock Check ----
+
+  stockCheck: () => request<{ rows: StockRow[] }>("/api/stock"),
 };
 
 export type ChatMessage = {
@@ -233,4 +255,47 @@ export type ChatMessage = {
   deliveredBy?: number[];
   readBy?: number[];
   reactions?: { emoji: string; userId: number; name: string }[];
+};
+
+export type ItemRow = {
+  id: number;
+  name: string;
+  sku: string | null;
+  unit: string;
+  batchCostingMethod: string;
+  stockRemaining: number;
+  wacCostPerUnitPaise: number | null;
+  lotLedger: Array<{ batch: string; qtyRemaining: number; costPerUnitPaise: number }>;
+};
+
+export type PurchaseRow = {
+  id: number;
+  itemId: number | null;
+  itemName: string;
+  qtyRemaining: number;
+  unit: string;
+  supplierName: string | null;
+  poNumber: string | null;
+  status: "pending" | "received" | "cancelled";
+  amountPaise: number;
+  createdAt: string;
+};
+
+export type ExpenseRow = {
+  id: number;
+  title: string;
+  amountPaise: number;
+  category: string | null;
+  status: "pending" | "approved" | "rejected";
+  note: string | null;
+  createdAt: string;
+};
+
+export type StockRow = {
+  itemId: number;
+  itemName: string;
+  unit: string;
+  stockLeft: number;
+  reservedQty: number;
+  availableQty: number;
 };
