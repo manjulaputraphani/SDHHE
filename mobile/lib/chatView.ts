@@ -61,3 +61,56 @@ export function formatChatListTime(iso: string | null | undefined, now: Date = n
   if (days === 1) return "Yesterday";
   return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]}`;
 }
+
+// ---- message-level helpers (same rules as src/logic/chat.ts) ----
+
+/** The edit window — a message can be fixed within 15 minutes. */
+export const EDIT_WINDOW_MS = 15 * 60_000;
+
+/** The reactions a member can leave. */
+export const REACTION_EMOJIS = ["👍", "❤️", "😂", "🙏", "✅", "🔥"] as const;
+
+/** Is the message still inside the 15-minute edit window? */
+export function withinEditWindow(createdAtMs: number, nowMs: number = Date.now()): boolean {
+  return nowMs - createdAtMs <= EDIT_WINDOW_MS;
+}
+
+export type ReactionChip = { emoji: string; count: number; mine: boolean };
+
+/** The reactions of a message grouped per emoji, most-used first. */
+export function groupReactions(
+  reactions: { emoji: string; userId: number; name: string }[] | undefined,
+  myId?: number | null,
+): ReactionChip[] {
+  const map = new Map<string, ReactionChip>();
+  for (const reaction of reactions ?? []) {
+    const chip = map.get(reaction.emoji) ?? { emoji: reaction.emoji, count: 0, mine: false };
+    chip.count += 1;
+    if (myId != null && reaction.userId === myId) chip.mine = true;
+    map.set(reaction.emoji, chip);
+  }
+  return Array.from(map.values()).sort((a, b) => b.count - a.count);
+}
+
+/** Why the AI polish is skipped for this text (null = polish it). */
+export function polishSkipReason(text: string): "short" | "emoji" | null {
+  const trimmed = text.trim();
+  if (trimmed.length < 15) return "short";
+  if (!/[\p{L}\p{N}]/u.test(trimmed)) return "emoji";
+  return null;
+}
+
+/** Every `@Name` in the text mapped to a member id (exact, case-insensitive). */
+export function mentionIdsFor(
+  text: string,
+  members: { id: number; name: string }[],
+): number[] {
+  const found = new Set<number>();
+  const pattern = /@([^\s@]+)/g;
+  for (const match of text.matchAll(pattern)) {
+    const needle = match[1]!.toLowerCase();
+    const member = members.find((m) => m.name.toLowerCase() === needle);
+    if (member) found.add(member.id);
+  }
+  return Array.from(found);
+}

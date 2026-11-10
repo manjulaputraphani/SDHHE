@@ -205,6 +205,7 @@ export const api = {
         other: { id: number; name: string; role: string } | null;
         unread: number;
         lastMessageAt: string | null;
+        aiPolish?: boolean;
         lastMessage?: { id?: number; userId?: number | null; author?: string; body?: string; kind?: string; createdAt?: string } | null;
       }[];
     }>("/api/chat/conversations"),
@@ -219,11 +220,57 @@ export const api = {
   chatMembers: () =>
     request<{ members: { id: number; name: string; role: string; lastSeenAt?: string | null }[] }>("/api/chat/members"),
 
-  sendChatMessage: (body: { kind: "text" | "receipt"; body: string; room?: string; replyToId?: number; mentions?: number[] }) =>
-    request<{ message: { id: number; room: string; userId: number; author: string; kind: string; body: string; createdAt: string } }>("/api/chat/messages", {
+  sendChatMessage: (body: {
+    kind: "text" | "receipt";
+    body: string;
+    room?: string;
+    replyToId?: number;
+    mentions?: number[];
+    aiPolished?: boolean;
+  }) =>
+    request<{ message: ChatMessage }>("/api/chat/messages", {
       method: "POST",
       body,
     }),
+
+  /** Leave (or replace) my reaction on a message — one per member. */
+  reactChatMessage: (messageId: number, emoji: string) =>
+    request<{ reactions: ChatMessage["reactions"] }>(`/api/chat/reactions/${messageId}`, {
+      method: "POST",
+      body: { emoji },
+    }),
+
+  unreactChatMessage: (messageId: number) =>
+    request<{ reactions: ChatMessage["reactions"] }>(`/api/chat/reactions/${messageId}`, {
+      method: "DELETE",
+    }),
+
+  chatPins: (room: string) =>
+    request<{ pins: ChatPin[] }>(`/api/chat/pins?room=${encodeURIComponent(room)}`),
+
+  /** Owner only, max 3 per room. */
+  pinChatMessage: (room: string, messageId: number) =>
+    request<{ pins: ChatPin[] }>("/api/chat/pins", { method: "POST", body: { room, messageId } }),
+
+  unpinChatMessage: (messageId: number) =>
+    request<{ ok: boolean }>(`/api/chat/pins/${messageId}`, { method: "DELETE" }),
+
+  /** Edit my own message within 15 minutes. */
+  editChatMessage: (id: number, body: string) =>
+    request<{ message: ChatMessage }>(`/api/chat/messages/${id}`, {
+      method: "PATCH",
+      body: { body },
+    }),
+
+  deleteChatMessage: (id: number) =>
+    request<{ message: ChatMessage }>(`/api/chat/messages/${id}`, { method: "DELETE" }),
+
+  polishChatMessage: (room: string, text: string) =>
+    request<{
+      polished: string | null;
+      keptOriginal?: boolean;
+      skipped?: "short" | "emoji";
+    }>("/api/chat/polish", { method: "POST", body: { room, text } }),
 
   chatMessages: (room?: string) =>
     request<{ messages: ChatMessage[] }>(`/api/chat/messages${room ? `?room=${encodeURIComponent(room)}` : ""}`),
@@ -334,9 +381,26 @@ export type ChatMessage = {
   body: string;
   receiptId: number | null;
   createdAt: string;
+  /** When the message was last edited (if edited). */
+  editedAt?: string;
+  /** The sender accepted the AI polish suggestion. */
+  aiPolished?: boolean;
+  /** Soft-deleted — the bubble shows a tombstone. */
+  deleted?: boolean;
+  /** The message this one quotes (replies). */
+  replyToId?: number;
+  reactions?: { emoji: string; userId: number; name: string }[];
   deliveredBy?: number[];
   readBy?: number[];
-  reactions?: { emoji: string; userId: number; name: string }[];
+};
+
+/** One pinned message of a room. */
+export type ChatPin = {
+  id: number;
+  messageId: number;
+  author: string;
+  body: string;
+  pinnedAt: string;
 };
 
 export type ItemRow = {

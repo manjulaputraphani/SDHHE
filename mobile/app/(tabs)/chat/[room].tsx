@@ -30,11 +30,18 @@ import {
   Alert,
 } from "react-native";
 
-import { api, type ChatMessage } from "../../../lib/api";
+import { api, type ChatMessage, type ChatPin } from "../../../lib/api";
 import { useAuth } from "../../_layout";
 import { playNotificationSound } from "../../../lib/notificationSound";
 import { membersOf } from "../../../lib/chatPrivacy";
-import { isOnline, presenceLabel } from "../../../lib/chatView";
+import {
+  REACTION_EMOJIS,
+  groupReactions,
+  isOnline,
+  mentionIdsFor,
+  presenceLabel,
+  withinEditWindow,
+} from "../../../lib/chatView";
 
 // ---- helpers (same as the web app's logic) ----
 
@@ -86,6 +93,8 @@ export default function ChatRoomScreen() {
   const [loading, setLoading] = useState(true);
   const [typing, setTyping] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  /** Which message the Message-info panel is open for (was: always the last own one). */
+  const [infoFor, setInfoFor] = useState<ChatMessage | null>(null);
   const [infoData, setInfoData] = useState<{ readAt: string | null; deliveredAt: string | null } | null>(null);
   const [connected, setConnected] = useState(false);
   // Web-parity header: menu, in-chat search, member info.
@@ -98,6 +107,19 @@ export default function ChatRoomScreen() {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const searchPos = useRef(0);
   const listRef = useRef<FlatList>(null);
+  // ---- message-level parity (phase 2) ----
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [editing, setEditing] = useState<ChatMessage | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  /** The message whose long-press action sheet is open. */
+  const [actionFor, setActionFor] = useState<ChatMessage | null>(null);
+  /** The message whose inline emoji picker is open. */
+  const [reactPickerFor, setReactPickerFor] = useState<number | null>(null);
+  /** The message to show in the "copy" modal (no clipboard dependency). */
+  const [copyFor, setCopyFor] = useState<ChatMessage | null>(null);
+  /** The message just flashed by a reply/pin jump. */
+  const [flashId, setFlashId] = useState<number | null>(null);
+  const [pins, setPins] = useState<ChatPin[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSent = useRef(0);
@@ -151,17 +173,25 @@ export default function ChatRoomScreen() {
 
   // Load message info when the info panel opens (1:1: Read / Delivered times).
   useEffect(() => {
-    if (!showInfo || !messages.length) return;
-    const lastMine = [...messages].reverse().find((m) => m.userId === user?.id);
-    if (!lastMine) return;
+    if (!showInfo || !infoFor) return;
     void api
-      .chatMessageInfo(lastMine.id)
+      .chatMessageInfo(infoFor.id)
       .then((info) => {
         const receipt = info.receipts.find((r) => r.userId === otherId) ?? null;
         setInfoData({ deliveredAt: receipt?.deliveredAt ?? null, readAt: receipt?.readAt ?? null });
       })
       .catch(() => undefined);
-  }, [showInfo, messages.length, otherId, user?.id]);
+  }, [showInfo, infoFor, otherId]);
+
+  // The room's pinned messages (owner pins, at most three) — web loads on room change.
+  useEffect(() => {
+    let alive = true;
+    void api
+      .chatPins(room)
+      .then((r) => { if (alive) setPins(r.pins); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [room]);
 
   // WebSocket: the same Durable Object protocol as the web app.
   useEffect(() => {
@@ -209,6 +239,20 @@ export default function ChatRoomScreen() {
               if (typingTimer.current) clearTimeout(typingTimer.current);
               typingTimer.current = setTimeout(() => setTyping(null), 3000);
             }
+            if (f.type === "reaction") {
+              const rf = f as { messageId?: number; reactions?: ChatMessage["reactions"] };
+              if (typeof rf.messageId === "number") {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === rf.messageId ? { ...m, reactions: rf.reactions ?? [] } : m)),
+                );
+              }
+            }
+            if (f.type === "update" && f.message) {
+              setMessages((prev) => prev.map((m) => (m.id === f.message!.id ? f.message! : m)));
+            }
+            if (f.type === "pins") {
+              void api.chatPins(room).then((r) => setPins(r.pins)).catch(() => undefined);
+            }
           } catch {
             // Malformed frame — ignore.
           }
@@ -233,17 +277,116 @@ export default function ChatRoomScreen() {
   }
 
   async function send() {
+    // Editing swaps the send button into "Save edit" (web: composer swap).
+    if (editing) {
+      const text = editDraft.trim();
+      if (!text) return;
+      try {
+        const { message } = await api.editChatMessage(editing.id, text);
+        setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, ...message } : m)));
+      } catch (err) {
+        Alert.alert("Couldn't edit", err instanceof Error ? err.message : String(err));
+      } finally {
+        setEditing(null);
+        setEditDraft("");
+      }
+      return;
+    }
+
     const text = draft.trim();
     if (!text) return;
     setDraft("");
     try {
-      const { message } = await api.sendChatMessage({ kind: "text", body: text, room });
-      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message as ChatMessage]));
+      const mentions = mentionIdsFor(text, members);
+      const { message } = await api.sendChatMessage({
+        kind: "text",
+        body: text,
+        room,
+        replyToId: replyingTo?.id,
+        mentions: mentions.length ? mentions : undefined,
+      });
+      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+      setReplyingTo(null);
     } catch (err) {
       // Show the error as a system message so the user knows.
       const errorMessage = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, { id: -Date.now(), room: "", userId: null, author: "", kind: "system", body: `Error: ${errorMessage}`, receiptId: null, createdAt: new Date().toISOString(), role: "" }]);
     }
+  }
+
+  /** Toggle my reaction on a message (one per member — a new emoji replaces the old). */
+  async function toggleReaction(message: ChatMessage, emoji: string) {
+    const mine = (message.reactions ?? []).find((r) => r.userId === user?.id);
+    const optimistic = (message.reactions ?? []).filter((r) => r.userId !== user?.id);
+    if (mine && mine.emoji === emoji) {
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, reactions: optimistic } : m)));
+      void api.unreactChatMessage(message.id).catch(() => undefined);
+    } else {
+      const next = [...optimistic, { emoji, userId: user?.id ?? 0, name: user?.name ?? "" }];
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, reactions: next } : m)));
+      void api.reactChatMessage(message.id, emoji).catch(() => undefined);
+    }
+    setReactPickerFor(null);
+    setActionFor(null);
+  }
+
+  /** Owner pins/unpins in a group room (max three) — web toggleMessagePin. */
+  async function togglePin(message: ChatMessage) {
+    setActionFor(null);
+    const already = pins.some((p) => p.messageId === message.id);
+    try {
+      if (already) {
+        await api.unpinChatMessage(message.id);
+        setPins((prev) => prev.filter((p) => p.messageId !== message.id));
+      } else {
+        const { pins: next } = await api.pinChatMessage(room, message.id);
+        setPins(next);
+        Alert.alert("Pinned", "At most three messages stay pinned.");
+      }
+    } catch (err) {
+      Alert.alert("Couldn't pin", err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Soft-delete my message (or any, as owner) — the team sees a tombstone. */
+  function confirmDelete(message: ChatMessage) {
+    setActionFor(null);
+    Alert.alert(
+      "Delete this message?",
+      "The team will see “This message was deleted” instead of the text.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void api
+              .deleteChatMessage(message.id)
+              .then(({ message: updated }) =>
+                setMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m))),
+              )
+              .catch((err) => Alert.alert("Couldn't delete", err instanceof Error ? err.message : String(err)));
+          },
+        },
+      ],
+    );
+  }
+
+  /** Jump to a message (reply quote / pin chip) and flash it — web scrollToMessage. */
+  function scrollToMessage(messageId: number) {
+    const index = rows.findIndex((row) => !("isDay" in row) && (row as ChatMessage).id === messageId);
+    if (index < 0) return;
+    listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.4 });
+    setFlashId(messageId);
+    setTimeout(() => setFlashId((current) => (current === messageId ? null : current)), 1600);
+  }
+
+  /** Start editing my message (15-minute window) — the composer swaps. */
+  function startEdit(message: ChatMessage) {
+    setActionFor(null);
+    setReplyingTo(null);
+    setEditing(message);
+    setEditDraft(message.body);
   }
 
   // Web `filterMessages` — the in-chat search matches body + author.
@@ -270,30 +413,29 @@ export default function ChatRoomScreen() {
     return sections;
   }, [visibleMessages]);
 
-  // Flatten into rows (date chips + bubbles).
-  const rows = useMemo(() => {
-    const result: (ChatMessage | { isDay: true; key: string; label: string })[] = [];
-    for (const section of daySections) {
-      result.push({ isDay: true, key: section.key, label: section.label });
-      for (const item of section.items) result.push(item as ChatMessage);
-    }
-    return result;
-  }, [daySections]);
+  // Flatten into rows (date chips + bubbles). Plain derivation — the React
+  // Compiler memoizes it; a manual useMemo here trips preserve-manual-memoization.
+  const result: (ChatMessage | { isDay: true; key: string; label: string })[] = [];
+  for (const section of daySections) {
+    result.push({ isDay: true, key: section.key, label: section.label });
+    for (const item of section.items) result.push(item as ChatMessage);
+  }
+  const rows = result;
 
   // Row indexes of the current search matches (for the ↑ / ↓ jump, web jumpMark).
-  const matchIndices = useMemo(() => {
+  const matchIndices: number[] = [];
+  {
     const needle = roomQuery.trim().toLowerCase();
-    if (!needle) return [];
-    const indices: number[] = [];
-    rows.forEach((row, index) => {
-      if ("isDay" in row) return;
-      const m = row as ChatMessage;
-      if (m.body.toLowerCase().includes(needle) || m.author.toLowerCase().includes(needle)) {
-        indices.push(index);
-      }
-    });
-    return indices;
-  }, [rows, roomQuery]);
+    if (needle) {
+      rows.forEach((row, index) => {
+        if ("isDay" in row) return;
+        const m = row as ChatMessage;
+        if (m.body.toLowerCase().includes(needle) || m.author.toLowerCase().includes(needle)) {
+          matchIndices.push(index);
+        }
+      });
+    }
+  }
 
   function jumpMark(direction: number) {
     if (matchIndices.length === 0) return;
@@ -493,7 +635,26 @@ export default function ChatRoomScreen() {
         </View>
       )}
 
-      {/* ---- Message info modal (1:1: Read / Delivered times) ---- */}
+      {/* ---- Pinned messages bar (owner pins, max 3) — tap jumps + flashes ---- */}
+      {pins.length > 0 && (
+        <View style={[styles.pinBar, { backgroundColor: theme.surface2, borderBottomColor: theme.line }]}>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: theme.accentInk }}>📌</Text>
+          {pins.map((pin) => (
+            <TouchableOpacity
+              key={pin.id}
+              style={[styles.pinChip, { backgroundColor: theme.surface, borderColor: theme.line }]}
+              onPress={() => scrollToMessage(pin.messageId)}
+              activeOpacity={0.7}
+            >
+              <Text numberOfLines={1} style={{ fontSize: 11, color: theme.ink }}>
+                {pin.author}: {pin.body}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* ---- Message info (1:1: Read / Delivered times) ---- */}
       <Modal visible={showInfo} transparent animationType="fade" onRequestClose={() => setShowInfo(false)}>
         <Pressable style={[styles.modalBackdrop]} onPress={() => setShowInfo(false)}>
           <View style={[styles.infoCard, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}>
@@ -591,6 +752,113 @@ export default function ChatRoomScreen() {
         </Pressable>
       </Modal>
 
+      {/* ---- Long-press action sheet (web hover/hold action row) ---- */}
+      <Modal visible={actionFor !== null} transparent animationType="fade" onRequestClose={() => setActionFor(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setActionFor(null)}>
+          <Pressable
+            style={[styles.actionSheet, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}
+            onPress={() => undefined}
+          >
+            {actionFor && (
+              <>
+                <Text numberOfLines={2} style={[styles.actionPreview, { color: theme.muted }]}>
+                  {actionFor.author}: {actionFor.body}
+                </Text>
+
+                <ActionButton
+                  icon="arrow-undo"
+                  label="Reply"
+                  theme={theme}
+                  onPress={() => {
+                    setReplyingTo(actionFor);
+                    setActionFor(null);
+                  }}
+                />
+                <ActionButton
+                  icon="happy-outline"
+                  label="React"
+                  theme={theme}
+                  onPress={() => {
+                    setReactPickerFor(actionFor.id);
+                    setActionFor(null);
+                  }}
+                />
+                <ActionButton
+                  icon="copy-outline"
+                  label="Copy"
+                  theme={theme}
+                  onPress={() => {
+                    setCopyFor(actionFor);
+                    setActionFor(null);
+                  }}
+                />
+                {actionFor.userId === user?.id &&
+                  !actionFor.deleted &&
+                  actionFor.kind === "text" &&
+                  withinEditWindow(new Date(actionFor.createdAt).getTime()) && (
+                    <ActionButton
+                      icon="pencil-outline"
+                      label="Edit"
+                      theme={theme}
+                      onPress={() => startEdit(actionFor)}
+                    />
+                  )}
+                {!actionFor.deleted && (actionFor.userId === user?.id || user?.role === "owner") && (
+                  <ActionButton
+                    icon="trash-outline"
+                    label="Delete"
+                    danger
+                    theme={theme}
+                    onPress={() => confirmDelete(actionFor)}
+                  />
+                )}
+                {user?.role === "owner" && isGroup && !actionFor.deleted && (
+                  <ActionButton
+                    icon={pins.some((p) => p.messageId === actionFor.id) ? "bookmark-outline" : "bookmark"}
+                    label={pins.some((p) => p.messageId === actionFor.id) ? "Unpin" : "Pin"}
+                    theme={theme}
+                    onPress={() => void togglePin(actionFor)}
+                  />
+                )}
+                <ActionButton
+                  icon="information-circle-outline"
+                  label="Info"
+                  theme={theme}
+                  onPress={() => {
+                    setInfoFor(actionFor);
+                    setShowInfo(true);
+                    setActionFor(null);
+                  }}
+                />
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ---- Copy modal (RN has no system clipboard without a new dependency) ---- */}
+      <Modal visible={copyFor !== null} transparent animationType="fade" onRequestClose={() => setCopyFor(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setCopyFor(null)}>
+          <Pressable
+            style={[styles.infoCard, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}
+            onPress={() => undefined}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: theme.ink }}>Copy message</Text>
+              <TouchableOpacity onPress={() => setCopyFor(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={theme.muted} />
+              </TouchableOpacity>
+            </View>
+            <Text selectable style={{ fontSize: 14, color: theme.ink, marginTop: 12, lineHeight: 20 }}>
+              {copyFor?.body}
+            </Text>
+            <Text style={{ fontSize: 11, color: theme.muted, marginTop: 10 }}>
+              Press and hold the text to copy it.
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* ---- Message list ---- */}
       <FlatList
         ref={listRef}
@@ -622,6 +890,24 @@ export default function ChatRoomScreen() {
           }
           const mine = message.userId === user?.id;
           const tick = mine ? tickFor(message, otherId) : null;
+          const chips = groupReactions(message.reactions, user?.id);
+          const quoted = message.replyToId
+            ? messages.find((m) => m.id === message.replyToId) ?? null
+            : null;
+          const flash = flashId === message.id;
+
+          if (message.deleted) {
+            return (
+              <View style={[styles.bubbleRow, { justifyContent: mine ? "flex-end" : "flex-start" }]}>
+                <View style={[styles.bubble, { backgroundColor: theme.surface2, maxWidth: "80%" }]}>
+                  <Text style={{ color: theme.muted, fontSize: 14, fontStyle: "italic", opacity: 0.8 }}>
+                    🚫 This message was deleted
+                  </Text>
+                </View>
+              </View>
+            );
+          }
+
           return (
             <View style={[styles.bubbleRow, { justifyContent: mine ? "flex-end" : "flex-start" }]}>
               {!mine && (
@@ -629,18 +915,87 @@ export default function ChatRoomScreen() {
                   <Text style={{ fontSize: 12, fontWeight: "700", color: theme.accentInk }}>{initials(message.author)}</Text>
                 </View>
               )}
-              <Pressable
-                style={[styles.bubble, { backgroundColor: mine ? theme.primary : theme.surface, maxWidth: "80%" }]}
-                onLongPress={mine ? () => setShowInfo(true) : undefined}
-              >
-                <Text style={{ color: mine ? theme.onPrimary : theme.ink, fontSize: 15, lineHeight: 21 }}>{message.body}</Text>
-                <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "flex-end", gap: 4, marginTop: 4 }}>
-                  <Text style={{ color: mine ? theme.onPrimary : theme.muted, fontSize: 10, opacity: 0.7 }}>{timeLabel(message.createdAt)}</Text>
-                  {mine && tick && (
-                    <Text style={{ fontSize: 10, color: tick === "read" ? theme.readTick : theme.onPrimary, opacity: tick === "read" ? 1 : 0.7 }}>{tick === "sent" ? "✓" : "✓✓"}</Text>
+              <View style={{ maxWidth: "80%", alignItems: mine ? "flex-end" : "flex-start" }}>
+                <Pressable
+                  style={[
+                    styles.bubble,
+                    {
+                      backgroundColor: mine ? theme.primary : theme.surface,
+                      borderColor: flash ? theme.accent : "transparent",
+                      borderWidth: flash ? 2 : 0,
+                    },
+                  ]}
+                  onLongPress={() => setActionFor(message)}
+                >
+                  {/* Reply quote — tap to jump to the original (web: border-l-2 accent). */}
+                  {quoted && (
+                    <Pressable
+                      style={[styles.quote, { borderColor: theme.accent, backgroundColor: mine ? "rgba(255,255,255,0.14)" : theme.accentSoft }]}
+                      onPress={() => scrollToMessage(quoted.id)}
+                    >
+                      <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: "600", color: mine ? theme.onPrimary : theme.accentInk, opacity: 0.9 }}>
+                        {quoted.author || "Message"}
+                      </Text>
+                      <Text numberOfLines={1} style={{ fontSize: 11, color: mine ? theme.onPrimary : theme.ink, opacity: 0.7 }}>
+                        {quoted.body || "…"}
+                      </Text>
+                    </Pressable>
                   )}
-                </View>
-              </Pressable>
+                  <Text style={{ color: mine ? theme.onPrimary : theme.ink, fontSize: 15, lineHeight: 21 }}>
+                    {message.body}
+                    {message.aiPolished ? " ✨" : ""}
+                    {message.editedAt ? (
+                      <Text style={{ fontSize: 9, fontStyle: "italic", opacity: 0.7 }}> edited</Text>
+                    ) : null}
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "flex-end", gap: 4, marginTop: 4 }}>
+                    <Text style={{ color: mine ? theme.onPrimary : theme.muted, fontSize: 10, opacity: 0.7 }}>{timeLabel(message.createdAt)}</Text>
+                    {mine && tick && (
+                      <Text style={{ fontSize: 10, color: tick === "read" ? theme.readTick : theme.onPrimary, opacity: tick === "read" ? 1 : 0.7 }}>{tick === "sent" ? "✓" : "✓✓"}</Text>
+                    )}
+                  </View>
+                </Pressable>
+
+                {/* Reaction pills — mine gets the accent (web groupReactions). */}
+                {chips.length > 0 && (
+                  <View style={styles.pillRow}>
+                    {chips.map((chip) => (
+                      <TouchableOpacity
+                        key={chip.emoji}
+                        activeOpacity={0.7}
+                        onPress={() => void toggleReaction(message, chip.emoji)}
+                        style={[
+                          styles.pill,
+                          {
+                            borderColor: chip.mine ? theme.accent : theme.line,
+                            backgroundColor: chip.mine ? theme.accentSoft : theme.surface2,
+                          },
+                        ]}
+                      >
+                        <Text style={{ fontSize: 11, color: chip.mine ? theme.accentInk : theme.ink }}>
+                          {chip.emoji} {chip.count}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                {/* Inline emoji picker (web: 6 round buttons under the bubble). */}
+                {reactPickerFor === message.id && (
+                  <View style={[styles.pickerRow, { backgroundColor: theme.surface, borderColor: theme.line }]}>
+                    {REACTION_EMOJIS.map((emoji) => (
+                      <TouchableOpacity
+                        key={emoji}
+                        style={styles.pickerBtn}
+                        onPress={() => void toggleReaction(message, emoji)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={{ fontSize: 18 }}>{emoji}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
             </View>
           );
         }}
@@ -653,24 +1008,91 @@ export default function ChatRoomScreen() {
         </View>
       )}
 
+      {/* ---- Reply draft bar (web: bg-accent-soft, "↩ Replying to X" + ✕) ---- */}
+      {replyingTo && !editing && (
+        <View style={[styles.replyBar, { backgroundColor: theme.accentSoft, borderColor: theme.line }]}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "600", color: theme.accentInk }}>
+              ↩ Replying to {replyingTo.author}
+            </Text>
+            <Text numberOfLines={1} style={{ fontSize: 11, color: theme.muted }}>
+              {replyingTo.body}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => setReplyingTo(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={18} color={theme.accentInk} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ---- Editing banner (web: "✏️ Editing message" + ✕) ---- */}
+      {editing && (
+        <View style={[styles.replyBar, { backgroundColor: theme.surface3, borderColor: theme.line }]}>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, fontWeight: "600", color: theme.ink }}>
+            ✏️ Editing message
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setEditing(null);
+              setEditDraft("");
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="close" size={18} color={theme.muted} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* ---- Composer ---- */}
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[styles.composer, { borderTopColor: theme.line, backgroundColor: theme.surface2 }]}>
         <TextInput
           style={[styles.composerInput, { color: theme.ink, borderColor: theme.line, backgroundColor: theme.surface }]}
-          placeholder="Message…"
+          placeholder={editing ? "Edit your message…" : "Message…"}
           placeholderTextColor={theme.muted}
-          value={draft}
+          value={editing ? editDraft : draft}
           onChangeText={(text) => {
-            setDraft(text);
-            sendTyping();
+            if (editing) setEditDraft(text);
+            else {
+              setDraft(text);
+              sendTyping();
+            }
           }}
           multiline
         />
-        <TouchableOpacity style={[styles.sendButton, { backgroundColor: draft.trim() ? theme.primary : theme.surface3 }]} onPress={() => void send()} disabled={!draft.trim()}>
-          <Ionicons name="send" size={18} color={draft.trim() ? theme.onPrimary : theme.muted} />
+        <TouchableOpacity
+          style={[
+            styles.sendButton,
+            { backgroundColor: (editing ? editDraft.trim() : draft.trim()) ? theme.primary : theme.surface3 },
+          ]}
+          onPress={() => void send()}
+          disabled={!(editing ? editDraft.trim() : draft.trim())}
+        >
+          <Ionicons name={editing ? "checkmark" : "send"} size={18} color={(editing ? editDraft.trim() : draft.trim()) ? theme.onPrimary : theme.muted} />
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** One row of the long-press action sheet. */
+function ActionButton({
+  icon,
+  label,
+  onPress,
+  theme,
+  danger,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  onPress: () => void;
+  theme: { ink: string; error: string; surface2: string };
+  danger?: boolean;
+}) {
+  return (
+    <TouchableOpacity style={styles.actionBtn} onPress={onPress} activeOpacity={0.7} hitSlop={{ top: 4, bottom: 4 }}>
+      <Ionicons name={icon} size={18} color={danger ? theme.error : theme.ink} />
+      <Text style={{ fontSize: 14, color: danger ? theme.error : theme.ink }}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -788,6 +1210,80 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   sendButton: { borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, alignItems: "center", justifyContent: "center", minHeight: 40 },
+  // ---- phase 2: message-level parity ----
+  quote: {
+    borderLeftWidth: 2,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 6,
+    alignSelf: "stretch",
+  },
+  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 4 },
+  pill: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
+  pickerRow: {
+    flexDirection: "row",
+    gap: 4,
+    marginTop: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  pickerBtn: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  pinBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+  },
+  pinChip: {
+    maxWidth: 180,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  replyBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 10,
+    marginTop: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  actionSheet: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 16,
+    padding: 8,
+    elevation: 8,
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  actionPreview: {
+    fontSize: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(128,128,128,0.3)",
+    marginBottom: 4,
+  },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 },
   infoCard: { borderRadius: 16, padding: 20, width: "100%", maxWidth: 340, elevation: 8, shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
 });
