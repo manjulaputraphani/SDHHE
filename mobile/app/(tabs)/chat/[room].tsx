@@ -27,12 +27,14 @@ import {
   ActivityIndicator,
   Pressable,
   Modal,
+  Alert,
 } from "react-native";
 
 import { api, type ChatMessage } from "../../../lib/api";
 import { useAuth } from "../../_layout";
 import { playNotificationSound } from "../../../lib/notificationSound";
 import { membersOf } from "../../../lib/chatPrivacy";
+import { isOnline, presenceLabel } from "../../../lib/chatView";
 
 // ---- helpers (same as the web app's logic) ----
 
@@ -86,6 +88,15 @@ export default function ChatRoomScreen() {
   const [showInfo, setShowInfo] = useState(false);
   const [infoData, setInfoData] = useState<{ readAt: string | null; deliveredAt: string | null } | null>(null);
   const [connected, setConnected] = useState(false);
+  // Web-parity header: menu, in-chat search, member info.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [roomQuery, setRoomQuery] = useState("");
+  const [showMembers, setShowMembers] = useState(false);
+  const [members, setMembers] = useState<{ id: number; name: string; role: string; lastSeenAt?: string | null }[]>([]);
+  const [roster, setRoster] = useState<{ id: number; name: string; role: string; lastSeenAt?: string | null }[]>([]);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const searchPos = useRef(0);
   const listRef = useRef<FlatList>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,6 +126,29 @@ export default function ChatRoomScreen() {
     void api.markChatRead(room).catch(() => undefined);
   }, [room]);
 
+  // Members (presence) for the header subtitle + Group/Contact info — same as web.
+  useEffect(() => {
+    let alive = true;
+    const isDm = membersOf(room) !== null;
+    void api
+      .chatMembers()
+      .then((r) => { if (alive) setMembers(r.members); })
+      .catch(() => undefined);
+    if (!isDm) {
+      void api
+        .chatGroupMembers(room)
+        .then((r) => { if (alive) setRoster(r.members); })
+        .catch(() => undefined);
+    }
+    return () => { alive = false; };
+  }, [room]);
+
+  // Refresh presence labels every 30s (web ticks every 1s).
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   // Load message info when the info panel opens (1:1: Read / Delivered times).
   useEffect(() => {
     if (!showInfo || !messages.length) return;
@@ -136,6 +170,8 @@ export default function ChatRoomScreen() {
 
     async function connect() {
       try {
+        // History comes over REST (same as web TeamChat) — the WS only relays live frames.
+        await loadHistory();
         const { token } = await api.chatToken();
         if (closed) return;
         socket = new WebSocket(`wss://sdhhe-api.blvphani.workers.dev/api/chat/ws?room=${encodeURIComponent(room)}&token=${encodeURIComponent(token)}`);
@@ -187,7 +223,7 @@ export default function ChatRoomScreen() {
       closed = true;
       socketRef.current?.close();
     };
-  }, [room, user?.id]);
+  }, [room, user?.id, loadHistory]);
 
   function sendTyping() {
     const now = Date.now();
@@ -210,10 +246,19 @@ export default function ChatRoomScreen() {
     }
   }
 
+  // Web `filterMessages` — the in-chat search matches body + author.
+  const visibleMessages = useMemo(() => {
+    const needle = roomQuery.trim().toLowerCase();
+    if (!needle) return messages;
+    return messages.filter(
+      (m) => m.body.toLowerCase().includes(needle) || m.author.toLowerCase().includes(needle),
+    );
+  }, [messages, roomQuery]);
+
   // Group messages by day for the date separators.
   const daySections = useMemo(() => {
     const sections: { key: string; label: string; items: ChatMessage[] }[] = [];
-    for (const message of messages) {
+    for (const message of visibleMessages) {
       const key = new Date(message.createdAt).toISOString().slice(0, 10);
       const last = sections[sections.length - 1];
       if (last && last.key === key) {
@@ -223,7 +268,7 @@ export default function ChatRoomScreen() {
       }
     }
     return sections;
-  }, [messages]);
+  }, [visibleMessages]);
 
   // Flatten into rows (date chips + bubbles).
   const rows = useMemo(() => {
@@ -235,6 +280,51 @@ export default function ChatRoomScreen() {
     return result;
   }, [daySections]);
 
+  // Row indexes of the current search matches (for the ↑ / ↓ jump, web jumpMark).
+  const matchIndices = useMemo(() => {
+    const needle = roomQuery.trim().toLowerCase();
+    if (!needle) return [];
+    const indices: number[] = [];
+    rows.forEach((row, index) => {
+      if ("isDay" in row) return;
+      const m = row as ChatMessage;
+      if (m.body.toLowerCase().includes(needle) || m.author.toLowerCase().includes(needle)) {
+        indices.push(index);
+      }
+    });
+    return indices;
+  }, [rows, roomQuery]);
+
+  function jumpMark(direction: number) {
+    if (matchIndices.length === 0) return;
+    searchPos.current = (searchPos.current + direction + matchIndices.length) % matchIndices.length;
+    const index = matchIndices[searchPos.current]!;
+    listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.4 });
+  }
+
+  // ---- header values (same rules as the web ChatHeader) ----
+  const isDm = membersOf(room) !== null;
+  const isGroup = !isDm;
+  const displayName = title ?? room;
+  const otherMember = isDm ? members.find((m) => m.id === otherId) : null;
+  const onlineCount = (isDm ? members : roster).filter((m) => isOnline(m.lastSeenAt, nowTick)).length;
+  const memberCount = isDm
+    ? 2
+    : room === "main"
+      ? members.length + 1
+      : roster.length || members.length + 1;
+  const presence = isDm
+    ? presenceLabel(otherMember?.lastSeenAt, new Date(nowTick))
+    : `${memberCount} members · ${onlineCount} online`;
+  const subtitle = typing ? typing : !connected ? "connecting…" : presence;
+  // Group info's rows (direct: just the other person).
+  const infoMembers = isDm
+    ? members.filter((m) => m.id === otherId)
+    : roster.length
+      ? roster
+      : members;
+  const infoSubtitle = isDm ? presence : `Group · ${memberCount} members`;
+
   if (loading) {
     return (
       <View style={[styles.loading, { backgroundColor: theme.bg }]}>
@@ -245,30 +335,163 @@ export default function ChatRoomScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[styles.screen, { backgroundColor: theme.bg }]}>
-      {/* ---- Chat header ---- */}
+      {/* ---- Chat header — web ChatHeader spec: 56px, back / who / call video menu ---- */}
       <View style={[styles.chatHeader, { backgroundColor: theme.surface, borderBottomColor: theme.line }]}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={{ fontSize: 22, color: theme.primary }}>←</Text>
+        <TouchableOpacity
+          style={styles.headerIcon}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back to chats"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="arrow-back" size={22} color={theme.muted} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={{ gap: 2, flex: 1, flexDirection: "row", alignItems: "center" }} onPress={() => setShowInfo(true)}>
+        <TouchableOpacity
+          style={styles.headerWho}
+          onPress={() => setShowMembers(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Open info"
+          activeOpacity={0.7}
+        >
           <View style={[styles.headerAvatar, { backgroundColor: theme.surface3 }]}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: theme.muted }}>{initials(title ?? room)}</Text>
+            {isGroup ? (
+              <Ionicons name="people" size={18} color={theme.muted} />
+            ) : (
+              <Text style={{ fontSize: 14, fontWeight: "600", color: theme.muted }}>{initials(displayName)}</Text>
+            )}
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", color: theme.ink, fontFamily: Platform.OS === "ios" ? "Georgia" : "serif" }}>
-              {title ?? room}
+            <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", color: theme.ink }}>
+              {displayName}
             </Text>
             <Text numberOfLines={1} style={{ fontSize: 11, color: theme.muted }}>
-              {typing ? typing : connected ? "online" : "connecting…"}
+              {subtitle}
             </Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setShowInfo(true)} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
-          <Text style={{ color: theme.accent }}>⋮</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerIcon}
+            accessibilityRole="button"
+            accessibilityLabel="Voice call"
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            onPress={() => Alert.alert("Voice calls aren't available yet")}
+          >
+            <Ionicons name="call" size={19} color={theme.muted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerIcon}
+            accessibilityRole="button"
+            accessibilityLabel="Video call"
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            onPress={() => Alert.alert("Video calls aren't available yet")}
+          >
+            <Ionicons name="videocam" size={19} color={theme.muted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerIcon}
+            accessibilityRole="button"
+            accessibilityLabel="Chat menu"
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+            onPress={() => setMenuOpen((open) => !open)}
+          >
+            <Ionicons name="ellipsis-vertical" size={19} color={theme.muted} />
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* ---- ⋮ menu (web .chat-header__menu — Mute/Clear omitted: no prefs store yet) ---- */}
+      {menuOpen && (
+        <>
+          <Pressable style={[StyleSheet.absoluteFill, { zIndex: 30 }]} onPress={() => setMenuOpen(false)} />
+          <View
+            style={[
+              styles.headerMenu,
+              { backgroundColor: theme.surface, borderColor: theme.line, shadowColor: theme.shadow },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuOpen(false);
+                setRoomQuery("");
+                setShowSearch(true);
+              }}
+            >
+              <Ionicons name="search" size={16} color={theme.ink} />
+              <Text style={[styles.menuText, { color: theme.ink }]}>Search in chat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuOpen(false);
+                setShowMembers(true);
+              }}
+            >
+              <Ionicons name="people" size={16} color={theme.ink} />
+              <Text style={[styles.menuText, { color: theme.ink }]}>
+                {isGroup ? "Group info" : "Contact info"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* ---- In-chat search (web: filter + "N matches" + ↑ / ↓ + Close) ---- */}
+      {showSearch && (
+        <View style={[styles.searchBar, { backgroundColor: theme.surface, borderBottomColor: theme.line }]}>
+          <Ionicons name="search" size={14} color={theme.muted} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.ink }]}
+            placeholder="Search in this chat…"
+            placeholderTextColor={theme.muted}
+            value={roomQuery}
+            autoFocus
+            autoCorrect={false}
+            onChangeText={(value) => {
+              setRoomQuery(value);
+              searchPos.current = 0;
+            }}
+          />
+          {roomQuery.trim() ? (
+            <Text style={{ fontSize: 11, color: theme.muted, flexShrink: 0 }}>
+              {matchIndices.length} match{matchIndices.length === 1 ? "" : "es"}
+            </Text>
+          ) : null}
+          {roomQuery.trim() ? (
+            <>
+              <TouchableOpacity
+                style={styles.jumpBtn}
+                accessibilityLabel="Previous match"
+                onPress={() => jumpMark(-1)}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+              >
+                <Ionicons name="chevron-up" size={16} color={theme.muted} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.jumpBtn}
+                accessibilityLabel="Next match"
+                onPress={() => jumpMark(1)}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+              >
+                <Ionicons name="chevron-down" size={16} color={theme.muted} />
+              </TouchableOpacity>
+            </>
+          ) : null}
+          <TouchableOpacity
+            accessibilityLabel="Close search"
+            onPress={() => {
+              setRoomQuery("");
+              setShowSearch(false);
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={{ fontSize: 12, color: theme.primary, fontWeight: "600" }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* ---- Message info modal (1:1: Read / Delivered times) ---- */}
       <Modal visible={showInfo} transparent animationType="fade" onRequestClose={() => setShowInfo(false)}>
@@ -297,6 +520,77 @@ export default function ChatRoomScreen() {
         </Pressable>
       </Modal>
 
+      {/* ---- Group / Contact info (web GroupInfo — members + presence) ---- */}
+      <Modal visible={showMembers} transparent animationType="fade" onRequestClose={() => setShowMembers(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowMembers(false)}>
+          <Pressable
+            style={[styles.infoCard, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}
+            onPress={() => undefined}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: theme.ink }}>
+                {isGroup ? "Group info" : "Contact info"}
+              </Text>
+              <TouchableOpacity onPress={() => setShowMembers(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={theme.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ alignItems: "center", marginTop: 14, marginBottom: 12 }}>
+              <View style={[styles.infoAvatar, { backgroundColor: theme.surface3 }]}>
+                {isGroup ? (
+                  <Ionicons name="people" size={26} color={theme.muted} />
+                ) : (
+                  <Text style={{ fontSize: 20, fontWeight: "600", color: theme.muted }}>{initials(displayName)}</Text>
+                )}
+              </View>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: theme.ink, marginTop: 8 }} numberOfLines={1}>
+                {displayName}
+              </Text>
+              <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{infoSubtitle}</Text>
+            </View>
+
+            <View style={{ maxHeight: 300 }}>
+              {infoMembers.length === 0 ? (
+                <Text style={{ fontSize: 13, color: theme.muted, paddingVertical: 8 }}>No members found.</Text>
+              ) : (
+                infoMembers.map((member) => {
+                  const online = isOnline(member.lastSeenAt, nowTick);
+                  return (
+                    <View key={member.id} style={[styles.memberRow, { borderColor: theme.line }]}>
+                      <View style={[styles.memberAvatar, { backgroundColor: theme.surface3 }]}>
+                        <Text style={{ fontSize: 12, fontWeight: "600", color: theme.muted }}>
+                          {initials(member.name)}
+                        </Text>
+                        <View
+                          style={[
+                            styles.memberDot,
+                            { backgroundColor: online ? theme.secondary : theme.muted, borderColor: theme.surface, opacity: online ? 1 : 0.4 },
+                          ]}
+                        />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} style={{ fontSize: 14, color: theme.ink }}>
+                          {member.name}
+                        </Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                          <Text style={{ fontSize: 11, color: theme.muted, textTransform: "capitalize" }}>
+                            {member.role}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: theme.muted }}>
+                            {" · "}{presenceLabel(member.lastSeenAt, new Date(nowTick))}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* ---- Message list ---- */}
       <FlatList
         ref={listRef}
@@ -307,6 +601,9 @@ export default function ChatRoomScreen() {
         }}
         contentContainerStyle={{ padding: 12, paddingBottom: 80 }}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        onScrollToIndexFailed={(info) =>
+          listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true })
+        }
         renderItem={({ item }) => {
           if ("isDay" in item) {
             return (
@@ -332,7 +629,10 @@ export default function ChatRoomScreen() {
                   <Text style={{ fontSize: 12, fontWeight: "700", color: theme.accentInk }}>{initials(message.author)}</Text>
                 </View>
               )}
-              <View style={[styles.bubble, { backgroundColor: mine ? theme.primary : theme.surface, maxWidth: "80%" }]}>
+              <Pressable
+                style={[styles.bubble, { backgroundColor: mine ? theme.primary : theme.surface, maxWidth: "80%" }]}
+                onLongPress={mine ? () => setShowInfo(true) : undefined}
+              >
                 <Text style={{ color: mine ? theme.onPrimary : theme.ink, fontSize: 15, lineHeight: 21 }}>{message.body}</Text>
                 <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "flex-end", gap: 4, marginTop: 4 }}>
                   <Text style={{ color: mine ? theme.onPrimary : theme.muted, fontSize: 10, opacity: 0.7 }}>{timeLabel(message.createdAt)}</Text>
@@ -340,7 +640,7 @@ export default function ChatRoomScreen() {
                     <Text style={{ fontSize: 10, color: tick === "read" ? theme.readTick : theme.onPrimary, opacity: tick === "read" ? 1 : 0.7 }}>{tick === "sent" ? "✓" : "✓✓"}</Text>
                   )}
                 </View>
-              </View>
+              </Pressable>
             </View>
           );
         }}
@@ -378,16 +678,91 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   loading: { flex: 1, justifyContent: "center", alignItems: "center" },
   chatHeader: {
-    paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingHorizontal: 6,
     marginTop: 36,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 4,
+    borderBottomWidth: 1,
+    zIndex: 20,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    minWidth: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerWho: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  headerActions: { flexDirection: "row", alignItems: "center" },
+  headerMenu: {
+    position: "absolute",
+    right: 8,
+    top: 96, // status bar (36) + header (56) + a small gap
+    zIndex: 40,
+    width: 210,
+    padding: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    elevation: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  menuText: { fontSize: 13, textAlign: "left" },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderBottomWidth: 1,
   },
+  searchInput: { flex: 1, fontSize: 14, height: 32, paddingVertical: 0 },
+  jumpBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   headerAvatar: { width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center" },
+  infoAvatar: { width: 56, height: 56, borderRadius: 28, justifyContent: "center", alignItems: "center" },
+  memberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  memberAvatar: { width: 34, height: 34, borderRadius: 17, justifyContent: "center", alignItems: "center" },
+  memberDot: {
+    position: "absolute",
+    right: -1,
+    bottom: -1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+  },
   daySeparator: { alignItems: "center", marginVertical: 10 },
   dayChip: { fontSize: 11, fontWeight: "500", paddingVertical: 3, paddingHorizontal: 10, borderRadius: 12, overflow: "hidden" },
   bubbleRow: { flexDirection: "row", marginTop: 4, paddingHorizontal: 8 },
