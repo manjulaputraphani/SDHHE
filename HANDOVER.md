@@ -5,13 +5,12 @@ Tool: OpenCode
 
 ## Current state
 - **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound). Owner's real-device test is due.
-- **Mobile app** (`mobile/` directory): Phase 1+2 built — Expo project, Cloudflare Access setup screen, login,
-  bottom tabs (Home · New Bill · Chats · Stock · More), theme system, API client,
-  chat room screen with WebSocket protocol + delivery ticks. **0 typecheck errors.**
+- **Phase 3+4 committed** (`facb3b9`, `beca8ed`) — all business screens + billing + EAS deploy config.
+- **`mobile/app.json` fixed `19daef5`** — SDK 58 schema: top-level `splash` removed → `expo-splash-screen` plugin; adaptive icon paths → `android-icon-*.png`. **`expo-doctor` 20/20, `tsc` clean, Metro bundles iOS+Android OK (HTTP 200).**
+- Mobile app (`mobile/`): Expo **SDK 58**, RN 0.88.1 — Cloudflare Access setup, login, bottom tabs, theme, API client, chat room (WebSocket + delivery ticks).
 
 ## Next task
-Phase 3 core business screens (Items, Purchases, Expenses, Stock Check) — built but NOT committed.
-Phase 4: Billing screen.
+Owner: check **Expo Go → Settings → About** = SDK 58 (project won't load on older Expo Go).
 Then Phase 5: `eas build` → Play Store + App Store.
 
 ## Mobile app screens built
