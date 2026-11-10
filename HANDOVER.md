@@ -6,12 +6,13 @@ Tool: OpenCode
 ## Current state
 - **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound). Owner's real-device test is due.
 - **Phase 3+4 committed** (`facb3b9`, `beca8ed`) — all business screens + billing + EAS deploy config.
-- **`mobile/app.json` fixed `19daef5`** — SDK 58 schema: top-level `splash` removed → `expo-splash-screen` plugin; adaptive icon paths → `android-icon-*.png`. **`expo-doctor` 20/20, `tsc` clean, Metro bundles iOS+Android OK (HTTP 200).**
-- Mobile app (`mobile/`): Expo **SDK 58**, RN 0.88.1 — Cloudflare Access setup, login, bottom tabs, theme, API client, chat room (WebSocket + delivery ticks).
+- **`mobile/app.json` fixed `19daef5`** — SDK 58 schema: top-level `splash` removed → `expo-splash-screen` plugin; adaptive icon paths → `android-icon-*.png`. **`expo-doctor` 20/20, `tsc` clean.**
+- **Phone test LIVE** — Expo Go loads over tunnel, **login works**. Icons fixed `52775f7` (Ionicons; old Unicode glyphs rendered blank on Android).
+- ⚠️ **Cloudflare Access app for `sdhhe-api.blvphani.workers.dev` was DELETED** to unblock testing. **Re-create it with a Service Auth policy** (token: `db67c58f…access`) before shipping. Web login unaffected.
 
 ## Next task
-Owner: check **Expo Go → Settings → About** = SDK 58 (project won't load on older Expo Go).
-Then Phase 5: `eas build` → Play Store + App Store.
+Re-test screens on the phone (tabs, chat, bills). Then Phase 5: `eas build` → Play Store + App Store.
+Also: re-add the Cloudflare Access policy (see above).
 
 ## Mobile app screens built
 | Screen | File |
