@@ -1,12 +1,14 @@
 /** More — settings, theme, sign out (bottom sheet style from the web app). */
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch } from "react-native";
 import { useState } from "react";
+import { useRouter } from "expo-router";
 
 import { api } from "../../lib/api";
 import { useAuth } from "../_layout";
 
 export default function MoreScreen() {
   const { theme, themeMode, setThemeMode, signOut, user } = useAuth();
+  const router = useRouter();
   const [dark, setDark] = useState(false);
 
   function toggleTheme(value: boolean) {
@@ -30,6 +32,9 @@ export default function MoreScreen() {
       <Text style={[styles.heading, { color: theme.ink }]}>More</Text>
       <View style={[styles.card, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}>
         {row("Dark theme", () => setDark(!dark), <Switch value={dark} onValueChange={toggleTheme} trackColor={{ true: theme.primary }} thumbColor={theme.primary} />)}
+        {row("Items", () => router.push("/(tabs)/items"))}
+        {row("Purchases", () => router.push("/(tabs)/purchases"))}
+        {row("Expenses", () => router.push("/(tabs)/expenses"))}
         {row("Reports", () => void 0)}
         {row("Supplier dues", () => void 0)}
         {row("Activity", () => void 0)}

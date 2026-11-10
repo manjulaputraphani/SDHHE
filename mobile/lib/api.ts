@@ -378,6 +378,32 @@ export const api = {
 
   items: () => request<{ items: ItemRow[] }>("/api/items"),
 
+  /** POST /api/items (src/db/items.ts itemInputSchema). */
+  createItem: (body: {
+    name: string;
+    unit: string;
+    category?: string;
+    hsnCode?: string;
+    minStockBase: number;
+    imageUrl?: string;
+  }) => request<{ item: ItemRow }>("/api/items", { method: "POST", body }),
+
+  updateItem: (id: number, body: {
+    name: string;
+    unit: string;
+    category?: string;
+    hsnCode?: string;
+    minStockBase: number;
+    imageUrl?: string;
+  }) => request<{ item: ItemRow }>(`/api/items/${id}`, { method: "PUT", body }),
+
+  deleteItem: (id: number) =>
+    request<{ ok: boolean }>(`/api/items/${id}`, { method: "DELETE" }),
+
+  /** Lot-wise ledger — one row per purchase batch (web api.batchLedger). */
+  batchLedger: (itemId: number) =>
+    request<{ ledger: BatchLedger }>(`/api/items/${itemId}/batches/ledger`),
+
   /** The customer master (search matches name/phone/gstin). */
   customers: (search?: string) =>
     request<{ customers: Customer[] }>(
@@ -390,11 +416,7 @@ export const api = {
       method: "POST",
       body,
     }),
-  createItem: (body: Record<string, unknown>) =>
-    request<{ item: ItemRow }>("/api/items", { method: "POST", body }),
-
   // ---- Purchases ----
-
   purchases: () => request<{ purchases: PurchaseRow[] }>("/api/purchases"),
   createPurchase: (body: Record<string, unknown>) =>
     request<{ purchase: PurchaseRow }>("/api/purchases", { method: "POST", body }),
@@ -535,21 +557,54 @@ export type ChatReceipt = {
 export type ItemRow = {
   id: number;
   name: string;
-  sku: string | null;
+  /** "kg" | "60 kg bag" (src/db/items.ts ITEM_UNITS). */
   unit: string;
-  batchCostingMethod: string;
-  stockRemaining: number;
-  wacCostPerUnitPaise: number | null;
-  lotLedger: Array<{ batch: string; qtyRemaining: number; costPerUnitPaise: number }>;
-  /** From GET /api/items — used for the dashboard low-stock list. */
-  minStockBase?: number;
-  stockLeftBase?: number;
-  category?: string | null;
-  imageUrl?: string | null;
-  /** HSN shown on the invoice line (GET /api/items). */
-  hsnCode?: string | null;
+  category: string | null;
+  hsnCode: string | null;
+  /** Low-stock floor, in integer base units (g / 60kg). */
+  minStockBase: number;
+  imageUrl: string | null;
   /** Weighted-average cost per BASE unit, for the margin suggestion. */
-  avgCostPaise?: number | null;
+  avgCostPaise: number;
+  /** Stock left across all open batches, in integer base units. */
+  stockLeftBase: number;
+};
+
+/** One sale that took stock from a lot (web BatchLedgerSale). */
+export type BatchLedgerSale = {
+  billNo: string;
+  saleDate: string;
+  customerName: string | null;
+  qtyTaken: number;
+  unitPricePaise: number;
+  revenuePaise: number;
+  cogsPaise: number;
+  profitPaise: number;
+};
+
+/** One purchase lot of an item (web BatchLedgerRow). */
+export type BatchLedgerRow = {
+  batchId: number;
+  purchaseId: number;
+  purchaseDate: string;
+  supplierName: string | null;
+  qtyOriginal: number;
+  qtyRemaining: number;
+  unitPricePaise: number;
+  expensesPaise: number;
+  qtySold: number;
+  soldValuePaise: number;
+  cogsPaise: number;
+  profitPaise: number;
+  pendingValuePaise: number;
+  sales: BatchLedgerSale[];
+};
+
+export type BatchLedger = {
+  itemId: number;
+  itemName: string;
+  unit: string;
+  batches: BatchLedgerRow[];
 };
 
 /** GET /api/customers — the customer master row. */
