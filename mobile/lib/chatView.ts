@@ -114,3 +114,32 @@ export function mentionIdsFor(
   }
   return Array.from(found);
 }
+
+// ---- receipts (same as src/logic/chat.ts + units.ts) ----
+
+export type ReceiptStatus = "pending" | "approved" | "rejected";
+
+/** The label for a receipt status. */
+export function receiptStatusLabel(status: ReceiptStatus): string {
+  if (status === "approved") return "Approved";
+  if (status === "rejected") return "Rejected";
+  return "Pending approval";
+}
+
+/** The badge tone for a status: warn (gold), ok (sage) or bad (red). */
+export function receiptStatusTone(status: ReceiptStatus): "warn" | "ok" | "bad" {
+  if (status === "approved") return "ok";
+  if (status === "rejected") return "bad";
+  return "warn";
+}
+
+/** Paise → "₹1234.56" (whole rupees with a 2-digit paise part). */
+export function formatRupees(paise: number): string {
+  if (!Number.isFinite(paise)) return "₹0.00";
+  const rounded = Math.round(paise);
+  const sign = rounded < 0 ? "-" : "";
+  const abs = Math.abs(rounded);
+  const rupees = Math.floor(abs / 100);
+  const remainder = abs % 100;
+  return `${sign}₹${rupees}.${String(remainder).padStart(2, "0")}`;
+}

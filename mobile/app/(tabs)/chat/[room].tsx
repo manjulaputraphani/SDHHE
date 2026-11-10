@@ -15,6 +15,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Clipboard from "expo-clipboard";
+import * as ImagePicker from "expo-image-picker";
 import {
   View,
   Text,
@@ -28,19 +30,23 @@ import {
   Pressable,
   Modal,
   Alert,
+  Image,
 } from "react-native";
 
-import { api, type ChatMessage, type ChatPin } from "../../../lib/api";
+import { api, type ChatMessage, type ChatPin, type ChatReceipt } from "../../../lib/api";
 import { useAuth } from "../../_layout";
 import { playNotificationSound } from "../../../lib/notificationSound";
 import { membersOf } from "../../../lib/chatPrivacy";
 import {
   REACTION_EMOJIS,
+  formatRupees,
   groupReactions,
   isOnline,
   mentionIdsFor,
   polishSkipReason,
   presenceLabel,
+  receiptStatusLabel,
+  receiptStatusTone,
   withinEditWindow,
 } from "../../../lib/chatView";
 
@@ -116,8 +122,17 @@ export default function ChatRoomScreen() {
   const [actionFor, setActionFor] = useState<ChatMessage | null>(null);
   /** The message whose inline emoji picker is open. */
   const [reactPickerFor, setReactPickerFor] = useState<number | null>(null);
-  /** The message to show in the "copy" modal (no clipboard dependency). */
-  const [copyFor, setCopyFor] = useState<ChatMessage | null>(null);
+  /** Transient "Copied ✓" flash after a clipboard copy. */
+  const [copied, setCopied] = useState(false);
+  // ---- receipt send (composer attach → upload → receipt message) ----
+  const [receipts, setReceipts] = useState<ChatReceipt[]>([]);
+  const [showReceiptForm, setShowReceiptForm] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<{ uri: string; name: string; type: string } | null>(null);
+  const [receiptTitle, setReceiptTitle] = useState("");
+  const [receiptAmount, setReceiptAmount] = useState("");
+  const [receiptNote, setReceiptNote] = useState("");
+  const [receiptBusy, setReceiptBusy] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   /** The message just flashed by a reply/pin jump. */
   const [flashId, setFlashId] = useState<number | null>(null);
   const [pins, setPins] = useState<ChatPin[]>([]);
@@ -148,8 +163,12 @@ export default function ChatRoomScreen() {
   // Load history.
   const loadHistory = useCallback(async () => {
     try {
-      const { messages: history } = await api.chatMessages(room);
-      setMessages(history);
+      const [history, receiptList] = await Promise.all([
+        api.chatMessages(room),
+        api.chatReceipts(room).catch(() => ({ receipts: [] as ChatReceipt[], pending: 0 })),
+      ]);
+      setMessages(history.messages);
+      setReceipts(receiptList.receipts);
     } catch {
       // Offline — keep whatever the socket already gave us.
     } finally {
@@ -277,6 +296,15 @@ export default function ChatRoomScreen() {
             }
             if (f.type === "pins") {
               void api.chatPins(room).then((r) => setPins(r.pins)).catch(() => undefined);
+            }
+            if (f.type === "receipt") {
+              const ff = f as { receipt?: ChatReceipt; message?: ChatMessage };
+              if (ff.message) {
+                setMessages((prev) => (prev.some((m) => m.id === ff.message!.id) ? prev : [...prev, ff.message!]));
+              }
+              if (ff.receipt) {
+                setReceipts((prev) => [ff.receipt!, ...prev.filter((r) => r.id !== ff.receipt!.id)]);
+              }
             }
           } catch {
             // Malformed frame — ignore.
@@ -438,6 +466,79 @@ export default function ChatRoomScreen() {
     setReplyingTo(null);
     setEditing(message);
     setEditDraft(message.body);
+  }
+
+  // ---- receipt send (web sendReceipt: upload the file, then post the message) ----
+
+  /** Pick a receipt photo from the gallery (Expo ImagePicker, SDK 58 API). */
+  async function pickReceiptFile(fromCamera: boolean) {
+    if (fromCamera) {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        setReceiptError("Camera permission is needed to photograph a receipt");
+        return;
+      }
+    } else {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setReceiptError("Photo library permission is needed to attach a receipt");
+        return;
+      }
+    }
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], quality: 0.85 };
+    const result = fromCamera
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset) return;
+    setReceiptFile({
+      uri: asset.uri,
+      name: asset.fileName ?? `receipt-${Date.now()}.jpg`,
+      type: asset.mimeType ?? "image/jpeg",
+    });
+    setReceiptError(null);
+  }
+
+  /** Upload the file, then send the receipt message (web: uploadChatReceipt → sendChatMessage). */
+  async function sendReceipt() {
+    if (!receiptFile || receiptBusy) return;
+    const rupees = Number(receiptAmount);
+    if (!receiptTitle.trim()) {
+      setReceiptError("Give the receipt a title");
+      return;
+    }
+    if (!Number.isFinite(rupees) || rupees <= 0) {
+      setReceiptError("Enter the amount in rupees");
+      return;
+    }
+    setReceiptBusy(true);
+    setReceiptError(null);
+    try {
+      const stored = await api.uploadChatReceipt(receiptFile);
+      const { message, receipt } = await api.sendChatMessage({
+        kind: "receipt",
+        body: receiptTitle.trim(),
+        room,
+        receipt: {
+          ...stored,
+          title: receiptTitle.trim(),
+          amountPaise: Math.round(rupees * 100),
+          note: receiptNote.trim() || undefined,
+        },
+      });
+      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+      if (receipt) setReceipts((prev) => [receipt, ...prev.filter((r) => r.id !== receipt.id)]);
+      setShowReceiptForm(false);
+      setReceiptFile(null);
+      setReceiptTitle("");
+      setReceiptAmount("");
+      setReceiptNote("");
+    } catch (err) {
+      setReceiptError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReceiptBusy(false);
+    }
   }
 
   // Web `filterMessages` — the in-chat search matches body + author.
@@ -877,8 +978,12 @@ export default function ChatRoomScreen() {
                   label="Copy"
                   theme={theme}
                   onPress={() => {
-                    setCopyFor(actionFor);
+                    const text = actionFor.body;
                     setActionFor(null);
+                    void Clipboard.setStringAsync(text).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1600);
+                    });
                   }}
                 />
                 {actionFor.userId === user?.id &&
@@ -925,29 +1030,6 @@ export default function ChatRoomScreen() {
         </Pressable>
       </Modal>
 
-      {/* ---- Copy modal (RN has no system clipboard without a new dependency) ---- */}
-      <Modal visible={copyFor !== null} transparent animationType="fade" onRequestClose={() => setCopyFor(null)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setCopyFor(null)}>
-          <Pressable
-            style={[styles.infoCard, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}
-            onPress={() => undefined}
-          >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ fontSize: 15, fontWeight: "600", color: theme.ink }}>Copy message</Text>
-              <TouchableOpacity onPress={() => setCopyFor(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={theme.muted} />
-              </TouchableOpacity>
-            </View>
-            <Text selectable style={{ fontSize: 14, color: theme.ink, marginTop: 12, lineHeight: 20 }}>
-              {copyFor?.body}
-            </Text>
-            <Text style={{ fontSize: 11, color: theme.muted, marginTop: 10 }}>
-              Press and hold the text to copy it.
-            </Text>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       {/* ---- Message list ---- */}
       <FlatList
         ref={listRef}
@@ -981,6 +1063,8 @@ export default function ChatRoomScreen() {
           }
           const mine = message.userId === user?.id;
           const tick = mine ? tickFor(message, otherId) : null;
+          // Receipt messages render as an approval card (web: receiptById lookup).
+          const receiptRow = message.receiptId ? receipts.find((r) => r.id === message.receiptId) : undefined;
           const chips = groupReactions(message.reactions, user?.id);
           const quoted = message.replyToId
             ? messages.find((m) => m.id === message.replyToId) ?? null
@@ -997,6 +1081,75 @@ export default function ChatRoomScreen() {
                     <Text style={{ color: theme.muted, fontSize: 14, fontStyle: "italic", opacity: 0.8 }}>
                       🚫 This message was deleted
                     </Text>
+                  </View>
+                </View>
+              </View>
+            );
+          }
+
+          // Receipt message = approval card (web: photo/amount/note/status badge).
+          if (message.kind === "receipt") {
+            const tone = receiptRow ? receiptStatusTone(receiptRow.status) : null;
+            const badgeBg = tone === "ok" ? theme.successSoft : tone === "bad" ? theme.errorSoft : theme.accentSoft;
+            const badgeInk = tone === "ok" ? theme.successInk : tone === "bad" ? theme.errorInk : theme.accentInk;
+            const url = receiptRow ? api.chatReceiptUrl(receiptRow.r2Key) : null;
+            const isImage = receiptRow ? receiptRow.mime.startsWith("image/") : false;
+            return (
+              <View>
+                {showNewDivider && <NewMessagesChip theme={theme} />}
+                <View style={[styles.bubbleRow, { justifyContent: mine ? "flex-end" : "flex-start" }]}>
+                  {!mine && (
+                    <View style={[styles.avatar, { backgroundColor: theme.accentSoft }]}>
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: theme.accentInk }}>{initials(message.author)}</Text>
+                    </View>
+                  )}
+                  <View style={[styles.receiptCard, { backgroundColor: theme.surface, borderColor: flash ? theme.accent : theme.line }]}>
+                    {receiptRow ? (
+                      <>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Ionicons name="receipt-outline" size={16} color={theme.accentInk} />
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: theme.ink, flex: 1 }} numberOfLines={1}>
+                            {receiptRow.title}
+                          </Text>
+                          <View style={[styles.receiptBadge, { backgroundColor: badgeBg }]}>
+                            <Text style={{ fontSize: 10, fontWeight: "700", color: badgeInk }}>
+                              {receiptStatusLabel(receiptRow.status)}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 18, fontWeight: "700", color: theme.ink, marginTop: 6 }}>
+                          {formatRupees(receiptRow.amountPaise)}
+                        </Text>
+                        {receiptRow.note ? (
+                          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{receiptRow.note}</Text>
+                        ) : null}
+                        {url && isImage ? (
+                          <Image
+                            source={{ uri: url }}
+                            style={styles.receiptImage}
+                            resizeMode="cover"
+                          />
+                        ) : receiptRow ? (
+                          <Text style={{ fontSize: 12, color: theme.accentInk, marginTop: 4 }} numberOfLines={1}>
+                            📄 {receiptRow.filename}
+                          </Text>
+                        ) : null}
+                      </>
+                    ) : (
+                      // The receipt row hasn't loaded yet (or is from an old room snapshot).
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Ionicons name="receipt-outline" size={16} color={theme.muted} />
+                        <Text style={{ fontSize: 14, color: theme.ink }}>{message.body}</Text>
+                      </View>
+                    )}
+                    <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "flex-end", gap: 4, marginTop: 6 }}>
+                      <Text style={{ color: theme.muted, fontSize: 10, opacity: 0.7 }}>{timeLabel(message.createdAt)}</Text>
+                      {mine && tick && (
+                        <Text style={{ fontSize: 10, color: tick === "read" ? theme.readTick : theme.onPrimary, opacity: tick === "read" ? 1 : 0.7 }}>
+                          {tick === "sent" ? "✓" : "✓✓"}
+                        </Text>
+                      )}
+                    </View>
                   </View>
                 </View>
               </View>
@@ -1022,7 +1175,7 @@ export default function ChatRoomScreen() {
                       borderWidth: flash ? 2 : 0,
                     },
                   ]}
-                  onLongPress={() => setActionFor(message)}
+                  onLongPress={message.kind === "text" ? () => setActionFor(message) : undefined}
                 >
                   {/* Reply quote — tap to jump to the original (web: border-l-2 accent). */}
                   {quoted && (
@@ -1110,6 +1263,15 @@ export default function ChatRoomScreen() {
             New messages ↓ ({newIds.length})
           </Text>
         </TouchableOpacity>
+      )}
+
+      {/* ---- "Copied ✓" flash after a clipboard copy ---- */}
+      {copied && (
+        <View style={styles.copiedChipWrap}>
+          <View style={[styles.copiedChip, { backgroundColor: theme.successSoft }]}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: theme.successInk }}>Copied ✓</Text>
+          </View>
+        </View>
       )}
 
       {/* ---- Typing indicator ---- */}
@@ -1242,8 +1404,121 @@ export default function ChatRoomScreen() {
         </View>
       )}
 
+      {/* ---- Receipt form (web showReceiptForm: attach → upload → approval card) ---- */}
+      {showReceiptForm && (
+        <View style={[styles.receiptForm, { backgroundColor: theme.surface2, borderTopColor: theme.line }]}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: theme.ink }}>Send a receipt for approval</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setShowReceiptForm(false);
+                setReceiptError(null);
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={20} color={theme.muted} />
+            </TouchableOpacity>
+          </View>
+
+          {/* File picker: gallery / camera (web: <input type="file">). */}
+          {receiptFile ? (
+            <View style={[styles.receiptFileRow, { borderColor: theme.line, backgroundColor: theme.surface }]}>
+              <Image source={{ uri: receiptFile.uri }} style={styles.receiptFileThumb} resizeMode="cover" />
+              <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: theme.ink }}>
+                {receiptFile.name}
+              </Text>
+              <TouchableOpacity onPress={() => setReceiptFile(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={18} color={theme.muted} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                style={[styles.receiptPickBtn, { backgroundColor: theme.surface, borderColor: theme.line }]}
+                onPress={() => void pickReceiptFile(false)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="image-outline" size={16} color={theme.accentInk} />
+                <Text style={{ fontSize: 12, fontWeight: "600", color: theme.accentInk }}>Gallery</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.receiptPickBtn, { backgroundColor: theme.surface, borderColor: theme.line }]}
+                onPress={() => void pickReceiptFile(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="camera-outline" size={16} color={theme.accentInk} />
+                <Text style={{ fontSize: 12, fontWeight: "600", color: theme.accentInk }}>Camera</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <TextInput
+            style={[styles.receiptInput, { color: theme.ink, borderColor: theme.line, backgroundColor: theme.surface }]}
+            placeholder="Title (e.g. Transport bill)"
+            placeholderTextColor={theme.muted}
+            value={receiptTitle}
+            onChangeText={setReceiptTitle}
+          />
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TextInput
+              style={[styles.receiptInput, { flex: 1, color: theme.ink, borderColor: theme.line, backgroundColor: theme.surface }]}
+              placeholder="Amount in ₹"
+              placeholderTextColor={theme.muted}
+              inputMode="decimal"
+              keyboardType="decimal-pad"
+              value={receiptAmount}
+              onChangeText={setReceiptAmount}
+            />
+          </View>
+          <TextInput
+            style={[styles.receiptInput, { color: theme.ink, borderColor: theme.line, backgroundColor: theme.surface }]}
+            placeholder="Note (optional)"
+            placeholderTextColor={theme.muted}
+            value={receiptNote}
+            onChangeText={setReceiptNote}
+          />
+
+          {receiptError ? (
+            <Text style={{ fontSize: 12, color: theme.errorInk }}>{receiptError}</Text>
+          ) : null}
+
+          <TouchableOpacity
+            style={[
+              styles.receiptSendBtn,
+              {
+                backgroundColor:
+                  receiptFile && receiptTitle.trim() && Number(receiptAmount) > 0 && !receiptBusy
+                    ? theme.primary
+                    : theme.surface3,
+              },
+            ]}
+            disabled={!(receiptFile && receiptTitle.trim() && Number(receiptAmount) > 0) || receiptBusy}
+            onPress={() => void sendReceipt()}
+            activeOpacity={0.8}
+          >
+            {receiptBusy ? (
+              <ActivityIndicator size="small" color={theme.onPrimary} />
+            ) : (
+              <Text style={{ fontSize: 13, fontWeight: "700", color: theme.onPrimary }}>Send receipt</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* ---- Composer ---- */}
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[styles.composer, { borderTopColor: theme.line, backgroundColor: theme.surface2 }]}>
+        {!editing && (
+          <TouchableOpacity
+            style={[styles.attachBtn, { backgroundColor: showReceiptForm ? theme.accentSoft : "transparent" }]}
+            onPress={() => {
+              setShowReceiptForm((prev) => !prev);
+              setReceiptError(null);
+            }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Ionicons name="attach" size={20} color={showReceiptForm ? theme.accentInk : theme.muted} />
+          </TouchableOpacity>
+        )}
         <TextInput
           style={[styles.composerInput, { color: theme.ink, borderColor: theme.line, backgroundColor: theme.surface }]}
           placeholder={editing ? "Edit your message…" : "Message…"}
@@ -1522,6 +1797,77 @@ const styles = StyleSheet.create({
   },
   polishActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
   polishBtn: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  // ---- phase 3: receipts + copy flash ----
+  copiedChipWrap: {
+    position: "absolute",
+    bottom: 96,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 20,
+  },
+  copiedChip: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
+  receiptCard: {
+    maxWidth: "80%",
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  receiptBadge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  receiptImage: {
+    width: "100%",
+    height: 140,
+    borderRadius: 8,
+    marginTop: 8,
+    backgroundColor: "rgba(128,128,128,0.15)",
+  },
+  receiptForm: {
+    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  receiptFileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  receiptFileThumb: { width: 36, height: 36, borderRadius: 6 },
+  receiptPickBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  receiptInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    minHeight: 40,
+  },
+  receiptSendBtn: {
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 40,
+  },
+  attachBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   jumpFab: {
     position: "absolute",
     right: 16,

@@ -169,3 +169,7 @@
    raw Postgres SQL are ported to sqlite-core; the shop's data is exported from Neon and imported into D1 with row-count/total
    verification; Neon stays as a read-only backup during the cutover. Integration tests move from a Postgres branch to a LOCAL SQLite
    file via `better-sqlite3` (added as a dev dependency for exactly this reason — faster tests, no cloud test DB, mirrors D1's engine).
+- 2026-11-10 · **Mobile chat: expo-clipboard + expo-image-picker** (added for web parity — chat phase 3). `expo-clipboard` gives the chat
+   action-sheet Copy a real system copy (React Native ships no clipboard API). `expo-image-picker` powers the composer's receipt attach
+   (camera/gallery → `POST /api/chat/receipts` multipart → receipt message), which previously could not be built at all on the phone.
+   Both are standard Expo SDK 58 modules installed with `npx expo install`; no other new runtime dependency was taken (charts stay plain Views).

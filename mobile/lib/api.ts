@@ -108,6 +108,33 @@ export type AiTurn = { role: "user" | "assistant"; content: string };
 
 type RequestOptions = { method?: "POST" | "PUT" | "PATCH" | "DELETE"; body?: Record<string, unknown> };
 
+/**
+ * base64url without btoa/TextEncoder — Hermes provides neither.
+ * The input is UTF-8 encoded first (same as the web's TextEncoder path).
+ */
+function base64UrlEncode(input: string): string {
+  const latin1 = encodeURIComponent(input).replace(
+    /%([0-9A-F]{2})/g,
+    (_, hex: string) => String.fromCharCode(parseInt(hex, 16)),
+  );
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  let out = "";
+  for (let i = 0; i < latin1.length; i += 3) {
+    const b0 = latin1.charCodeAt(i);
+    const has1 = i + 1 < latin1.length;
+    const has2 = i + 2 < latin1.length;
+    const b1 = has1 ? latin1.charCodeAt(i + 1) : 0;
+    const b2 = has2 ? latin1.charCodeAt(i + 2) : 0;
+    out += alphabet[b0 >> 2];
+    out += alphabet[((b0 & 3) << 4) | (b1 >> 4)];
+    if (!has1) break;
+    out += alphabet[((b1 & 15) << 2) | (b2 >> 6)];
+    if (!has2) break;
+    out += alphabet[b2 & 63];
+  }
+  return out;
+}
+
 /** The Cloudflare Access service token headers (empty if not configured). */
 async function accessHeaders(): Promise<Record<string, string>> {
   const id = await SecureStore.getItemAsync(ACCESS_ID_KEY);
@@ -120,12 +147,13 @@ async function accessHeaders(): Promise<Record<string, string>> {
 }
 
 /** Send the stored session token as the cookie (same as the Worker expects). */
-async function authHeaders(): Promise<Record<string, string>> {
+async function authHeaders(contentType = "application/json"): Promise<Record<string, string>> {
   const token = await getAuthToken();
   if (!token) throw new Error("Not signed in");
   return {
     ...(await accessHeaders()),
-    "content-type": "application/json",
+    // Empty contentType → omitted (multipart FormData sets its own boundary).
+    ...(contentType ? { "content-type": contentType } : {}),
     accept: "application/json",
     cookie: `sdhhe_session=${token}`,
   };
@@ -227,11 +255,35 @@ export const api = {
     replyToId?: number;
     mentions?: number[];
     aiPolished?: boolean;
+    receipt?: ChatReceiptInput;
   }) =>
-    request<{ message: ChatMessage }>("/api/chat/messages", {
+    request<{ message: ChatMessage; receipt?: ChatReceipt }>("/api/chat/messages", {
       method: "POST",
       body,
     }),
+
+  /** Multipart upload — the JSON helper cannot set FormData's boundary. */
+  uploadChatReceipt: async (file: { uri: string; name: string; type: string }) => {
+    const headers = await authHeaders("");
+    const form = new FormData();
+    form.append("file", file as unknown as Blob);
+    const res = await fetch(`${WORKER_URL}/api/chat/receipts`, { method: "POST", headers, body: form });
+    if (res.status === 401) {
+      await clearAuthToken();
+      throw new Error("Session expired — sign in again");
+    }
+    const data = (await res.json().catch(() => ({}))) as { file?: ChatReceiptFile; error?: string };
+    if (!res.ok || !data.file) throw new Error(data.error ?? `Upload failed (${res.status})`);
+    return data.file;
+  },
+
+  chatReceipts: (room?: string) =>
+    request<{ receipts: ChatReceipt[]; pending: number }>(
+      `/api/chat/receipts${room ? `?room=${encodeURIComponent(room)}` : ""}`,
+    ),
+
+  /** Absolute URL of a stored receipt file (web uses a relative path). */
+  chatReceiptUrl: (r2Key: string): string => `${WORKER_URL}/api/chat/receipts/${base64UrlEncode(r2Key)}`,
 
   /** Leave (or replace) my reaction on a message — one per member. */
   reactChatMessage: (messageId: number, emoji: string) =>
@@ -401,6 +453,42 @@ export type ChatPin = {
   author: string;
   body: string;
   pinnedAt: string;
+};
+
+/** The uploaded file returned by POST /api/chat/receipts. */
+export type ChatReceiptFile = {
+  r2Key: string;
+  filename: string;
+  mime: string;
+  sizeBytes: number;
+};
+
+/** The `receipt` field of a kind:"receipt" send. */
+export type ChatReceiptInput = ChatReceiptFile & {
+  title: string;
+  amountPaise: number;
+  note?: string;
+};
+
+/** GET /api/chat/receipts — the full receipt row. */
+export type ChatReceipt = {
+  id: number;
+  submittedBy: number | null;
+  submitterName: string;
+  title: string;
+  amountPaise: number;
+  note: string | null;
+  r2Key: string;
+  filename: string;
+  mime: string;
+  sizeBytes: number;
+  status: "pending" | "approved" | "rejected";
+  decidedBy: number | null;
+  deciderName: string | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  messageId: number | null;
+  createdAt: string;
 };
 
 export type ItemRow = {
