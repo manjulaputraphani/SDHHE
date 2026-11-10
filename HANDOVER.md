@@ -4,31 +4,38 @@ Last updated: 2026-11-10 by OpenCode
 Tool: OpenCode
 
 ## Current state
-- **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound).
-- **Mobile app** (`mobile/` directory): Phase 1 foundation built — Expo project, login,
+- **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound). Owner's real-device test is due.
+- **Mobile app** (`mobile/` directory): Phase 1+2 built — Expo project, Cloudflare Access setup screen, login,
   bottom tabs (Home · New Bill · Chats · Stock · More), theme system, API client,
-  chat room screen with WebSocket protocol. **0 typecheck errors**.
+  chat room screen with WebSocket protocol + delivery ticks. **0 typecheck errors.**
 
 ## Next task
-Mobile Phase 2: install `expo-notifications`, wire native push (FCM + APNs), test on device.
+Phase 3 core business screens (Items, Purchases, Expenses, Stock Check) — built but NOT committed.
+Phase 4: Billing screen.
 Then Phase 5: `eas build` → Play Store + App Store.
 
-## What was fixed (web push notifications)
-1. **VAPID key mismatch** — generated a NEW key pair, updated both secrets. Fixes BadJwtToken.
-2. **Subscription reuse** — `pushSetup.ts` now always creates a FRESH subscription (was reusing
-   the old one, which was bound to the old VAPID key → VapidPkHashMismatch).
-3. **Clear old subscriptions** — deleted all 8 stale DB rows bound to old keys.
-4. **Service worker delivery confirmation** — `sw.js` calls `/api/chat/delivered` on push receipt,
-   so the sender sees ✓✓ even when the app is closed.
-5. **Immediate delivery tick** (web + 1:1) — when push service accepts the message, server
-   immediately marks it delivered + broadcasts "delivered" to the room. Sender sees ✓✓ instantly.
-6. **Auto-refresh** — `refreshUnread` interval reduced from 30s to **5 seconds**.
-7. **APK download + PushToggle on mobile** — added to MoreSheet (were desktop-only).
-8. **iOS Home Screen** — required for iOS Web Push; user must Add to Home Screen.
+## Mobile app screens built
+| Screen | File |
+|--------|------|
+| Cloudflare Access setup | `mobile/app/access-setup.tsx` — stores token in SecureStore |
+| Login | `mobile/app/login.tsx` — phone + password |
+| Chat list | `mobile/app/(tabs)/chats.tsx` — conversations, badges, preview |
+| Chat room | `mobile/app/(tabs)/chat/[room].tsx` — bubbles, ticks, typing, info panel, sound |
+| Dashboard | `mobile/app/(tabs)/home.tsx` — stats |
+| More | `mobile/app/(tabs)/more.tsx` — settings + sign out |
+| Items | `mobile/app/(tabs)/items.tsx` — inventory list |
+| Purchases | `mobile/app/(tabs)/purchases.tsx` — purchase order list |
+| Expenses | `mobile/app/(tabs)/expenses.tsx` — expense list |
+| Stock Check | `mobile/app/(tabs)/stock.tsx` — current stock levels |
+
+**Cloudflare Access token placeholder** in `mobile/lib/api.ts` — fill `CF_ACCESS_CLIENT_ID` +
+`CF_ACCESS_CLIENT_SECRET` and every API request passes Access automatically.
 
 ## Owner steps that are still open
 1. Apple Developer Account ($99/year) for iOS App Store.
 2. Google Play Console ($25) for Android Play Store.
+3. **Cloudflare Access Service Token** — create at one.dash.cloudflare.com → Zero Trust → Access → Service Tokens → Create.
+   Paste Client ID + Secret into `mobile/lib/api.ts`.
 
 ## Commands
 - Tests: `npx vitest run --reporter=dot` (510) · `npm run test:e2e:web` (94)
