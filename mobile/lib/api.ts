@@ -418,8 +418,27 @@ export const api = {
     }),
   // ---- Purchases ----
   purchases: () => request<{ purchases: PurchaseRow[] }>("/api/purchases"),
-  createPurchase: (body: Record<string, unknown>) =>
-    request<{ purchase: PurchaseRow }>("/api/purchases", { method: "POST", body }),
+
+  /** POST /api/purchases — qty is in DISPLAY units (server converts). */
+  addPurchase: (body: {
+    itemId: number;
+    qty: number;
+    unitPricePaise: number;
+    expensesPaise?: number;
+    date: string;
+    supplierName?: string;
+    paymentMode?: "Cash" | "Card" | "UPI" | "Credit";
+  }) => request<{ purchase: unknown }>("/api/purchases", { method: "POST", body }),
+
+  updatePurchase: (id: number, body: {
+    qty: number;
+    unitPricePaise: number;
+    expensesPaise?: number;
+    date: string;
+    supplierName?: string;
+    paymentMode?: "Cash" | "Card" | "UPI" | "Credit";
+    note?: string;
+  }) => request<{ purchase: unknown }>(`/api/purchases/${id}`, { method: "PUT", body }),
 
   // ---- Expenses ----
 
@@ -451,7 +470,27 @@ export const api = {
 
   // ---- Stock Check ----
 
-  stockCheck: () => request<{ rows: StockRow[] }>("/api/stock"),
+  /** GET /api/stock — the last 30 STOCK_CHECK / USAGE / WASTAGE entries. */
+  stockEntries: () => request<{ entries: StockEntryRow[] }>("/api/stock"),
+
+  /**
+   * POST /api/stock (src/db/stock.ts stockEntrySchema): USAGE/WASTAGE send
+   * `qty` (base units taken); STOCK_CHECK sends `enteredLeft` (counted base).
+   */
+  saveStock: (body: {
+    itemId: number;
+    type: "STOCK_CHECK" | "USAGE" | "WASTAGE";
+    qty?: number | null;
+    enteredLeft?: number | null;
+    date: string;
+    note?: string;
+  }) => request<{ stock: unknown }>("/api/stock", { method: "POST", body }),
+
+  /** Open purchase batches of an item, oldest first (raw SQL, snake_case). */
+  itemBatches: (itemId: number) =>
+    request<{
+      batches: Array<{ id: number; qty_remaining: number; unit_price_paise: number; purchase_date: string }>;
+    }>(`/api/items/${itemId}/batches`),
 
   // ---- Bills ----
 
@@ -623,15 +662,18 @@ export type Customer = {
 
 export type PurchaseRow = {
   id: number;
-  itemId: number | null;
-  itemName: string;
-  qtyRemaining: number;
+  /** Item name (GET /api/purchases raw SQL aliases it as `name`). */
+  name: string;
   unit: string;
-  supplierName: string | null;
-  poNumber: string | null;
-  status: "pending" | "received" | "cancelled";
-  amountPaise: number;
-  createdAt: string;
+  qty_base: number;
+  unit_price_paise: number;
+  total_paise: number;
+  paid_paise: number;
+  purchase_date: string;
+  expenses_paise: number;
+  payment_mode: string | null;
+  note: string | null;
+  supplier_name: string | null;
 };
 
 export type ExpenseRow = {
@@ -651,13 +693,18 @@ export type ExpenseRow = {
   billFilename: string | null;
 };
 
-export type StockRow = {
-  itemId: number;
-  itemName: string;
+/** One row of GET /api/stock — a STOCK_CHECK / USAGE / WASTAGE entry. */
+export type StockEntryRow = {
+  id: number;
+  /** Movement date (YYYY-MM-DD). */
+  date: string;
+  item: string;
   unit: string;
-  stockLeft: number;
-  reservedQty: number;
-  availableQty: number;
+  type: "STOCK_CHECK" | "USAGE" | "WASTAGE";
+  qtyBase: number;
+  note: string | null;
+  user: string | null;
+  createdAt: string | null;
 };
 
 export type BillRow = {
