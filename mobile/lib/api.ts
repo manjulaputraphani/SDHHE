@@ -240,6 +240,30 @@ export const api = {
   // ---- Stock Check ----
 
   stockCheck: () => request<{ rows: StockRow[] }>("/api/stock"),
+
+  // ---- Bills ----
+
+  bills: () => request<{ bills: BillRow[] }>("/api/bills"),
+  createBill: (body: {
+    customerName?: string | null;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
+    lines: Array<{ itemId: number; qty: number; ratePaise: number }>;
+    discountPaise?: number;
+    gstPaise?: number;
+    paidPaise?: number;
+    paymentMode?: "Cash" | "Card" | "UPI" | "Credit";
+    date?: string | null;
+    note?: string | null;
+  }) =>
+    request<{ bill: BillRow }>("/api/bills", { method: "POST", body }),
+  cancelBill: (id: number) =>
+    request<{ result: { ok: boolean } }>(`/api/bills/${id}/cancel`, { method: "POST" }),
+  recordBillPayment: (id: number, amountPaise: number) =>
+    request<{ payment: { id: number; amountPaise: number; paidAt: string } }>(
+      `/api/bills/${id}/payment`,
+      { method: "POST", body: { amountPaise } },
+    ),
 };
 
 export type ChatMessage = {
@@ -298,4 +322,20 @@ export type StockRow = {
   stockLeft: number;
   reservedQty: number;
   availableQty: number;
+};
+
+export type BillRow = {
+  id: number;
+  billNo: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  subtotalPaise: number;
+  discountPaise: number;
+  gstPaise: number;
+  totalPaise: number;
+  paidPaise: number;
+  balancePaise: number;
+  status: "pending" | "paid" | "cancelled";
+  createdAt: string;
 };

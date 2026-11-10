@@ -26,8 +26,10 @@ export type ThemeColors = {
   line: string;
   success: string;
   successInk: string;
+  successSoft: string;
   error: string;
   errorInk: string;
+  errorSoft: string;
   badgeTotal: string;
   badgeContact: string;
   badgeText: string;
@@ -54,8 +56,10 @@ export const lightColors: ThemeColors = {
   line: "#e6d9c8",
   success: "#4f8a4b",
   successInk: "#3c7539",
+  successSoft: "#e9f5ea",
   error: "#b84a3a",
   errorInk: "#a83e30",
+  errorSoft: "#fdf0f0",
   badgeTotal: "#c2410c",
   badgeContact: "#2e8b57",
   badgeText: "#ffffff",
