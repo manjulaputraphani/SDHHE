@@ -14,6 +14,7 @@
  */
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   View,
   Text,
@@ -366,7 +367,7 @@ export default function ChatRoomScreen() {
           multiline
         />
         <TouchableOpacity style={[styles.sendButton, { backgroundColor: draft.trim() ? theme.primary : theme.surface3 }]} onPress={() => void send()} disabled={!draft.trim()}>
-          <Text style={{ color: draft.trim() ? theme.onPrimary : theme.muted, fontWeight: "700" }}>➤</Text>
+          <Ionicons name="send" size={18} color={draft.trim() ? theme.onPrimary : theme.muted} />
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </KeyboardAvoidingView>

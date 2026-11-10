@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { api } from "../../lib/api";
 import { useAuth } from "../_layout";
@@ -158,7 +159,7 @@ export default function BillsScreen() {
                   onChangeText={(v) => updateItem(index, "ratePaise", Math.max(0, parseFloat(v) || 0) * 100)}
                 />
                 <TouchableOpacity style={[styles.removeItem, { backgroundColor: theme.errorSoft }]} onPress={() => removeItem(index)}>
-                  <Text style={{ color: theme.errorInk, fontWeight: "600", fontSize: 14 }}>✕</Text>
+                  <Ionicons name="close" size={16} color={theme.errorInk} />
                 </TouchableOpacity>
               </TouchableOpacity>
             )}

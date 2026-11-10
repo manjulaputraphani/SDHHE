@@ -2,23 +2,33 @@ import type { ColorValue } from "react-native";
 /**
  * Bottom tab navigation — 5 tabs matching the web app.
  * Home · New Bill · Chats · Stock · More
+ *
+ * Icons come from Ionicons (bundled in Expo Go). Plain Unicode glyphs
+ * (◎ ▦ ◍ ▤ ☰) were used before but Android's font lacks them, so the
+ * tab bar rendered blank.
  */
 import { Tabs } from "expo-router";
-import { Text } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { useAuth } from "../_layout";
 
-/** Tab icon — the app's own glyphs (no icon library dependency). */
-const ICONS: Record<string, string> = {
-  home: "◎",
-  newbill: "▦",
-  chats: "◍",
-  stock: "▤",
-  more: "☰",
-};
+/** Tab icon — Ionicons glyph names (verified against the installed glyphmap). */
+const ICONS = {
+  home: "home",
+  newbill: "receipt",
+  chats: "chatbubbles",
+  stock: "cube",
+  more: "menu",
+} as const;
 
-function TabGlyph({ label, colour }: { label: string; colour: ColorValue | undefined }) {
-  return <Text style={{ fontSize: 22, color: colour, lineHeight: 26 }}>{ICONS[label] ?? "●"}</Text>;
+type TabLabel = keyof typeof ICONS;
+
+function TabGlyph({ label, colour }: { label: TabLabel; colour?: ColorValue | null }) {
+  const { theme } = useAuth();
+  // tabBarIcon can hand us a platform colour (number/undefined) — the icon
+  // font only takes a CSS string, so fall back to the theme primary.
+  const iconColour = typeof colour === "string" ? colour : theme.primary;
+  return <Ionicons name={ICONS[label]} size={24} color={iconColour} />;
 }
 
 export default function TabsLayout(): React.ReactElement {
