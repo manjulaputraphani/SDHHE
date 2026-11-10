@@ -9,10 +9,12 @@ Tool: OpenCode
 - **`mobile/app.json` fixed `19daef5`** — SDK 58 schema: top-level `splash` removed → `expo-splash-screen` plugin; adaptive icon paths → `android-icon-*.png`. **`expo-doctor` 20/20, `tsc` clean.**
 - **Phone test LIVE** — Expo Go loads over tunnel, **login works**. Icons fixed `52775f7` (Ionicons; old Unicode glyphs rendered blank on Android).
 - **Mobile dashboard = web parity** (`683c88d`) — Ask AI, 6 stat cards, working capital & rotation + trend, low stock, quick expense, 14-day bars, expenses by category, recent activity. api.ts gained stats/rotation/daily/categories/activity/addExpense/aiChat (old `stats()` read the wrong field names → all cards showed ₹0.00).
+- **Mobile chat = web parity, phase 1** (`5e4c4dc` list, `03d9e61` room) — list: web header/search/new-chat member picker/rows (initials, online dot, green time + pill); room: 56px ChatHeader (back/who/call/video/⋮), ⋮ menu (Search in chat, Group/Contact info), in-chat search with N matches + ↑↓ jump, members info modal, long-press own bubble → Message info. **FIX: `loadHistory()` was never called → chat room stuck on spinner forever** (history now loads over REST on connect, like web). New shared helpers: `mobile/lib/chatView.ts` (copied — Metro can't resolve outside mobile/).
 - ⚠️ **Cloudflare Access app for `sdhhe-api.blvphani.workers.dev` was DELETED** to unblock testing. **Re-create it with a Service Auth policy** (token: `db67c58f…access`) before shipping. Web login unaffected.
 
 ## Next task
-**Web-parity pass screen by screen**: chat screen first, then Items, Purchases, Expenses, Stock, New Bill, More — same features as web.
+**Chat parity phase 2 (message level)**: reply, reactions, edit/delete own, unread divider, pinned bar, receipt send + polish/mentions in composer, day separators already OK — follow the gap report's remaining steps (web `TeamChat.tsx`).
+Then **web-parity pass on remaining screens**: Items, Purchases, Expenses, Stock, New Bill, More.
 Known bugs to fix in that pass: `items.tsx` reads `item.stockRemaining` but `/api/items` returns `stockLeftBase` (quantities render blank); items/purchases/expenses routes exist but are not in the tab bar or linked from More (only reachable from the dashboard links).
 Then Phase 5: `eas build` → Play Store + App Store. Also re-add the Cloudflare Access policy.
 
@@ -21,8 +23,8 @@ Then Phase 5: `eas build` → Play Store + App Store. Also re-add the Cloudflare
 |--------|------|
 | Cloudflare Access setup | `mobile/app/access-setup.tsx` — stores token in SecureStore |
 | Login | `mobile/app/login.tsx` — phone + password |
-| Chat list | `mobile/app/(tabs)/chats.tsx` — conversations, badges, preview |
-| Chat room | `mobile/app/(tabs)/chat/[room].tsx` — bubbles, ticks, typing, info panel, sound |
+| Chat list | `mobile/app/(tabs)/chats.tsx` — web header, search, new chat, online dots, badges |
+| Chat room | `mobile/app/(tabs)/chat/[room].tsx` — ChatHeader + ⋮ menu, in-chat search, info modal, bubbles, ticks, typing, sound |
 | Dashboard | `mobile/app/(tabs)/home.tsx` — stats |
 | More | `mobile/app/(tabs)/more.tsx` — settings + sign out |
 | Items | `mobile/app/(tabs)/items.tsx` — inventory list |
