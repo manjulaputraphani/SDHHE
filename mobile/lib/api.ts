@@ -379,6 +379,19 @@ export const api = {
   // ---- Items ----
 
   items: () => request<{ items: ItemRow[] }>("/api/items"),
+
+  /** The customer master (search matches name/phone/gstin). */
+  customers: (search?: string) =>
+    request<{ customers: Customer[] }>(
+      `/api/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`,
+    ),
+
+  /** Create-or-update a customer by name — returns the master id for the bill. */
+  saveCustomer: (body: { name: string; phone?: string; address?: string; gstin?: string; email?: string }) =>
+    request<{ customer: { id: number; name: string; phone: string | null } }>("/api/customers/save", {
+      method: "POST",
+      body,
+    }),
   createItem: (body: Record<string, unknown>) =>
     request<{ item: ItemRow }>("/api/items", { method: "POST", body }),
 
@@ -401,19 +414,27 @@ export const api = {
   // ---- Bills ----
 
   bills: () => request<{ bills: BillRow[] }>("/api/bills"),
+  /**
+   * POST /api/bills — the REAL contract (src/db/billing.ts saleBillSchema):
+   * qtyBase = integer base units (g/ml/pcs), unitPricePaise = paise per BASE
+   * unit, customerId from saveCustomer, gstRateBp in basis points (500 = 5%).
+   */
   createBill: (body: {
-    customerName?: string | null;
-    customerPhone?: string | null;
-    customerEmail?: string | null;
-    lines: Array<{ itemId: number; qty: number; ratePaise: number }>;
+    customerId?: number | null;
+    date: string;
+    paymentMode: "Cash" | "Card" | "UPI" | "Credit";
+    lines: Array<{ itemId: number; qtyBase: number; unitPricePaise: number; hsnCode?: string }>;
     discountPaise?: number;
     gstPaise?: number;
+    gstRateBp?: number;
+    saleExpensesPaise?: number;
     paidPaise?: number;
-    paymentMode?: "Cash" | "Card" | "UPI" | "Credit";
-    date?: string | null;
     note?: string | null;
   }) =>
-    request<{ bill: BillRow }>("/api/bills", { method: "POST", body }),
+    request<{ bill: { saleId: number; billNo: string; subtotalPaise: number; totalPaise: number; profitPaise: number } }>(
+      "/api/bills",
+      { method: "POST", body },
+    ),
   cancelBill: (id: number) =>
     request<{ result: { ok: boolean } }>(`/api/bills/${id}/cancel`, { method: "POST" }),
   recordBillPayment: (id: number, amountPaise: number) =>
@@ -505,6 +526,24 @@ export type ItemRow = {
   stockLeftBase?: number;
   category?: string | null;
   imageUrl?: string | null;
+  /** HSN shown on the invoice line (GET /api/items). */
+  hsnCode?: string | null;
+  /** Weighted-average cost per BASE unit, for the margin suggestion. */
+  avgCostPaise?: number | null;
+};
+
+/** GET /api/customers — the customer master row. */
+export type Customer = {
+  id: number;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  gstin: string | null;
+  email: string | null;
+  billCount: number;
+  billedPaise: number;
+  creditPaise: number;
+  lastBillDate: string | null;
 };
 
 export type PurchaseRow = {
