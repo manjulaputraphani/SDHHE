@@ -65,6 +65,47 @@ export type ApiUser = {
   permissions: Record<string, PermissionSet>;
 };
 
+/** GET /api/stats — snake_case straight from the SQL row. */
+export type Stats = {
+  today_sales: number;
+  month_sales: number;
+  month_profit: number;
+  month_expenses: number;
+  credit_paise: number;
+  credit_bills: number;
+  low_stock: number;
+};
+
+/** GET /api/rotation — working capital & rotation block. */
+export type RotationSummary = {
+  asOfDate: string;
+  investmentPaise: number;
+  stockValuePaise: number;
+  cashInBankPaise: number;
+  creditOutstandingPaise: number;
+  amountInRotationPaise: number;
+  netSalesPaise: number;
+  cogsPaise: number;
+  expensesPaise: number;
+  grossProfitPaise: number;
+  netProfitPaise: number;
+  rotationTimes: number;
+  daysToRotate: number | null;
+  inventoryTurnover: number;
+  trend: Array<{ date: string; netSalesPaise: number }>;
+};
+
+/** GET /api/activity — the feed rows. */
+export type ActivityRow = {
+  id: number;
+  at: string;
+  actor: string;
+  event: string;
+  summary: string;
+};
+
+export type AiTurn = { role: "user" | "assistant"; content: string };
+
 type RequestOptions = { method?: "POST" | "PUT" | "PATCH" | "DELETE"; body?: Record<string, unknown> };
 
 /** The Cloudflare Access service token headers (empty if not configured). */
@@ -203,7 +244,17 @@ export const api = {
   pushUnsubscribe: (endpoint: string) =>
     request<{ ok: boolean }>("/api/push/subscribe", { method: "DELETE", body: { endpoint } }),
 
-  stats: () => request<Record<string, unknown>>("/api/stats"),
+  stats: () => request<{ stats: Stats }>("/api/stats"),
+  statsDaily: (days = 14) =>
+    request<{ daily: Array<{ date: string; sales: string; expenses: string }> }>(`/api/stats/daily?days=${days}`),
+  expenseCategories: () =>
+    request<{ categories: Array<{ category: string; total: string }> }>("/api/stats/expense-categories"),
+  rotation: () => request<{ rotation: RotationSummary }>("/api/rotation"),
+  activity: (limit = 4) => request<{ activity: ActivityRow[] }>(`/api/activity?limit=${limit}`),
+  addExpense: (body: Record<string, unknown>) =>
+    request<{ expense: unknown }>("/api/expenses", { method: "POST", body }),
+  aiChat: (message: string, history: AiTurn[]) =>
+    request<{ answer: string }>("/api/ai/chat", { method: "POST", body: { message, history } }),
 
   users: () =>
     request<{ users: { id: number; name: string; phone: string; role: string; active: boolean }[] }>("/api/users"),
@@ -290,6 +341,11 @@ export type ItemRow = {
   stockRemaining: number;
   wacCostPerUnitPaise: number | null;
   lotLedger: Array<{ batch: string; qtyRemaining: number; costPerUnitPaise: number }>;
+  /** From GET /api/items — used for the dashboard low-stock list. */
+  minStockBase?: number;
+  stockLeftBase?: number;
+  category?: string | null;
+  imageUrl?: string | null;
 };
 
 export type PurchaseRow = {
