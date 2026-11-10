@@ -8,11 +8,13 @@ Tool: OpenCode
 - **Phase 3+4 committed** (`facb3b9`, `beca8ed`) — all business screens + billing + EAS deploy config.
 - **`mobile/app.json` fixed `19daef5`** — SDK 58 schema: top-level `splash` removed → `expo-splash-screen` plugin; adaptive icon paths → `android-icon-*.png`. **`expo-doctor` 20/20, `tsc` clean.**
 - **Phone test LIVE** — Expo Go loads over tunnel, **login works**. Icons fixed `52775f7` (Ionicons; old Unicode glyphs rendered blank on Android).
+- **Mobile dashboard = web parity** (`683c88d`) — Ask AI, 6 stat cards, working capital & rotation + trend, low stock, quick expense, 14-day bars, expenses by category, recent activity. api.ts gained stats/rotation/daily/categories/activity/addExpense/aiChat (old `stats()` read the wrong field names → all cards showed ₹0.00).
 - ⚠️ **Cloudflare Access app for `sdhhe-api.blvphani.workers.dev` was DELETED** to unblock testing. **Re-create it with a Service Auth policy** (token: `db67c58f…access`) before shipping. Web login unaffected.
 
 ## Next task
-Re-test screens on the phone (tabs, chat, bills). Then Phase 5: `eas build` → Play Store + App Store.
-Also: re-add the Cloudflare Access policy (see above).
+**Web-parity pass screen by screen**: chat screen first, then Items, Purchases, Expenses, Stock, New Bill, More — same features as web.
+Known bugs to fix in that pass: `items.tsx` reads `item.stockRemaining` but `/api/items` returns `stockLeftBase` (quantities render blank); items/purchases/expenses routes exist but are not in the tab bar or linked from More (only reachable from the dashboard links).
+Then Phase 5: `eas build` → Play Store + App Store. Also re-add the Cloudflare Access policy.
 
 ## Mobile app screens built
 | Screen | File |
