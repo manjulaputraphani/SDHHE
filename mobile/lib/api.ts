@@ -8,25 +8,12 @@
  */
 import * as SecureStore from "expo-secure-store";
 
+
 const WORKER_URL = "https://sdhhe-api.blvphani.workers.dev";
 
 const TOKEN_KEY = "sdhhe_auth_token";
-
-// ---- Cloudflare Access service token (the OWNER creates these) ----
-// Without them the Worker is behind Cloudflare Access → every request gets a
-// 302 redirect to the Access login page (HTML) → the app can't call the API.
-// Create at: one.dash.cloudflare.com → Zero Trust → Access → Service Tokens
-// Then set BOTH of the values below. They travel with EVERY request.
-const CF_ACCESS_CLIENT_ID = ""; // e.g. "mobileapp.access" — set from the dashboard
-const CF_ACCESS_CLIENT_SECRET = ""; // the secret shown once at creation
-
-function accessHeaders(): Record<string, string> {
-  if (!CF_ACCESS_CLIENT_ID || !CF_ACCESS_CLIENT_SECRET) return {};
-  return {
-    "CF-Access-Client-Id": CF_ACCESS_CLIENT_ID,
-    "CF-Access-Client-Secret": CF_ACCESS_CLIENT_SECRET,
-  };
-}
+const ACCESS_ID_KEY = "sdhhe_cf_access_id";
+const ACCESS_SECRET_KEY = "sdhhe_cf_access_secret";
 
 export async function getAuthToken(): Promise<string | null> {
   return SecureStore.getItemAsync(TOKEN_KEY);
@@ -38,6 +25,29 @@ export async function setAuthToken(token: string): Promise<void> {
 
 export async function clearAuthToken(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
+}
+
+// ---- Cloudflare Access service token (stored in SecureStore) ----
+// The owner creates these at: Zero Trust → Access → Service Tokens → Create.
+// The app saves them ONCE in a setup screen and sends them with EVERY request.
+
+export async function getAccessId(): Promise<string | null> {
+  return SecureStore.getItemAsync(ACCESS_ID_KEY);
+}
+
+export async function getAccessSecret(): Promise<string | null> {
+  return SecureStore.getItemAsync(ACCESS_SECRET_KEY);
+}
+
+export async function setAccessCredentials(clientId: string, clientSecret: string): Promise<void> {
+  await SecureStore.setItemAsync(ACCESS_ID_KEY, clientId);
+  await SecureStore.setItemAsync(ACCESS_SECRET_KEY, clientSecret);
+}
+
+export async function accessCredentialsSet(): Promise<boolean> {
+  const id = await SecureStore.getItemAsync(ACCESS_ID_KEY);
+  const secret = await SecureStore.getItemAsync(ACCESS_SECRET_KEY);
+  return Boolean(id && secret);
 }
 
 export type PermissionSet = {
@@ -57,21 +67,32 @@ export type ApiUser = {
 
 type RequestOptions = { method?: "POST" | "PUT" | "PATCH" | "DELETE"; body?: Record<string, unknown> };
 
+/** The Cloudflare Access service token headers (empty if not configured). */
+async function accessHeaders(): Promise<Record<string, string>> {
+  const id = await SecureStore.getItemAsync(ACCESS_ID_KEY);
+  const secret = await SecureStore.getItemAsync(ACCESS_SECRET_KEY);
+  if (!id || !secret) return {};
+  return {
+    "CF-Access-Client-Id": id,
+    "CF-Access-Client-Secret": secret,
+  };
+}
+
 /** Send the stored session token as the cookie (same as the Worker expects). */
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAuthToken();
   if (!token) throw new Error("Not signed in");
   return {
-    ...accessHeaders(),
+    ...(await accessHeaders()),
     "content-type": "application/json",
     accept: "application/json",
     cookie: `sdhhe_session=${token}`,
   };
 }
 
-/** Headers for UNAUTHENTICATED requests (like login itself). */
-function accessOnly(): Record<string, string> {
-  return { ...accessHeaders(), "content-type": "application/json", accept: "application/json" };
+/** Headers for UNAUTHENTICATED requests (login itself). */
+async function accessOnly(): Promise<Record<string, string>> {
+  return { ...(await accessHeaders()), "content-type": "application/json", accept: "application/json" };
 }
 
 async function request<T>(path: string, options?: RequestOptions): Promise<T> {
@@ -101,7 +122,7 @@ export const api = {
   login: async (phone: string, password: string): Promise<ApiUser> => {
     const res = await fetch(`${WORKER_URL}/api/auth/login`, {
       method: "POST",
-      headers: accessOnly(),
+      headers: await accessOnly(),
       body: JSON.stringify({ phone, password }),
     });
     const text = await res.text();
