@@ -209,6 +209,13 @@ export const api = {
       }[];
     }>("/api/chat/conversations"),
 
+  /** Start (or reopen) a 1:1 conversation with a member — POST /api/chat/conversations. */
+  startConversation: (userId: number) =>
+    request<{ conversation: { room: string; kind?: string; title?: string | null } }>(
+      "/api/chat/conversations",
+      { method: "POST", body: { userId } },
+    ),
+
   chatMembers: () =>
     request<{ members: { id: number; name: string; role: string; lastSeenAt?: string | null }[] }>("/api/chat/members"),
 
