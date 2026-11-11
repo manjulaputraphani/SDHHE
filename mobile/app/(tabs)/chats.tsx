@@ -7,7 +7,7 @@
  * green time + pill when unread) and the web empty states.
  */
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -96,7 +96,10 @@ export default function ChatsScreen() {
   const [newError, setNewError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  const loadingRef = useRef(false);
   const load = useCallback(async () => {
+    if (loadingRef.current) return; // poll never stacks on a slow fetch
+    loadingRef.current = true;
     try {
       const [{ conversations }, { members: people }] = await Promise.all([
         api.chatConversations(),
@@ -107,15 +110,21 @@ export default function ChatsScreen() {
     } catch {
       // Offline — keep whatever we have.
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }, []);
 
   // Load on mount AND on every focus — coming back from a room clears its
   // unread pill and re-sorts the list (web refetches on room close too).
+  // Also poll every 15s while the list is on screen: a new message then pops
+  // the unread badge + re-sorts without you leaving the screen (the web gets
+  // this live via its WebSocket; here the room socket covers the room itself).
   useFocusEffect(
     useCallback(() => {
       void load();
+      const poll = setInterval(() => void load(), 15_000);
+      return () => clearInterval(poll);
     }, [load]),
   );
 
