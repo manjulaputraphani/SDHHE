@@ -98,6 +98,13 @@ import {
 import { pushNtfy, sendMail } from "./mailer";
 import { describeDevice } from "./device";
 import { sendWebPush } from "./webpush";
+import { buildExpoPushMessages, sendExpoPush } from "./expoPush";
+import {
+  deletePushToken,
+  putPushToken,
+  pushTokensForRoom,
+  pushTokensForUsers,
+} from "../../src/db/pushTokens";
 import {
   forgetPushSubscription,
   pushSubscriptionsForRoom,
@@ -165,6 +172,8 @@ export interface Env {
   VAPID_SUBJECT?: string;
   /** Receipt files (Phase 12) — R2 bucket `sdhhe-receipts`. */
   RECEIPTS?: R2BucketLike;
+  /** Native push (Phase 18) — the token at expo.dev for the SDHHE Mobile app. */
+  EXPO_ACCESS_TOKEN?: string;
   /** The Team Chat room (Phase 12) — Durable Object. */
   CHAT_ROOM?: DurableObjectNamespace;
   ASSETS?: { fetch: typeof fetch };
@@ -278,6 +287,8 @@ function routePermission(
   if (/^\/api\/chat\/receipts\/\d+\/decision$/.test(pathname)) return { module: "chat", action: "edit" };
   // Web Push (Phase 16): any member may subscribe their own device.
   if (pathname === "/api/push/subscribe") return { module: "chat", action: "view" };
+  // Expo Push (Phase 18): any member may register the native app's device.
+  if (pathname === "/api/chat/push-token") return { module: "chat", action: "view" };
   if (pathname === "/api/chat/heartbeat") return { module: "chat", action: "view" };
   if (pathname === "/api/push/key") return null;
 
@@ -627,6 +638,7 @@ async function pushToTheTeam(
   const db = getDb(env.DATABASE_URL as string);
   console.log("push: pushToTheTeam, exceptUserId", exceptUserId);
   await pushToSubscriptions(env, db, await pushSubscriptionsForRoom(db, exceptUserId), message);
+  await pushToExpoDevices(env, await pushTokensForRoom(db, exceptUserId), message);
 }
 
 /** Push a message to the phones of the members of a group (the sender is left out). */
@@ -639,6 +651,35 @@ async function pushToUsers(
   const db = getDb(env.DATABASE_URL as string);
   console.log("push: pushToUsers, userIds", JSON.stringify(userIds), "exceptUserId", exceptUserId);
   await pushToSubscriptions(env, db, await pushSubscriptionsForUsers(db, userIds, exceptUserId), message);
+  await pushToExpoDevices(env, await pushTokensForUsers(db, userIds, exceptUserId), message);
+}
+
+/** Expo Push (Phase 18) — the native SDHHE Mobile app. Best effort, like the web fan-out. */
+async function pushToExpoDevices(
+  env: Env,
+  tokens: string[],
+  message: { title: string; body: string; url?: string; messageId?: number },
+): Promise<void> {
+  const accessToken = env.EXPO_ACCESS_TOKEN;
+  if (!accessToken) {
+    console.log("push: EXPO_ACCESS_TOKEN not set — native push disabled");
+    return;
+  }
+  if (tokens.length === 0) return;
+  console.log("push: expo fan-out to", tokens.length, "token(s)");
+  try {
+    const messages = buildExpoPushMessages(tokens, message);
+    const result = await sendExpoPush(globalThis.fetch, accessToken, messages);
+    if (result.invalidTokens.length) {
+      const db = getDb(env.DATABASE_URL as string);
+      for (const token of result.invalidTokens) {
+        await deletePushToken(db, token);
+      }
+      console.log("push: forgot", result.invalidTokens.length, "unregistered expo token(s)");
+    }
+  } catch (err) {
+    console.error("expo push fan-out failed:", err);
+  }
 }
 
 /** The shared fan-out: every device gets the push, dead subscriptions go. */
@@ -2152,6 +2193,22 @@ const handler = {
       if (url.pathname === "/api/push/subscribe" && request.method === "DELETE") {
         const endpoint = String(body.endpoint ?? "");
         if (endpoint) await forgetPushSubscription(db, endpoint);
+        return json({ ok: true });
+      }
+
+      // Expo Push (Phase 18): the native app registers its device after login.
+      if (url.pathname === "/api/chat/push-token" && request.method === "POST") {
+        const token = String(body.token ?? "").trim();
+        if (!/^ExponentPushToken\[.+\]$/.test(token)) {
+          return json({ error: "A valid Expo push token is needed" }, { status: 400 });
+        }
+        await putPushToken(db, { userId: session.uid, token });
+        return json({ ok: true });
+      }
+      if (url.pathname === "/api/chat/push-token" && request.method === "DELETE") {
+        const token = String(body.token ?? "").trim();
+        if (token) await deletePushToken(db, token);
+        else await deletePushTokensForUser(db, session.uid); // sign-out
         return json({ ok: true });
       }
 
