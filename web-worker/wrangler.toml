@@ -5,6 +5,7 @@ compatibility_date = "2024-12-01"
 # Secrets (set with `wrangler secret put`, never committed):
 #   DATABASE_URL  — Neon connection string
 #   SESSION_SECRET — signing key for login sessions
+#   FCM_SERVICE_ACCOUNT — the Firebase service-account JSON (FCM v1, web push)
 
 [assets]
 binding = "ASSETS"

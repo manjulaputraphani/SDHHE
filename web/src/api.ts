@@ -706,6 +706,12 @@ export const api = {
   pushKey: () => request<{ publicKey: string | null }>("/api/push/key"),
   pushSubscribe: (body: { endpoint: string; p256dh: string; auth: string }) =>
     request<{ ok: boolean }>("/api/push/subscribe", { method: "POST", body: JSON.stringify(body) }),
+  /** The Firebase SDK's registration token for this browser (FCM path). */
+  pushSubscribeFcm: (token: string, oldEndpoint?: string) =>
+    request<{ ok: boolean; via?: string }>("/api/push/subscribe", {
+      method: "POST",
+      body: JSON.stringify({ token, ...(oldEndpoint ? { endpoint: oldEndpoint } : {}) }),
+    }),
   pushUnsubscribe: (endpoint: string) =>
     request<{ ok: boolean }>("/api/push/subscribe", {
       method: "DELETE",

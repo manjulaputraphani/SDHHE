@@ -30,6 +30,15 @@ export const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 /** Expo Push accepts at most 100 messages per request. */
 export const EXPO_CHUNK = 100;
 
+/**
+ * Expo tokens look like `ExponentPushToken[...]`. Everything else in
+ * `push_tokens` is an FCM registration token (the web) — the two fan-outs
+ * must never receive each other's tokens.
+ */
+export function isExpoPushToken(token: string): boolean {
+  return token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken[");
+}
+
 /** Build one Expo message per token (chunked lists come straight from here). */
 export function buildExpoPushMessages(
   tokens: string[],

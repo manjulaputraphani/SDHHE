@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildExpoPushMessages,
   EXPO_PUSH_URL,
+  isExpoPushToken,
   sendExpoPush,
   type ExpoPushResponse,
 } from "./expoPush";
@@ -30,6 +31,15 @@ describe("buildExpoPushMessages", () => {
     const tokens = Array.from({ length: 250 }, (_, i) => `tok${i}`);
     const out = buildExpoPushMessages(tokens, message);
     expect(out).toHaveLength(250);
+  });
+});
+
+describe("isExpoPushToken", () => {
+  it("splits the two fan-outs: Expo tokens vs FCM web tokens", () => {
+    expect(isExpoPushToken("ExponentPushToken[abc]")).toBe(true);
+    expect(isExpoPushToken("ExpoPushToken[abc]")).toBe(true);
+    // An FCM registration token must NEVER reach the Expo Push API.
+    expect(isExpoPushToken("dG9rZW46YWJjZGVmZ2hpamtsbW5vcA")).toBe(false);
   });
 });
 

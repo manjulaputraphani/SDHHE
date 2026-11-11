@@ -40,6 +40,7 @@ blob-report/
 
 # web worker secrets (never commit)
 web-worker/.dev.vars
+web-worker/.secrets/
 
 # build output / wrangler state
 web/dist

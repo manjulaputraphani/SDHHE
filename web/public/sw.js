@@ -16,7 +16,11 @@ self.addEventListener("push", (event) => {
   console.log("sw: push event received", event.data ? "with data" : "no data");
   let data = { title: "Team Chat", body: "New message", url: "/team-chat?notify=1" };
   try {
-    data = { ...data, ...event.data.json() };
+    const raw = event.data.json();
+    // FCM wraps its payloads as { data: {...} }; plain Web Push (VAPID) sends
+    // the fields flat — accept both so either transport shows the same card.
+    const flat = raw && typeof raw.data === "object" && raw.data !== null ? raw.data : raw;
+    data = { ...data, ...flat };
     console.log("sw: push data parsed", JSON.stringify(data));
   } catch (err) {
     console.log("sw: push data parse failed", err);

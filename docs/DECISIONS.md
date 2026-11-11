@@ -173,3 +173,12 @@
    action-sheet Copy a real system copy (React Native ships no clipboard API). `expo-image-picker` powers the composer's receipt attach
    (camera/gallery → `POST /api/chat/receipts` multipart → receipt message), which previously could not be built at all on the phone.
    Both are standard Expo SDK 58 modules installed with `npx expo install`; no other new runtime dependency was taken (charts stay plain Views).
+- 2026-11-11 · **Web push switches to FCM (VAPID kept as fallback)** — FCM registration tokens cannot be minted without the official SDK, so
+   `firebase` joins `web/package.json` (only the tree-shaken `firebase/app` + `firebase/messaging` modules are imported, and only when the
+   Firebase web config exists in `web/.env` — see `web/.env.example`; the chunk never loads otherwise). The worker sends data-only messages
+   through FCM HTTP v1 in `web-worker/src/fcm.ts` — the service-account JWT is signed with hand-rolled WebCrypto RS256, so the worker gains
+   NO new dependency — using the same service-account key that pushes to the Android app (one Firebase project, one credential for both).
+   Data-only on purpose: `web/public/sw.js` still shows the notification (sound, tap-to-chat, delivery receipt), so FCM must never display a
+   second one. Dead tokens (`UNREGISTERED`/`NOT_FOUND`/bad registration token) are deleted from `push_tokens`, Expo and FCM tokens are split
+   by `isExpoPushToken` before their fan-outs, and a browser switching from VAPID drops its old row in the same subscribe call so nobody is
+   pushed twice. The key itself lives in `web-worker/.secrets/` (gitignored) + the `FCM_SERVICE_ACCOUNT` wrangler secret — never committed.

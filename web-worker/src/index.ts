@@ -98,7 +98,8 @@ import {
 import { pushNtfy, sendMail } from "./mailer";
 import { describeDevice } from "./device";
 import { sendWebPush } from "./webpush";
-import { buildExpoPushMessages, sendExpoPush } from "./expoPush";
+import { buildExpoPushMessages, isExpoPushToken, sendExpoPush } from "./expoPush";
+import { createFcmClient, fcmConfigFrom, type FcmClient } from "./fcm";
 import {
   deletePushToken,
   putPushToken,
@@ -170,6 +171,8 @@ export interface Env {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
+  /** FCM v1 — the Firebase service-account JSON (sends to web + Android). */
+  FCM_SERVICE_ACCOUNT?: string;
   /** Receipt files (Phase 12) — R2 bucket `sdhhe-receipts`. */
   RECEIPTS?: R2BucketLike;
   /** Native push (Phase 18) — the token at expo.dev for the SDHHE Mobile app. */
@@ -638,7 +641,9 @@ async function pushToTheTeam(
   const db = getDb(env.DATABASE_URL as string);
   console.log("push: pushToTheTeam, exceptUserId", exceptUserId);
   await pushToSubscriptions(env, db, await pushSubscriptionsForRoom(db, exceptUserId), message);
-  await pushToExpoDevices(env, await pushTokensForRoom(db, exceptUserId), message);
+  const tokens = await pushTokensForRoom(db, exceptUserId);
+  await pushToExpoDevices(env, tokens.filter(isExpoPushToken), message);
+  await pushToFcmDevices(env, db, tokens.filter((token) => !isExpoPushToken(token)), message);
 }
 
 /** Push a message to the phones of the members of a group (the sender is left out). */
@@ -651,7 +656,9 @@ async function pushToUsers(
   const db = getDb(env.DATABASE_URL as string);
   console.log("push: pushToUsers, userIds", JSON.stringify(userIds), "exceptUserId", exceptUserId);
   await pushToSubscriptions(env, db, await pushSubscriptionsForUsers(db, userIds, exceptUserId), message);
-  await pushToExpoDevices(env, await pushTokensForUsers(db, userIds, exceptUserId), message);
+  const tokens = await pushTokensForUsers(db, userIds, exceptUserId);
+  await pushToExpoDevices(env, tokens.filter(isExpoPushToken), message);
+  await pushToFcmDevices(env, db, tokens.filter((token) => !isExpoPushToken(token)), message);
 }
 
 /** Expo Push (Phase 18) — the native SDHHE Mobile app. Best effort, like the web fan-out. */
@@ -680,6 +687,49 @@ async function pushToExpoDevices(
   } catch (err) {
     console.error("expo push fan-out failed:", err);
   }
+}
+
+/** The FCM client of this isolate — the access token is minted once and reused. */
+let fcmClientCache: { key: string; client: FcmClient } | null = null;
+
+function fcmClientFor(env: Env): FcmClient | null {
+  const config = fcmConfigFrom(env.FCM_SERVICE_ACCOUNT);
+  if (!config) return null;
+  const key = `${config.projectId}:${config.clientEmail}:${config.privateKeyId ?? ""}`;
+  if (fcmClientCache?.key === key) return fcmClientCache.client;
+  const client = createFcmClient(config);
+  fcmClientCache = { key, client };
+  return client;
+}
+
+/**
+ * FCM fan-out to the browsers — the web tokens live in `push_tokens` next to
+ * the Expo tokens of the app (isExpoPushToken splits them upstream). Best
+ * effort like every other fan-out: dead tokens are deleted, nothing throws.
+ */
+async function pushToFcmDevices(
+  env: Env,
+  db: Db,
+  tokens: string[],
+  message: { title: string; body: string; url?: string; messageId?: number; room?: string },
+): Promise<void> {
+  if (tokens.length === 0) return;
+  const client = fcmClientFor(env);
+  if (!client) return; // No service-account key yet — the VAPID path still covers the web.
+  console.log("push: fcm fan-out to", tokens.length, "web token(s)");
+  const results = await Promise.allSettled(tokens.map((token) => client.send(token, message)));
+  await Promise.allSettled(
+    results.map(async (result, index) => {
+      if (result.status !== "fulfilled") return;
+      const token = tokens[index] as string;
+      if (result.value.invalid) {
+        await deletePushToken(db, token);
+        console.log("push: forgot dead fcm token", token);
+      } else if (!result.value.delivered) {
+        console.log("push: fcm delivery failed for", token);
+      }
+    }),
+  );
 }
 
 /** The shared fan-out: every device gets the push, dead subscriptions go. */
@@ -2180,6 +2230,20 @@ const handler = {
       }
 
       if (url.pathname === "/api/push/subscribe" && request.method === "POST") {
+        const token = String(body.token ?? "").trim();
+        if (token) {
+          // The Firebase SDK handed this browser an FCM registration token —
+          // it lives in push_tokens next to the Expo tokens of the app.
+          if (token.length > 512 || /\s/.test(token)) {
+            return json({ error: "A valid FCM token is needed" }, { status: 400 });
+          }
+          await putPushToken(db, { userId: session.uid, token });
+          // A browser that moved from VAPID drops its old row in the same
+          // call — one transport per device, or the member gets it twice.
+          const oldEndpoint = String(body.endpoint ?? "");
+          if (/^https:\/\//.test(oldEndpoint)) await forgetPushSubscription(db, oldEndpoint);
+          return json({ ok: true, via: "fcm" });
+        }
         const endpoint = String(body.endpoint ?? "");
         const p256dh = String(body.p256dh ?? "");
         const auth = String(body.auth ?? "");
@@ -2191,8 +2255,10 @@ const handler = {
       }
 
       if (url.pathname === "/api/push/subscribe" && request.method === "DELETE") {
+        const token = String(body.token ?? "").trim();
         const endpoint = String(body.endpoint ?? "");
-        if (endpoint) await forgetPushSubscription(db, endpoint);
+        if (token) await deletePushToken(db, token);
+        else if (endpoint) await forgetPushSubscription(db, endpoint);
         return json({ ok: true });
       }
 
