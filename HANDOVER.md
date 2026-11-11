@@ -8,7 +8,7 @@ Tool: OpenCode
 - **Native app APK live (2026-11-11)** — EAS `@sdhhe/sdhhe-mobile` preview → **v7 hosted** at `/sdhhe-mobile.apk` (R2 `sdhhe-receipts/apk/sdhhe-mobile.apk`, byte-verified; Desktop copy `~/Desktop/SDHHE-Mobile.apk`) — **push notifications VERIFIED end-to-end**: worker pushes via `exp.host` (Exp Push API; the `expopush.expo.dev` host was the wrong endpoint — returns AuthenticationRequired), FCM V1 key assigned to `com.sdhhe.mobile` in EAS, `google-services.json` bundled via `android.googleServicesFile`, token registered in Neon `push_tokens` (mobile `lib/push.ts` → `/api/chat/push-token`), secret `EXPO_ACCESS_TOKEN` set; **tap opens the EXACT chat** (worker sends `data.room`, app gates tap-navigation on auth to avoid the `/`→Dashboard redirect race), chats list 15s unread polling, Chats tab badge global via `lib/unreadStore` (Dashboard), chat room pins newest via hydration-race loop, More = permission-aware tiles with ☕ Stock Check, login `+91` prefix outside the field, persisted Light/Dark/Contrast picker (`lib/theme.ts` SecureStore), splash+launcher art v2 (filled cup/steam/beans), **OTA ready** (expo-updates + `preview` channel — future JS fixes = `eas update`, zero builds). **EAS usage 13/15 Android builds this month.** **GOTCHAs: `wrangler r2` put/get is LOCAL without `--remote`; EAS CLI wait in background shells needs no timeout param (a 600s timeout killed one local wait — cloud builds continue server-side; resume with `eas build:view --json`)**. Awaiting owner test → flip web 📲 buttons to native APK. Old browser-wrapper TWA still at `/sdhhe.apk`.
 - **Legacy-shortcut hint (2026-11-11)** — new `web/src/components/AndroidAppInstall.tsx` used by both sidebars + More sheet. When it detects the OLD home-screen PWA shortcut (standalone display-mode + referrer ≠ `android-app://com.sdhhe.app`), it explains under the 📲 button that Chrome blocks APK downloads inside it and to use Chrome. Deployed `wrangler ae788d41`.
 - **PWA install removed from web (2026-11-11)** — `web/index.html` lost `<link rel=manifest>` + all `mobile-web-app-capable` metas, so the site no longer offers "Install app"/Add to Home Screen. Team installs `sdhhe.apk` instead. Keep serving `/manifest.webmanifest` (bubblewrap APK rebuild fetches it) and `/sw.js` (team-chat push worker). Deployed `wrangler 4f9b2b88`.
-- **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound). Owner's real-device test is due.
+- **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound). Owner's real-device test is due. **FCM wired (2026-11-11)**: service-account JSON = gitignored `web-worker/.secrets/` + wrangler secret `FCM_SERVICE_ACCOUNT`, worker deployed `fc967a93` (`web-worker/src/fcm.ts` v1, data-only, dead-token cleanup, `isExpoPushToken` splits Expo vs FCM); browser does FCM-first (`pushSetup.ts`, `firebase` lazy chunk) with VAPID fallback. **Web FCM activates only when owner fills `web/.env` from `web/.env.example`** (Firebase console → Web app) → rebuild+redeploy.
 - **Phase 3+4 committed** (`facb3b9`, `beca8ed`) — all business screens + billing + EAS deploy config.
 - **`mobile/app.json` fixed `19daef5`** — SDK 58 schema: top-level `splash` removed → `expo-splash-screen` plugin; adaptive icon paths → `android-icon-*.png`. **`expo-doctor` 20/20, `tsc` clean.**
 - **Phone test LIVE** — Expo Go loads over tunnel, **login works**. Icons fixed `52775f7` (Ionicons; old Unicode glyphs rendered blank on Android).
@@ -27,7 +27,7 @@ Tool: OpenCode
 **Every mobile screen now at web parity.** Phone-test the new screens (Reports/Suppliers/Activity/Team + Items/Purchases/Expenses/Stock/New Bill), fix anything the test finds — first ship the chat scroll fix via `eas update` and confirm a chat opens on its newest message,
 then **Phase 5: `eas build` → Play Store + App Store** (also re-add the Cloudflare Access policy before shipping).
 Known bugs to fix in that pass: `items.tsx` reads `item.stockRemaining` but `/api/items` returns `stockLeftBase` (quantities render blank); items/purchases/expenses routes exist but are not in the tab bar or linked from More (only reachable from the dashboard links).
-Then Phase 5: `eas build` → Play Store + App Store. Also re-add the Cloudflare Access policy.
+4. **Activate FCM web push** — Firebase console → Project settings → Your apps → **Web app** → copy SDK values into `web/.env` (see `web/.env.example`) → rebuild + `wrangler deploy`. Until then browsers stay on VAPID (working).
 
 ## Mobile app screens built
 | Screen | File |
@@ -53,7 +53,7 @@ Then Phase 5: `eas build` → Play Store + App Store. Also re-add the Cloudflare
    Paste Client ID + Secret into `mobile/lib/api.ts`.
 
 ## Commands
-- Tests: `npx vitest run --reporter=dot` (510) · `npm run test:e2e:web` (94)
+- Tests: `npx vitest run --reporter=dot` (533) · `npm run test:e2e:web` (95)
 - Web deploy: `nvm use 22 && cd web && npm run build && cd ../web-worker && npx wrangler deploy`
 - Mobile dev: `cd mobile && npx expo start` · typecheck: `npx tsc --noEmit` · lint: `npx expo lint`
 - Push diagnostics: `wrangler tail` → `/tmp/wrangler-tail.log`
