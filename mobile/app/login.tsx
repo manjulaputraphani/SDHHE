@@ -76,6 +76,12 @@ export default function LoginScreen() {
           <Text style={{ color: theme.muted, fontSize: 12 }}>Sign up a new account? Ask the owner.</Text>
         </TouchableOpacity>
 
+        {/* Optional: Cloudflare Access service-token setup (needed again in
+            Phase 5 if the owner re-enables Access on the API). */}
+        <TouchableOpacity onPress={() => router.push("/access-setup")} style={styles.resetRow}>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Cloudflare Access setup</Text>
+        </TouchableOpacity>
+
         {error && <Text style={[styles.error, { color: theme.error }]}>{error}</Text>}
       </View>
     </KeyboardAvoidingView>

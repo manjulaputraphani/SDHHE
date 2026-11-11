@@ -9,8 +9,7 @@ import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Stack, Redirect, usePathname } from "expo-router";
 
-import { accessCredentialsSet, api, type ApiUser } from "../lib/api";
-import { getColors, type ThemeColors, type ThemeMode } from "../lib/theme";
+import { api, type ApiUser } from "../lib/api";import { getColors, type ThemeColors, type ThemeMode } from "../lib/theme";
 
 type AuthContextType = {
   user: ApiUser | null;
@@ -37,22 +36,18 @@ export function useAuth(): AuthContextType {
 export default function RootLayout(): ReactElement | null {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [accessSet, setAccessSet] = useState<boolean | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
   const pathname = usePathname();
 
   const theme = useMemo(() => getColors(themeMode), [themeMode]);
 
-  // On mount: check the Cloudflare Access token first, then the session.
+  // On mount: check for an existing session.
+  // Cloudflare Access credentials are OPTIONAL — the API has Access disabled
+  // (2026-11-11) and accessHeaders() omits the headers when none are stored.
+  // /access-setup stays reachable from the login screen; its gate comes back
+  // when the owner re-enables Access (Phase 5 — see HANDOVER).
   useEffect(() => {
     async function check() {
-      const hasAccess = await accessCredentialsSet();
-      setAccessSet(hasAccess);
-      if (!hasAccess) {
-        setLoading(false);
-        return;
-      }
-      // Access token set — check for an existing session.
       void api
         .me()
         .then((response) => setUser(response.user))
@@ -73,7 +68,6 @@ export default function RootLayout(): ReactElement | null {
   );
 
   const isAuthScreen = pathname === "/login" || pathname === "/access-setup";
-  const isAccessScreen = pathname === "/access-setup";
 
   if (loading) {
     return (
@@ -83,16 +77,8 @@ export default function RootLayout(): ReactElement | null {
     );
   }
 
-  // Cloudflare Access token NOT set → setup screen (one-time).
-  if (!accessSet && !isAccessScreen) {
-    return (
-      <AuthContext.Provider value={auth}>
-        <Redirect href="/access-setup" />
-      </AuthContext.Provider>
-    );
-  }
-  // Access set + trying to open a signed-in screen → login.
-  if (accessSet && !user && !isAuthScreen) {
+  // No live session on a signed-in screen → login (also the "/" entry point).
+  if (!user && !isAuthScreen) {
     return (
       <AuthContext.Provider value={auth}>
         <Redirect href="/login" />
