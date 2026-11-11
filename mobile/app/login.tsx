@@ -42,15 +42,23 @@ export default function LoginScreen() {
         <Text style={[styles.title, { color: theme.ink }]}>SREE DURGA HARIHARA</Text>
         <Text style={[styles.title, { color: theme.ink }]}>ENTERPRISES</Text>
 
-        <TextInput
-          style={[styles.input, { borderColor: theme.line, color: theme.ink, backgroundColor: theme.surface2 }]}
-          placeholder="+91 phone"
-          placeholderTextColor={theme.muted}
-          keyboardType="phone-pad"
-          value={phone}
-          onChangeText={(text) => setPhone(text.replace(/[^+\d]/g, ""))}
-          autoCapitalize="none"
-        />
+        {/* The +91 sits OUTSIDE the field like the web login — the input holds
+            only the 10-digit number (web: id="m-phone", "10-digit mobile"). */}
+        <View style={[styles.phoneRow, { borderColor: theme.line, backgroundColor: theme.surface2 }]}>
+          <View style={[styles.phonePrefix, { borderRightColor: theme.line }]}>
+            <Text style={{ fontSize: 15, fontWeight: "600", color: theme.muted }}>+91</Text>
+          </View>
+          <TextInput
+            style={[styles.phoneInput, { color: theme.ink }]}
+            placeholder="10-digit mobile"
+            placeholderTextColor={theme.muted}
+            keyboardType="number-pad"
+            maxLength={10}
+            value={phone}
+            onChangeText={(text) => setPhone(text.replace(/\D/g, ""))}
+            autoCapitalize="none"
+          />
+        </View>
         <TextInput
           style={[styles.input, { borderColor: theme.line, color: theme.ink, backgroundColor: theme.surface2 }]}
           placeholder="Password"
@@ -127,6 +135,24 @@ const styles = StyleSheet.create({
     padding: 16,
     marginTop: 20,
     alignItems: "center",
+  },
+  phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    marginTop: 12,
+    overflow: "hidden",
+  },
+  phonePrefix: {
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderRightWidth: 1,
+  },
+  phoneInput: {
+    flex: 1,
+    padding: 14,
+    fontSize: 16,
   },
   buttonText: { fontSize: 16, fontWeight: "600" },
   resetRow: { marginTop: 12, alignItems: "center" },

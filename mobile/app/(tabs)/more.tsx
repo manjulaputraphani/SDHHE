@@ -1,9 +1,26 @@
-/** More — settings, theme, sign out (bottom sheet style from the web app). */
+/**
+ * More — settings, modules and sign out (bottom-sheet style from the web app).
+ *
+ * The module cards are PERMISSION-AWARE (Phase 18): a card shows only if the
+ * signed-in role can VIEW that module (user.permissions from login), so staff
+ * and CA never see — or tap — cards that would bounce them elsewhere. Design:
+ * 2-column tiles with the module icon, the way the web sidebar reads.
+ */
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch } from "react-native";
 import { useState } from "react";
 import { useRouter } from "expo-router";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { useAuth } from "../_layout";
+import type { ThemeColors } from "../../lib/theme";
+
+type Tile = {
+  label: string;
+  module: string;
+  icon: string;
+  tint: keyof ThemeColors;
+  onPress: () => void;
+};
 
 export default function MoreScreen() {
   const { theme, setThemeMode, signOut, user } = useAuth();
@@ -19,28 +36,71 @@ export default function MoreScreen() {
     await signOut();
   }
 
-  const row = (label: string, onPress?: () => void, trailing?: React.ReactNode) => (
-    <TouchableOpacity disabled={!onPress} style={[styles.row, { backgroundColor: theme.surface, borderBottomColor: theme.line }]} onPress={onPress}>
-      <Text style={{ fontSize: 15, color: theme.ink, flex: 1 }}>{label}</Text>
-      {trailing}
+  /** Can this member see the module card? permissions first, owner fallback. */
+  function canSee(module: string): boolean {
+    const perms = user?.permissions as Record<string, { canView?: boolean }> | undefined;
+    const set = perms?.[module];
+    if (set) return Boolean(set.canView);
+    return user?.role === "owner";
+  }
+
+  const allTiles: Tile[] = [
+    { label: "Stock Check", module: "stock", icon: "archive", tint: "accentSoft", onPress: () => router.push("/(tabs)/stock") },
+    { label: "Items", module: "items", icon: "cube", tint: "surface3", onPress: () => router.push("/(tabs)/items") },
+    { label: "Purchases", module: "purchases", icon: "pricetags", tint: "surface3", onPress: () => router.push("/(tabs)/purchases") },
+    { label: "Expenses", module: "expenses", icon: "cash", tint: "surface3", onPress: () => router.push("/(tabs)/expenses") },
+    { label: "Supplier dues", module: "suppliers", icon: "wallet", tint: "surface3", onPress: () => router.push("/(tabs)/suppliers") },
+    { label: "Reports", module: "reports", icon: "bar-chart", tint: "accentSoft", onPress: () => router.push("/(tabs)/reports") },
+    { label: "Activity", module: "activity", icon: "pulse", tint: "accentSoft", onPress: () => router.push("/(tabs)/activity") },
+    { label: "Team", module: "team", icon: "people", tint: "accentSoft", onPress: () => router.push("/(tabs)/team") },
+  ];
+  const tiles: Tile[] = allTiles.filter((tile) => {
+    // Owner-only screens keep the hard role rule even if permissions lag.
+    if (tile.module === "activity" || tile.module === "team") return user?.role === "owner";
+    return canSee(tile.module);
+  });
+
+  const tile = (t: Tile) => (
+    <TouchableOpacity style={[styles.tile, { backgroundColor: theme.surface, borderColor: theme.line }]} onPress={t.onPress}>
+      <View style={[styles.tileIcon, { backgroundColor: theme[t.tint] as string }]}>
+        <Ionicons name={t.icon as never} size={20} color={theme.ink} />
+      </View>
+      <Text style={{ fontSize: 13, fontWeight: "600", color: theme.ink }} numberOfLines={1}>
+        {t.label}
+      </Text>
     </TouchableOpacity>
   );
 
   return (
     <ScrollView style={[styles.screen, { backgroundColor: theme.bg }]}>
       <Text style={[styles.heading, { color: theme.ink }]}>More</Text>
+
       <View style={[styles.card, { backgroundColor: theme.surface, shadowColor: theme.shadow }]}>
-        {row("Dark theme", () => setDark(!dark), <Switch value={dark} onValueChange={toggleTheme} trackColor={{ true: theme.primary }} thumbColor={theme.primary} />)}
-        {row("Items", () => router.push("/(tabs)/items"))}
-        {row("Purchases", () => router.push("/(tabs)/purchases"))}
-        {row("Expenses", () => router.push("/(tabs)/expenses"))}
-        {(user?.role === "owner" || user?.role === "ca") && row("Reports", () => router.push("/(tabs)/reports"))}
-        {row("Supplier dues", () => router.push("/(tabs)/suppliers"))}
-        {user?.role === "owner" && row("Activity", () => router.push("/(tabs)/activity"))}
-        {user?.role === "owner" && row("Team", () => router.push("/(tabs)/team"))}
+        <View style={[styles.row, { borderBottomColor: theme.line }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={[styles.tileIcon, { backgroundColor: theme.surface2 }]}>
+              <Ionicons name="moon" size={18} color={theme.ink} />
+            </View>
+            <Text style={{ fontSize: 15, color: theme.ink }}>Dark theme</Text>
+          </View>
+          <Switch value={dark} onValueChange={toggleTheme} trackColor={{ true: theme.primary }} thumbColor={theme.primary} />
+        </View>
       </View>
+
+      <Text style={[styles.section, { color: theme.muted }]}>MODULES</Text>
+      <View style={styles.grid}>
+        {tiles.map((t) => (
+          <View key={t.module} style={styles.cell}>
+            {tile(t)}
+          </View>
+        ))}
+      </View>
+
       <TouchableOpacity style={[styles.signOutButton, { backgroundColor: theme.error }]} onPress={() => void handleSignOut()}>
-        <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>Sign out</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="log-out" size={17} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>Sign out</Text>
+        </View>
       </TouchableOpacity>
       <View style={{ padding: 20 }}>
         <Text style={{ color: theme.muted, fontSize: 12, textAlign: "center" }}>
@@ -56,8 +116,23 @@ export default function MoreScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, paddingTop: 32 },
-  heading: { fontSize: 24, fontWeight: "700", padding: 16 },
+  heading: { fontSize: 24, fontWeight: "700", padding: 16, paddingBottom: 8 },
   card: { borderRadius: 14, margin: 12, overflow: "hidden", elevation: 2, shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
   row: { paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1 },
+  section: { fontSize: 11, fontWeight: "700", letterSpacing: 1.2, marginLeft: 16, marginBottom: 8 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingHorizontal: 12 },
+  cell: { width: "31.5%", flexGrow: 1 },
+  tile: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 14,
+    alignItems: "center",
+    gap: 8,
+    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  tileIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   signOutButton: { margin: 12, padding: 14, borderRadius: 12, alignItems: "center" },
 });
