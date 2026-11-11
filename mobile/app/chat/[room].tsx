@@ -33,10 +33,10 @@ import {
   Image,
 } from "react-native";
 
-import { api, type ChatMessage, type ChatPin, type ChatReceipt } from "../../../lib/api";
-import { useAuth } from "../../_layout";
-import { playNotificationSound } from "../../../lib/notificationSound";
-import { membersOf } from "../../../lib/chatPrivacy";
+import { api, type ChatMessage, type ChatPin, type ChatReceipt } from "../../lib/api";
+import { useAuth } from "../_layout";
+import { playNotificationSound } from "../../lib/notificationSound";
+import { membersOf } from "../../lib/chatPrivacy";
 import {
   REACTION_EMOJIS,
   formatRupees,
@@ -48,7 +48,7 @@ import {
   receiptStatusLabel,
   receiptStatusTone,
   withinEditWindow,
-} from "../../../lib/chatView";
+} from "../../lib/chatView";
 
 // ---- helpers (same as the web app's logic) ----
 

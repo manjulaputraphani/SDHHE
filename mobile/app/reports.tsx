@@ -18,8 +18,8 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { api, type DealProfit, type FinYearReport } from "../../lib/api";
-import { useAuth } from "../_layout";
+import { api, type DealProfit, type FinYearReport } from "../lib/api";
+import { useAuth } from "./_layout";
 
 function money(paise: number | null): string {
   if (paise == null) return "—";

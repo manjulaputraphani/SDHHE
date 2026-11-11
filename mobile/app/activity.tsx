@@ -17,8 +17,8 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { api, type ActivityRow } from "../../lib/api";
-import { useAuth } from "../_layout";
+import { api, type ActivityRow } from "../lib/api";
+import { useAuth } from "./_layout";
 
 const PAGE = 25;
 

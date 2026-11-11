@@ -26,8 +26,8 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { api, type ItemRow, type PurchaseRow } from "../../lib/api";
-import { useAuth } from "../_layout";
+import { api, type ItemRow, type PurchaseRow } from "../lib/api";
+import { useAuth } from "./_layout";
 
 /** Base units per display unit (src/logic/units.ts FACTOR). */
 const FACTOR: Record<string, number> = {

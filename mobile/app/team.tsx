@@ -23,8 +23,8 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { api, type Member, type UsageRow } from "../../lib/api";
-import { useAuth } from "../_layout";
+import { api, type Member, type UsageRow } from "../lib/api";
+import { useAuth } from "./_layout";
 
 type Role = "owner" | "ca" | "staff";
 

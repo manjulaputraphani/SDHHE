@@ -23,8 +23,8 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { api, type PurchaseRow, type SupplierPaymentRow, type SupplierWithDues } from "../../lib/api";
-import { useAuth } from "../_layout";
+import { api, type PurchaseRow, type SupplierPaymentRow, type SupplierWithDues } from "../lib/api";
+import { useAuth } from "./_layout";
 
 const PAYMENT_MODES: readonly ["Cash", "UPI", "Card", "Credit"] = ["Cash", "UPI", "Card", "Credit"];
 

@@ -22,8 +22,8 @@ import {
   Alert,
 } from "react-native";
 
-import { api, type ExpenseRow } from "../../lib/api";
-import { useAuth } from "../_layout";
+import { api, type ExpenseRow } from "../lib/api";
+import { useAuth } from "./_layout";
 
 const EXPENSE_TYPES: readonly ["general", "purchase", "sale"] = ["general", "purchase", "sale"];
 /** Web's datalist options for the category field. */
