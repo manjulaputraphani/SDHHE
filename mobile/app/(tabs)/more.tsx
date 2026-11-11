@@ -3,11 +3,10 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch } from "re
 import { useState } from "react";
 import { useRouter } from "expo-router";
 
-import { api } from "../../lib/api";
 import { useAuth } from "../_layout";
 
 export default function MoreScreen() {
-  const { theme, themeMode, setThemeMode, signOut, user } = useAuth();
+  const { theme, setThemeMode, signOut, user } = useAuth();
   const router = useRouter();
   const [dark, setDark] = useState(false);
 
@@ -35,10 +34,10 @@ export default function MoreScreen() {
         {row("Items", () => router.push("/(tabs)/items"))}
         {row("Purchases", () => router.push("/(tabs)/purchases"))}
         {row("Expenses", () => router.push("/(tabs)/expenses"))}
-        {row("Reports", () => void 0)}
-        {row("Supplier dues", () => void 0)}
-        {row("Activity", () => void 0)}
-        {row("Team", () => void 0)}
+        {(user?.role === "owner" || user?.role === "ca") && row("Reports", () => router.push("/(tabs)/reports"))}
+        {row("Supplier dues", () => router.push("/(tabs)/suppliers"))}
+        {user?.role === "owner" && row("Activity", () => router.push("/(tabs)/activity"))}
+        {user?.role === "owner" && row("Team", () => router.push("/(tabs)/team"))}
       </View>
       <TouchableOpacity style={[styles.signOutButton, { backgroundColor: theme.error }]} onPress={() => void handleSignOut()}>
         <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>Sign out</Text>

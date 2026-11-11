@@ -6,7 +6,8 @@
  * owner Add/Edit/Delete, and the per-item Lots ledger (purchase batches →
  * sold qty/value → profit → pending) from GET /api/items/:id/batches/ledger.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -106,9 +107,11 @@ export default function ItemsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();

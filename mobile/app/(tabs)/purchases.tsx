@@ -8,7 +8,8 @@
  * API never returns (GET /api/purchases is raw SQL with name/qty_base/
  * total_paise…), so every row rendered blank.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -105,9 +106,11 @@ export default function PurchasesScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const pickedItem = draft.itemId === "" ? undefined : items.find((i) => i.id === draft.itemId);
   /** Web: total = qty × rate (rate in ₹). */

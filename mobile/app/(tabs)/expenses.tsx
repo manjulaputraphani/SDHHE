@@ -6,7 +6,8 @@
  * The list shows the real ExpenseRow fields (the old screen read
  * `title`/`status`, which the API never returns — rows rendered blank).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -76,9 +77,11 @@ export default function ExpensesScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   /** Web monthExpensesPaise — the list's own month prefix. */
   const monthTotalPaise = useMemo(() => {

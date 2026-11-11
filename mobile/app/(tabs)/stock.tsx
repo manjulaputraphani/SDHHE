@@ -5,7 +5,8 @@
  * The old screen called a phantom "stockCheck rows" shape — GET /api/stock
  * actually returns recent ENTRIES, so the list never showed anything.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -36,7 +37,7 @@ const FACTOR: Record<string, number> = {
 };
 
 /** Web STOCK_TYPE_LABEL. */
-const TYPES: Array<{ value: "USAGE" | "WASTAGE" | "STOCK_CHECK"; label: string }> = [
+const TYPES: { value: "USAGE" | "WASTAGE" | "STOCK_CHECK"; label: string }[] = [
   { value: "USAGE", label: "Used" },
   { value: "WASTAGE", label: "Wastage" },
   { value: "STOCK_CHECK", label: "Stock left" },
@@ -88,7 +89,7 @@ export default function StockScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [itemQuery, setItemQuery] = useState("");
   /** Open batches of the picked item (current-stock hint, web pickStockItem). */
-  const [batches, setBatches] = useState<Array<{ id: number; qty_remaining: number }>>([]);
+  const [batches, setBatches] = useState<{ id: number; qty_remaining: number }[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -102,9 +103,11 @@ export default function StockScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const pickedItem = itemId === "" ? undefined : items.find((i) => i.id === itemId);
   const currentStockBase = batches.reduce((sum, b) => sum + b.qty_remaining, 0);

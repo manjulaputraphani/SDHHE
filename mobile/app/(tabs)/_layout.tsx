@@ -82,6 +82,17 @@ export default function TabsLayout(): React.ReactElement {
           tabBarIcon: ({ color }) => <TabGlyph label="more" colour={color} />,
         }}
       />
+      {/* Every other route in (tabs)/ is pushed from Home links or the More
+          sheet — hidden from the tab bar (expo-router would otherwise append
+          them as icon-less tabs). */}
+      <Tabs.Screen name="items" options={{ href: null }} />
+      <Tabs.Screen name="purchases" options={{ href: null }} />
+      <Tabs.Screen name="expenses" options={{ href: null }} />
+      <Tabs.Screen name="reports" options={{ href: null }} />
+      <Tabs.Screen name="suppliers" options={{ href: null }} />
+      <Tabs.Screen name="activity" options={{ href: null }} />
+      <Tabs.Screen name="team" options={{ href: null }} />
+      <Tabs.Screen name="chat/[room]" options={{ href: null }} />
     </Tabs>
   );
 }

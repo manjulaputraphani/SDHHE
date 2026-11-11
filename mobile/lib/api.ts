@@ -104,6 +104,110 @@ export type ActivityRow = {
   summary: string;
 };
 
+/** One item of the financial-year closing stock (web ClosingStockRow). */
+export type ClosingStockRow = {
+  itemId: number;
+  name: string;
+  unit: string;
+  qtyBase: number;
+  avgCostPaise: number;
+  valuePaise: number;
+};
+
+/** GET /api/reports/fin-year — the year summary (web FinYearReport). */
+export type FinYearReport = {
+  finYear: string;
+  startDate: string;
+  endDate: string;
+  turnoverPaise: number;
+  discountsPaise: number;
+  gstPaise: number;
+  salesCount: number;
+  purchaseValuePaise: number;
+  purchaseExpensesPaise: number;
+  totalPurchasesPaise: number;
+  cogsPaise: number;
+  grossProfitPaise: number;
+  saleExpensesPaise: number;
+  generalExpensesPaise: number;
+  netProfitPaise: number;
+  closingStock: ClosingStockRow[];
+  closingStockQtyBase: number;
+  closingStockValuePaise: number;
+};
+
+/** GET /api/reports/deals — per-deal profit (web DealProfit). */
+export type DealProfit = {
+  saleId: number;
+  billNo: string;
+  date: string;
+  customerName: string | null;
+  saleValuePaise: number;
+  discountPaise: number;
+  cogsPaise: number;
+  grossProfitPaise: number;
+  saleExpensesPaise: number;
+  netProfitPaise: number;
+  profitPercent: number;
+  lines: Array<{
+    itemName: string;
+    qtyBase: number;
+    unit: string;
+    ratePaise: number;
+    avgCostPaise: number;
+    saleValuePaise: number;
+    cogsPaise: number;
+    profitPaise: number;
+    profitPercent: number;
+  }>;
+};
+
+/** Supplier master row (web Supplier). */
+export type Supplier = { id: number; name: string; phone: string | null };
+
+/** GET /api/supplier-dues — raw SQL, snake_case (web SupplierWithDues). */
+export type SupplierWithDues = Supplier & {
+  total_purchased_paise: number;
+  total_paid_paise: number;
+  outstanding_paise: number;
+};
+
+/** GET /api/supplier-payments (web SupplierPaymentRow). */
+export type SupplierPaymentRow = {
+  id: number;
+  purchase_id: number;
+  purchase_date: string;
+  item_name: string;
+  amount_paise: number;
+  payment_date: string;
+  payment_mode: string | null;
+  note: string | null;
+};
+
+/** GET /api/users — a team member (web Member). */
+export type Member = {
+  id: number;
+  name: string;
+  phone: string;
+  role: "owner" | "ca" | "staff";
+  active: boolean;
+  pending: boolean;
+  accessUntil: string | null;
+};
+
+/** GET /api/usage — who logged in and how long (web UsageRow). */
+export type UsageRow = {
+  userId: number;
+  name: string;
+  phone: string;
+  role: string;
+  sessions: number;
+  activeSeconds: number;
+  openSessions: number;
+  lastLoginAt: string | null;
+  lastLogoutAt: string | null;
+};
+
 export type AiTurn = { role: "user" | "assistant"; content: string };
 
 type RequestOptions = { method?: "POST" | "PUT" | "PATCH" | "DELETE"; body?: Record<string, unknown> };
@@ -356,12 +460,43 @@ export const api = {
   expenseCategories: () =>
     request<{ categories: Array<{ category: string; total: string }> }>("/api/stats/expense-categories"),
   rotation: () => request<{ rotation: RotationSummary }>("/api/rotation"),
-  activity: (limit = 4) => request<{ activity: ActivityRow[] }>(`/api/activity?limit=${limit}`),
+  activity: (limit = 25, offset = 0) =>
+    request<{ activity: ActivityRow[] }>(`/api/activity?limit=${limit}&offset=${offset}`),
   aiChat: (message: string, history: AiTurn[]) =>
     request<{ answer: string }>("/api/ai/chat", { method: "POST", body: { message, history } }),
 
-  users: () =>
-    request<{ users: { id: number; name: string; phone: string; role: string; active: boolean }[] }>("/api/users"),
+  users: () => request<{ users: Member[] }>("/api/users"),
+
+  // ---- Team (owner member management) ----
+  addUser: (name: string, phone: string, password: string, role: "owner" | "ca" | "staff" = "staff", accessUntil?: string) =>
+    request<{ user: Member }>("/api/users", { method: "POST", body: { name, phone, password, role, accessUntil } }),
+  setUserRole: (id: number, role: "owner" | "ca" | "staff") =>
+    request<{ ok: boolean }>(`/api/users/${id}/role`, { method: "POST", body: { role } }),
+  approveUser: (id: number, role: "owner" | "ca" | "staff") =>
+    request<{ ok: boolean }>(`/api/users/${id}/approve`, { method: "POST", body: { role } }),
+  rejectUser: (id: number) =>
+    request<{ ok: boolean }>(`/api/users/${id}/reject`, { method: "POST" }),
+  resetUserPassword: (id: number, password: string) =>
+    request<{ ok: boolean }>(`/api/users/${id}/password`, { method: "POST", body: { password } }),
+  setUserActive: (id: number, active: boolean) =>
+    request<{ ok: boolean }>(`/api/users/${id}/active`, { method: "POST", body: { active } }),
+  usage: () => request<{ usage: UsageRow[] }>("/api/usage"),
+
+  // ---- Reports (financial year) ----
+  finYears: () => request<{ finYears: string[] }>("/api/reports/fin-years"),
+  finYearReport: (finYear: string) =>
+    request<{ report: FinYearReport }>(`/api/reports/fin-year?fy=${encodeURIComponent(finYear)}`),
+  dealProfits: (finYear: string) =>
+    request<{ deals: DealProfit[] }>(`/api/reports/deals?fy=${encodeURIComponent(finYear)}`),
+
+  // ---- Suppliers ----
+  suppliers: () => request<{ suppliers: Supplier[] }>("/api/suppliers"),
+  createSupplier: (body: { name: string; phone?: string }) =>
+    request<{ supplier: Supplier }>("/api/suppliers", { method: "POST", body }),
+  supplierDues: () => request<{ dues: SupplierWithDues[] }>("/api/supplier-dues"),
+  recordSupplierPayment: (body: { purchaseId: number; amountPaise: number; paymentDate: string; paymentMode?: string; note?: string }) =>
+    request<{ ok: boolean }>("/api/supplier-payments", { method: "POST", body }),
+  supplierPayments: () => request<{ payments: SupplierPaymentRow[] }>("/api/supplier-payments"),
 
   chatGroupMembers: (room: string) =>
     request<{ members: { id: number; name: string; role: string; lastSeenAt?: string | null }[] }>(
