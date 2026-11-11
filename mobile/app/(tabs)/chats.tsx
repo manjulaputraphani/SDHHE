@@ -150,7 +150,7 @@ export default function ChatsScreen() {
       const { conversation } = await api.startConversation(member.id);
       setNewOpen(false);
       router.push({
-        pathname: "/(tabs)/chat/[room]",
+        pathname: "/chat/[room]",
         params: { room: conversation.room, title: member.name },
       });
     } catch (err) {
@@ -241,7 +241,7 @@ export default function ChatsScreen() {
               activeOpacity={0.7}
               onPress={() =>
                 router.push({
-                  pathname: "/(tabs)/chat/[room]",
+                  pathname: "/chat/[room]",
                   params: { room: conversation.room, title: name },
                 })
               }

@@ -46,14 +46,14 @@ export default function MoreScreen() {
   }
 
   const allTiles: Tile[] = [
-    { label: "Stock Check", module: "stock", icon: "archive", tint: "accentSoft", onPress: () => router.push("/(tabs)/stock") },
-    { label: "Items", module: "items", icon: "cube", tint: "surface3", onPress: () => router.push("/(tabs)/items") },
-    { label: "Purchases", module: "purchases", icon: "pricetags", tint: "surface3", onPress: () => router.push("/(tabs)/purchases") },
-    { label: "Expenses", module: "expenses", icon: "cash", tint: "surface3", onPress: () => router.push("/(tabs)/expenses") },
-    { label: "Supplier dues", module: "suppliers", icon: "wallet", tint: "surface3", onPress: () => router.push("/(tabs)/suppliers") },
-    { label: "Reports", module: "reports", icon: "bar-chart", tint: "accentSoft", onPress: () => router.push("/(tabs)/reports") },
-    { label: "Activity", module: "activity", icon: "pulse", tint: "accentSoft", onPress: () => router.push("/(tabs)/activity") },
-    { label: "Team", module: "team", icon: "people", tint: "accentSoft", onPress: () => router.push("/(tabs)/team") },
+    { label: "Stock Check", module: "stock", icon: "archive", tint: "accentSoft", onPress: () => router.push("/stock") },
+    { label: "Items", module: "items", icon: "cube", tint: "surface3", onPress: () => router.push("/items") },
+    { label: "Purchases", module: "purchases", icon: "pricetags", tint: "surface3", onPress: () => router.push("/purchases") },
+    { label: "Expenses", module: "expenses", icon: "cash", tint: "surface3", onPress: () => router.push("/expenses") },
+    { label: "Supplier dues", module: "suppliers", icon: "wallet", tint: "surface3", onPress: () => router.push("/suppliers") },
+    { label: "Reports", module: "reports", icon: "bar-chart", tint: "accentSoft", onPress: () => router.push("/reports") },
+    { label: "Activity", module: "activity", icon: "pulse", tint: "accentSoft", onPress: () => router.push("/activity") },
+    { label: "Team", module: "team", icon: "people", tint: "accentSoft", onPress: () => router.push("/team") },
   ];
   const tiles: Tile[] = allTiles.filter((tile) => {
     // Owner-only screens keep the hard role rule even if permissions lag.

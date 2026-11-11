@@ -25,7 +25,7 @@ export default function LoginScreen() {
     try {
       const user = await api.login(phone, password);
       setUser(user);
-      router.replace("/(tabs)/home");
+      router.replace("/home");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

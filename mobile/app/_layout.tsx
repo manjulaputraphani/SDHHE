@@ -117,7 +117,7 @@ export default function RootLayout(): ReactElement | null {
       | undefined;
     if (lastNotificationResponse.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
     if (typeof data?.room === "string" && data.room) {
-      router.push({ pathname: "/(tabs)/chat/[room]", params: { room: data.room } });
+      router.push({ pathname: "/chat/[room]", params: { room: data.room } });
     } else if (typeof data?.url === "string" && data.url.startsWith("/team-chat")) {
       router.push("/chats");
     }
