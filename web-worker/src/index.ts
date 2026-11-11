@@ -1003,6 +1003,23 @@ const handler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // The native app APK lives in R2 (Workers assets cap out at 25 MiB and
+    // the Expo build is ~77 MiB). Public on purpose, like /sdhhe.apk: the
+    // team downloads it before ever signing in.
+    if (url.pathname === "/sdhhe-mobile.apk" && request.method === "GET") {
+      if (!env.RECEIPTS) return new Response("Not found", { status: 404 });
+      const obj = await env.RECEIPTS.get("apk/sdhhe-mobile.apk");
+      if (!obj) return new Response("Not found", { status: 404 });
+      return new Response(obj.body, {
+        headers: {
+          "content-type": "application/vnd.android.package-archive",
+          "content-length": String(obj.size),
+          "cache-control": "public, max-age=0, must-revalidate",
+          "content-disposition": 'attachment; filename="SDHHE-Mobile.apk"',
+        },
+      });
+    }
+
     if (!url.pathname.startsWith("/api/") && env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
@@ -1013,6 +1030,7 @@ const handler = {
         service: "sdhhe-api",
         databaseConfigured: Boolean(env.DATABASE_URL),
         sessionConfigured: Boolean(env.SESSION_SECRET),
+        receiptsConfigured: Boolean(env.RECEIPTS),
         at: new Date().toISOString(),
       });
     }
