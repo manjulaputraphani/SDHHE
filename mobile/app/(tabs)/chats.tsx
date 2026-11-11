@@ -98,6 +98,7 @@ export default function ChatsScreen() {
   const [creating, setCreating] = useState(false);
 
   const loadingRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     if (loadingRef.current) return; // poll never stacks on a slow fetch
     loadingRef.current = true;
@@ -110,8 +111,11 @@ export default function ChatsScreen() {
       setMembers(people);
       // Feed the global Chats-tab badge at the same time (Dashboard sees it).
       setUnreadTotal(conversations.reduce((n, c) => n + (c.unread > 0 ? c.unread : 0), 0));
-    } catch {
-      // Offline — keep whatever we have.
+      setError(null);
+    } catch (err) {
+      // Surface the reason on screen (session expired / offline / permissions)
+      // — the silent catch left us debugging an empty list blind.
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -216,6 +220,17 @@ export default function ChatsScreen() {
             autoCorrect={false}
           />
         </View>
+      ) : null}
+
+      {error ? (
+        <TouchableOpacity
+          style={[styles.empty, { backgroundColor: theme.errorSoft, borderRadius: 10, marginHorizontal: 12 }]}
+          onPress={() => void load()}
+        >
+          <Text style={{ color: theme.errorInk, fontSize: 13, textAlign: "center" }}>
+            Couldn't load chats: {error} — tap to retry
+          </Text>
+        </TouchableOpacity>
       ) : null}
 
       <FlatList
