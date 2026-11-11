@@ -145,6 +145,32 @@ describe("Team Chat screen (desktop)", () => {
     expect(vi.mocked(chatSend).mock.lastCall?.[2].body).toBe("X\nY");
   });
 
+  it("opens the room on the NEWEST message: the scroll runs after the history paints", async () => {
+    vi.mocked(getChatWorkerUrl).mockResolvedValue("https://worker.dev");
+    vi.mocked(getSecret).mockResolvedValue(JSON.stringify({ token: "t", expiresAt: Date.now() + 60_000 }));
+    vi.mocked(chatMessages).mockResolvedValue([
+      { ...MESSAGE, id: 7, body: "Oldest line" },
+      { ...MESSAGE, id: 8, body: "Newest line" },
+    ]);
+    vi.mocked(chatReceipts).mockResolvedValue({ receipts: [], pending: 0 });
+
+    // Record whether the message list was already on screen when the chat
+    // scrolled — scrolling the PREVIOUS DOM leaves the room on the first message.
+    const paintedAtScroll: boolean[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function () {
+      paintedAtScroll.push(document.body.textContent?.includes("Newest line") ?? false);
+    };
+    try {
+      renderPage();
+      await screen.findByText("Newest line");
+      await waitFor(() => expect(paintedAtScroll.length).toBeGreaterThan(0));
+      expect(paintedAtScroll).toContain(true);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("lists the conversations and switches to a private chat", async () => {
     vi.mocked(getChatWorkerUrl).mockResolvedValue("https://worker.dev");
     vi.mocked(getSecret).mockResolvedValue(JSON.stringify({ token: "t", expiresAt: Date.now() + 60_000 }));

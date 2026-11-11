@@ -359,6 +359,18 @@ export default function TeamChat({ user, initialRoom }: Props) {
     // jsdom has no scrollIntoView — the guard keeps the tests quiet.
     bottomRef.current?.scrollIntoView?.({ block: "end" });
   }, []);
+  /** Scroll requests run AFTER React paints the new rows: scrolling right
+   * after setMessages() hits the previous DOM (bottomRef still empty), so a
+   * room opened on its FIRST message instead of the newest one. */
+  const wantBottomRef = useRef(false);
+  const requestBottom = useCallback(() => {
+    wantBottomRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!wantBottomRef.current) return;
+    wantBottomRef.current = false;
+    scrollToBottom();
+  }, [messages, receipts, scrollToBottom]);
 
   /** The conversations and the people who may be chatted with. */
   const loadConversations = useCallback(async () => {
@@ -492,13 +504,13 @@ export default function TeamChat({ user, initialRoom }: Props) {
       ]);
       setMessages(history.messages);
       setReceipts(pending.receipts);
-      scrollToBottom();
+      requestBottom();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingRoom(false);
     }
-  }, [room, scrollToBottom]);
+  }, [room, requestBottom]);
 
   useEffect(() => {
     setMessages([]);
@@ -614,7 +626,7 @@ export default function TeamChat({ user, initialRoom }: Props) {
                 list.includes(frame.message!.id) ? list : [...list, frame.message!.id],
               );
             } else {
-              scrollToBottom();
+              requestBottom();
             }
             // The message reached this device — tell the sender. NEVER for my
             // own message: the sender gets no receipt for it.
@@ -699,7 +711,7 @@ export default function TeamChat({ user, initialRoom }: Props) {
             });
             // An approver sees the new receipt at once (T-16.3).
             if (canApprove) toggleApprovals(true);
-            scrollToBottom();
+            requestBottom();
           }
           if (frame.type === "presence" && frame.users) setPresence(frame.users);
           if (frame.type === "hello" && frame.presence) setPresence(frame.presence);
@@ -714,7 +726,7 @@ export default function TeamChat({ user, initialRoom }: Props) {
       closed = true;
       socket?.close();
     };
-  }, [token, room, scrollToBottom, loadConversations, loadGroupMembers]);
+  }, [token, room, requestBottom, loadConversations, loadGroupMembers]);
 
   /** Is the reader at the bottom of the room? (the jump button depends on it) */
   const onScroll = useCallback(() => {
@@ -1001,7 +1013,7 @@ export default function TeamChat({ user, initialRoom }: Props) {
       setDraft("");
       setPolishCard(null);
       setReplyingTo(null);
-      scrollToBottom();
+      requestBottom();
       showToast("Message sent", "success", 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -105,6 +105,18 @@ export default function TeamChat() {
     // jsdom has no scrollIntoView — the guard keeps the tests quiet.
     bottomRef.current?.scrollIntoView?.({ block: "end" });
   }, []);
+  /** Scroll requests run AFTER React paints the new rows: scrolling right
+   * after setMessages() hits the previous DOM (bottomRef still empty), so the
+   * room opened on its FIRST message instead of the newest one (T-bug). */
+  const wantBottomRef = useRef(false);
+  const requestBottom = useCallback(() => {
+    wantBottomRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!wantBottomRef.current) return;
+    wantBottomRef.current = false;
+    scrollToBottom();
+  }, [messages, receipts, scrollToBottom]);
 
   /** Where the chat lives and who we are there. */
   useEffect(() => {
@@ -145,11 +157,11 @@ export default function TeamChat() {
       setMembers(people);
       setMessages(history);
       setReceipts(pending.receipts);
-      scrollToBottom();
+      requestBottom();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [workerUrl, token, room, scrollToBottom]);
+  }, [workerUrl, token, room, requestBottom]);
 
   useEffect(() => {
     void load();
@@ -173,7 +185,7 @@ export default function TeamChat() {
             if (!atBottomRef.current) {
               setMissed((count) => count + 1);
             } else {
-              scrollToBottom();
+              requestBottom();
               void markChatRead(workerUrl, token, room, frame.message.id).catch(() => undefined);
             }
             void chatDelivered(workerUrl, token, frame.message.id).catch(() => undefined);
@@ -204,7 +216,7 @@ export default function TeamChat() {
               prev.some((m) => m.id === frame.message!.id) ? prev : [...prev, frame.message!],
             );
             setReceipts((prev) => [frame.receipt!, ...prev.filter((r) => r.id !== frame.receipt!.id)]);
-            scrollToBottom();
+            requestBottom();
           }
           if (frame.type === "presence" && frame.users) {
             setPresence(frame.users.map((u) => (u as { name: string }).name));
@@ -229,7 +241,7 @@ export default function TeamChat() {
       closed = true;
       socket?.close();
     };
-  }, [workerUrl, token, room, scrollToBottom]);
+  }, [workerUrl, token, room, requestBottom]);
 
 
   /** Is the reader at the bottom of the room? (the jump button depends on it) */
@@ -330,7 +342,7 @@ export default function TeamChat() {
       const { message } = await chatSend(workerUrl, token, { kind: "text", body: text, room });
       setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       setDraft("");
-      scrollToBottom();
+      requestBottom();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

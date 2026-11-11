@@ -456,6 +456,40 @@ test.describe("Team Chat", () => {
     await expect(page.getByText("₹450.00").first()).toBeVisible();
   });
 
+  test("opens the room on the NEWEST message, not the first one", async ({ page }) => {
+    await mockChat(page, OWNER);
+    // A long history so the list is really scrollable — a 2-message room
+    // cannot tell top from bottom.
+    const tall = Array.from({ length: 80 }, (_, i) => ({
+      ...MESSAGES[0],
+      id: 1000 + i,
+      body: `Line ${i}`,
+      createdAt: new Date(Date.now() - (80 - i) * 60_000).toISOString(),
+    }));
+    tall[tall.length - 1] = { ...tall[tall.length - 1], body: "NEWEST message here" };
+    // Registered after mockChat → checked first; everything but GET still
+    // falls through to the shared chat mock.
+    await page.route("**/api/chat/messages**", (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ json: { messages: tall } });
+      }
+      return route.fallback();
+    });
+    await openChat(page);
+
+    await expect(page.getByText("NEWEST message here")).toBeVisible();
+    // The list sits within 80px of the bottom — the app's own at-bottom margin.
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const el = document.querySelector<HTMLElement>(".chat-scroll");
+          if (!el) return -1;
+          return el.scrollHeight - el.scrollTop - el.clientHeight;
+        }),
+      )
+      .toBeLessThanOrEqual(80);
+  });
+
   test("keeps the address at /team-chat", async ({ page }) => {
     await mockChat(page, OWNER);
     await openChat(page);

@@ -203,26 +203,52 @@ export default function ChatRoomScreen() {
   // list's own scroll state reports we are genuinely at the bottom.
   const initiallyScrolledRoomRef = useRef<string | null>(null);
   const initialScrollTickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** False until the first open has confirmed the bottom — while the room is
+   * opening, content growth keeps the list pinned to the newest message. */
+  const initialScrollDoneRef = useRef(false);
+  /** Last scroll/layout metrics. atBottomRef stays stale-true until the first
+   * scroll event (empty content measures as "at the bottom"), which used to
+   * stop the retries while the rows were still hydrating. */
+  const scrollMetricsRef = useRef({ offset: 0, content: 0, viewport: 0 });
   useEffect(() => {
     if (loading || messages.length === 0) return;
     if (initiallyScrolledRoomRef.current === room) return;
     initiallyScrolledRoomRef.current = room;
+    initialScrollDoneRef.current = false;
+    // Re-armed for another room: drop the retry left over from the old one.
+    if (initialScrollTickRef.current) clearTimeout(initialScrollTickRef.current);
     let tries = 0;
     const tick = () => {
       tries += 1;
-      // The first few scrolls unconditionally pin the bottom (atBottomRef can
-      // still be stale-true before the first scroll event); after that, only
-      // retry while the list says we are NOT at the bottom.
-      if (tries > 3 && atBottomRef.current) return;
+      const m = scrollMetricsRef.current;
+      // Confirmed only by a REAL layout + scroll event — a stale atBottomRef
+      // true (no event yet) must not end the retries early.
+      const confirmed = m.content > 0 && m.viewport > 0 && m.content - m.viewport - m.offset < 80;
+      if (tries > 3 && confirmed) {
+        initialScrollDoneRef.current = true;
+        return;
+      }
       listRef.current?.scrollToEnd({ animated: false });
-      if (tries >= 16) return;
+      if (tries >= 16) {
+        initialScrollDoneRef.current = true;
+        return;
+      }
       initialScrollTickRef.current = setTimeout(tick, 250);
     };
     initialScrollTickRef.current = setTimeout(tick, 150);
-    return () => {
-      if (initialScrollTickRef.current) clearTimeout(initialScrollTickRef.current);
-    };
   }, [loading, messages, room]);
+
+  // The retry timer must OUTLIVE `messages` updates: this effect used to
+  // return a cleanup tied to `messages`, so the first WS read/receipt frame
+  // cancelled the pending tick and the per-room guard then refused to re-arm
+  // it — the room stayed open on its FIRST message. Only unmount clears it
+  // now (a room switch re-arms and clears above).
+  useEffect(
+    () => () => {
+      if (initialScrollTickRef.current) clearTimeout(initialScrollTickRef.current);
+    },
+    [],
+  );
 
   // Mark the room as read when this screen opens.
   useEffect(() => {
@@ -747,6 +773,12 @@ export default function ChatRoomScreen() {
   /** FlatList onScroll — track the bottom for the divider + jump FAB. */
   function handleScroll(event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    // Feed the open-room retry loop — it must not trust a stale atBottomRef.
+    scrollMetricsRef.current = {
+      offset: contentOffset.y,
+      content: contentSize.height,
+      viewport: layoutMeasurement.height,
+    };
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
     const bottom = distanceFromBottom < 80;
     if (bottom !== atBottomRef.current) {
@@ -1146,10 +1178,15 @@ export default function ChatRoomScreen() {
           return "isDay" in m ? m.key + index : String(m.id);
         }}
         contentContainerStyle={{ padding: 12, paddingBottom: 80 }}
-        onContentSizeChange={() => {
-          // Follow the newest message — but never yank the reader while
-          // they were scrolling up (atBottomRef tracks it).
-          if (atBottomRef.current) listRef.current?.scrollToEnd({ animated: false });
+        onContentSizeChange={(_width, height) => {
+          scrollMetricsRef.current = { ...scrollMetricsRef.current, content: height };
+          // Follow the newest message — while the room is opening also until
+          // the first scroll has CONFIRMED the bottom (Android hydrates rows
+          // late) — but never yank the reader who was scrolling up
+          // (atBottomRef tracks it, the open phase is capped by the retries).
+          if (atBottomRef.current || !initialScrollDoneRef.current) {
+            listRef.current?.scrollToEnd({ animated: false });
+          }
         }}
         onScroll={handleScroll}
         scrollEventThrottle={16}
