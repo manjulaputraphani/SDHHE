@@ -38,11 +38,19 @@ export default function TabsLayout(): React.ReactElement {
   // The Chats tab badge lives on EVERY screen (Dashboard included) — the same
   // way the web sidebar carries the unread chip.
   const unreadTotal = useSyncExternalStore(subscribeUnreadTotal, getUnreadTotal);
-  // Stock is not applicable for CA (role matrix) — hide the Stock tab for
-  // roles without stock view. Visible tabs stay navigable; only the CA case
-  // uses href:null (CA never taps it, the tile is hidden too).
-  const stockPerms = (user?.permissions as Record<string, { view?: boolean }> | undefined)?.stock;
-  const stockVisible = stockPerms ? Boolean(stockPerms.view) : user?.role !== "ca";
+
+  // Permission-aware tabs (same matrix as the web sidebar): a tab shows only
+  // when the role's matrix allows it. More stays for everyone (it carries
+  // settings + sign out). Missing rows count as denied; the owner always has
+  // everything. Permissions refresh at every sign-in.
+  const perms = user?.permissions as
+    | Record<string, Record<string, boolean | undefined>>
+    | undefined;
+  const can = (moduleKey: string, action = "view"): boolean => {
+    const set = perms?.[moduleKey] as { [action: string]: boolean } | undefined;
+    if (set) return Boolean(set[action]);
+    return user?.role === "owner";
+  };
 
   return (
     <Tabs
@@ -61,6 +69,7 @@ export default function TabsLayout(): React.ReactElement {
         name="home"
         options={{
           title: "Home",
+          href: can("dashboard") ? undefined : null,
           tabBarIcon: ({ color }) => <TabGlyph label="home" colour={color} />,
         }}
       />
@@ -68,6 +77,7 @@ export default function TabsLayout(): React.ReactElement {
         name="newbill"
         options={{
           title: "New Bill",
+          href: can("billing", "create") ? undefined : null,
           tabBarIcon: ({ color }) => <TabGlyph label="newbill" colour={color} />,
         }}
       />
@@ -75,6 +85,7 @@ export default function TabsLayout(): React.ReactElement {
         name="chats"
         options={{
           title: "Chats",
+          href: can("chat") ? undefined : null,
           tabBarBadge: unreadTotal > 0 ? unreadTotal : undefined,
           tabBarBadgeStyle: { backgroundColor: theme.badgeContact, color: theme.badgeText, fontSize: 10 },
           tabBarIcon: ({ color }) => <TabGlyph label="chats" colour={color} />,
@@ -84,7 +95,7 @@ export default function TabsLayout(): React.ReactElement {
         name="stock"
         options={{
           title: "Stock",
-          href: stockVisible ? undefined : null,
+          href: can("stock") ? undefined : null,
           tabBarIcon: ({ color }) => <TabGlyph label="stock" colour={color} />,
         }}
       />
