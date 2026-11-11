@@ -633,7 +633,7 @@ function webPushConfig(env: Env) {
 async function pushToTheTeam(
   env: Env,
   exceptUserId: number,
-  message: { title: string; body: string; url?: string },
+  message: { title: string; body: string; url?: string; messageId?: number; room?: string },
 ): Promise<void> {
   const db = getDb(env.DATABASE_URL as string);
   console.log("push: pushToTheTeam, exceptUserId", exceptUserId);
@@ -646,7 +646,7 @@ async function pushToUsers(
   env: Env,
   userIds: number[],
   exceptUserId: number,
-  message: { title: string; body: string; url?: string },
+  message: { title: string; body: string; url?: string; messageId?: number; room?: string },
 ): Promise<void> {
   const db = getDb(env.DATABASE_URL as string);
   console.log("push: pushToUsers, userIds", JSON.stringify(userIds), "exceptUserId", exceptUserId);
@@ -2322,6 +2322,7 @@ const handler = {
               title: `${session.name} wrote in the shop room`,
               body: input.body.slice(0, 120),
               url: "/team-chat?notify=1",
+              room,
             });
             await pushNtfy(
               env.NTFY_TOPIC,
@@ -2335,6 +2336,7 @@ const handler = {
               title: `${session.name} wrote in ${title}`,
               body: input.body.slice(0, 120),
               url: "/team-chat?notify=1",
+              room,
             });
           } else {
             // Direct chat (1:1): push to the other member only — text-free alert
@@ -2350,6 +2352,7 @@ const handler = {
                   body: session.name,
                   url: "/team-chat?notify=1",
                   messageId: message.id,
+                  room, // the tap opens THIS 1-to-1 chat
                 });
                 await pushNtfy(
                   env.NTFY_TOPIC,

@@ -33,14 +33,18 @@ export const EXPO_CHUNK = 100;
 /** Build one Expo message per token (chunked lists come straight from here). */
 export function buildExpoPushMessages(
   tokens: string[],
-  message: { title: string; body: string; url?: string; messageId?: number },
+  message: { title: string; body: string; url?: string; messageId?: number; room?: string },
 ): ExpoPushMessage[] {
   return tokens.map((to) => ({
     to,
     title: message.title,
     body: message.body,
     sound: "default" as const,
-    data: { url: message.url, messageId: message.messageId },
+    data: {
+      url: message.url,
+      messageId: message.messageId,
+      room: message.room,
+    },
   }));
 }
 

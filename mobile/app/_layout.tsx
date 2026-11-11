@@ -93,20 +93,25 @@ export default function RootLayout(): ReactElement | null {
     return () => clearInterval(poll);
   }, [user]);
 
-  // A tapped notification opens the chat list — the worker's data.url is the
-  // web route ("/team-chat?notify=1"), which maps onto the (tabs) chats here.
+  // A tapped notification opens the exact chat when the push carries the room
+  // (`data.room`, Phase 18), otherwise the chat list. The push's url field is
+  // the web route ("/team-chat?notify=1"). The gate on user matters: during a
+  // cold start the "/"→Dashboard redirect and this push would otherwise race.
   const router = useRouter();
   const lastNotificationResponse = Notifications.useLastNotificationResponse();
   useEffect(() => {
-    if (!lastNotificationResponse) return;
+    if (loading || !user || !lastNotificationResponse) return;
     const data = lastNotificationResponse.notification.request.content.data as
-      | { url?: string }
+      | { url?: string; room?: string }
       | undefined;
-    if (lastNotificationResponse.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER && typeof data?.url === "string") {
-      router.push(data.url.startsWith("/team-chat") ? "/chats" : (data.url as never));
-      Notifications.clearLastNotificationResponse();
+    if (lastNotificationResponse.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+    if (typeof data?.room === "string" && data.room) {
+      router.push({ pathname: "/(tabs)/chat/[room]", params: { room: data.room } });
+    } else if (typeof data?.url === "string" && data.url.startsWith("/team-chat")) {
+      router.push("/chats");
     }
-  }, [lastNotificationResponse, router]);
+    Notifications.clearLastNotificationResponse();
+  }, [lastNotificationResponse, user, loading, router]);
 
   const auth: AuthContextType = useMemo(
     () => ({ user, theme, themeMode, setThemeMode, signOut, setUser }),
