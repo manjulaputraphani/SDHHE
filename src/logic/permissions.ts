@@ -96,7 +96,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
     reports: ["view", "export"],
     items: ["view"],
     customers: ["view"],
-    stock: ["view"],
+    /** Stock is not applicable for CA (owner decision, 2026-11-11). */
+    stock: [],
     /** CA may also approve or reject a receipt in the Team Chat. */
     chat: ["view", "create", "edit"],
   }),

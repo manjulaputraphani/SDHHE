@@ -34,10 +34,15 @@ function TabGlyph({ label, colour }: { label: TabLabel; colour?: ColorValue | nu
 }
 
 export default function TabsLayout(): React.ReactElement {
-  const { theme } = useAuth();
+  const { theme, user } = useAuth();
   // The Chats tab badge lives on EVERY screen (Dashboard included) — the same
   // way the web sidebar carries the unread chip.
   const unreadTotal = useSyncExternalStore(subscribeUnreadTotal, getUnreadTotal);
+  // Stock is not applicable for CA (role matrix) — hide the Stock tab for
+  // roles without stock view. Visible tabs stay navigable; only the CA case
+  // uses href:null (CA never taps it, the tile is hidden too).
+  const stockPerms = (user?.permissions as Record<string, { view?: boolean }> | undefined)?.stock;
+  const stockVisible = stockPerms ? Boolean(stockPerms.view) : user?.role !== "ca";
 
   return (
     <Tabs
@@ -79,6 +84,7 @@ export default function TabsLayout(): React.ReactElement {
         name="stock"
         options={{
           title: "Stock",
+          href: stockVisible ? undefined : null,
           tabBarIcon: ({ color }) => <TabGlyph label="stock" colour={color} />,
         }}
       />
