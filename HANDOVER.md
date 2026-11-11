@@ -1,6 +1,6 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-11 by OpenCode (PWA removed; APK is the only installable app + legacy-shortcut hint added)
+Last updated: 2026-11-11 by OpenCode (mobile app mirrored to GitHub `manjulaputraphani/Mobile_app` — subtree export, mobile/README.md added)
 Tool: OpenCode
 
 ## Current state
