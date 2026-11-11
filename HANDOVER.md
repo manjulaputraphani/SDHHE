@@ -1,9 +1,10 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-10 by OpenCode
+Last updated: 2026-11-11 by OpenCode (PWA install removed — APK is the only installable app)
 Tool: OpenCode
 
 ## Current state
+- **PWA install removed from web (2026-11-11)** — `web/index.html` lost `<link rel=manifest>` + all `mobile-web-app-capable` metas, so the site no longer offers "Install app"/Add to Home Screen. Team installs `sdhhe.apk` instead. Keep serving `/manifest.webmanifest` (bubblewrap APK rebuild fetches it) and `/sw.js` (team-chat push worker). Deployed `wrangler 4f9b2b88`.
 - **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound). Owner's real-device test is due.
 - **Phase 3+4 committed** (`facb3b9`, `beca8ed`) — all business screens + billing + EAS deploy config.
 - **`mobile/app.json` fixed `19daef5`** — SDK 58 schema: top-level `splash` removed → `expo-splash-screen` plugin; adaptive icon paths → `android-icon-*.png`. **`expo-doctor` 20/20, `tsc` clean.**

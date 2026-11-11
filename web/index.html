@@ -7,14 +7,13 @@
     <meta name="theme-color" content="#1C1612" media="(prefers-color-scheme: dark)" />
     <title>SREE DURGA HARIHARA ENTERPRISES</title>
 
-    <!-- Icons + PWA (Android install banner + Apple Add to Home Screen). -->
+    <!-- Icons only. The PWA install path was removed 2026-11-11 — the shop
+         distributes the Android app (sdhhe.apk) instead, so the manifest link
+         and mobile-web-app metas are gone. Keep /manifest.webmanifest on the
+         server: `bubblewrap build` in ~/sdhhe-android-twa fetches it to
+         rebuild the APK, and sw.js is still the team-chat push worker. -->
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="SDHHE" />
 
     <!-- The fonts never block the first paint (a slow phone network used to
          leave the login page blank until the stylesheet arrived). -->
