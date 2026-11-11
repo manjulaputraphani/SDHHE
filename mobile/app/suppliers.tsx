@@ -20,6 +20,7 @@ import {
   Pressable,
   RefreshControl,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
@@ -46,6 +47,7 @@ function formatDate(date: string): string {
 
 export default function SuppliersScreen() {
   const { theme, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const canCreate = user?.role === "owner" || user?.role === "staff";
 

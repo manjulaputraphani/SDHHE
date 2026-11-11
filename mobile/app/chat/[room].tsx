@@ -32,6 +32,7 @@ import {
   Alert,
   Image,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, type ChatMessage, type ChatPin, type ChatReceipt } from "../../lib/api";
 import { useAuth } from "../_layout";
@@ -105,6 +106,7 @@ function nextTempId(): number {
 
 export default function ChatRoomScreen() {
   const { theme, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { room, title } = useLocalSearchParams<{ room: string; title?: string }>();
   const [messages, setMessages] = useState<LocalMessage[]>([]);

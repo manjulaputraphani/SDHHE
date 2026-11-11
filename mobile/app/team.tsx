@@ -20,6 +20,7 @@ import {
   RefreshControl,
   Alert,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
@@ -74,6 +75,7 @@ function roleColour(role: string): { bg: string; ink: string } {
 
 export default function TeamScreen() {
   const { theme, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [members, setMembers] = useState<Member[]>([]);

@@ -21,6 +21,7 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, type ExpenseRow } from "../lib/api";
 import { useAuth } from "./_layout";
@@ -53,6 +54,7 @@ const EMPTY_DRAFT: Draft = { date: todayIso(), type: "general", category: "", am
 
 export default function ExpensesScreen() {
   const { theme, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -309,7 +311,15 @@ export default function ExpensesScreen() {
         }
       >
         <View style={styles.header}>
-          <Text style={[styles.heading, { color: theme.ink }]}>Expenses</Text>
+          <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={22} color={theme.ink} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+            <Text style={[styles.heading, { color: theme.ink }]}>Expenses</Text>
+          </View>
         </View>
 
         {/* ---- Add expense (web top card) ---- */}

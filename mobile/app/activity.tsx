@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
@@ -49,6 +50,7 @@ function dotColour(event: string): string {
 
 export default function ActivityScreen() {
   const { theme } = useAuth();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [rows, setRows] = useState<ActivityRow[]>([]);

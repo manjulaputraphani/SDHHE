@@ -24,6 +24,7 @@ import {
   Modal,
   Pressable,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { api, type ItemRow, type PurchaseRow } from "../lib/api";
@@ -69,6 +70,7 @@ const EMPTY_DRAFT: Draft = { itemId: "", qty: "", rate: "", expenses: "", suppli
 
 export default function PurchasesScreen() {
   const { theme, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const canCreate = user?.role === "owner" || user?.role === "staff";
 
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -220,8 +222,16 @@ export default function PurchasesScreen() {
         }
       >
         <View style={styles.header}>
-          <Text style={[styles.heading, { color: theme.ink }]}>Purchases</Text>
+          <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={22} color={theme.ink} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+            <Text style={[styles.heading, { color: theme.ink }]}>Purchases</Text>
           <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Record stock you buy from suppliers.</Text>
+        </View>
         </View>
 
         {/* ---- Add form (web top card) ---- */}

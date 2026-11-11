@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
@@ -35,6 +36,7 @@ function formatDate(date: string): string {
 
 export default function ReportsScreen() {
   const { theme } = useAuth();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [years, setYears] = useState<string[]>([]);

@@ -24,6 +24,7 @@ import {
   Pressable,
   Alert,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { api, type BatchLedger, type ItemRow } from "../lib/api";
@@ -75,6 +76,7 @@ const EMPTY_FORM: ItemForm = { id: null, name: "", unit: "kg", category: "", hsn
 
 export default function ItemsScreen() {
   const { theme, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const isOwner = user?.role === "owner";
 
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -223,7 +225,13 @@ export default function ItemsScreen() {
         }
       >
         <View style={styles.header}>
-          <View style={{ flex: 1 }}>
+          <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={22} color={theme.ink} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
             <Text style={[styles.heading, { color: theme.ink }]}>Items</Text>
           </View>
           {isOwner && (

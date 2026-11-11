@@ -21,6 +21,7 @@ import {
   Modal,
   Pressable,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { api, type ItemRow, type StockEntryRow } from "../../lib/api";
@@ -72,6 +73,7 @@ function formatDate(date: string): string {
 
 export default function StockScreen() {
   const { theme, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const canCreate = user?.role === "owner" || user?.role === "staff";
 
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -191,10 +193,18 @@ export default function StockScreen() {
         }
       >
         <View style={styles.header}>
-          <Text style={[styles.heading, { color: theme.ink }]}>Stock Check</Text>
+          <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={22} color={theme.ink} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+            <Text style={[styles.heading, { color: theme.ink }]}>Stock Check</Text>
           <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
             Record usage, wastage or the stock counted on the shelf.
           </Text>
+          </View>
         </View>
 
         {/* ---- Entry form (web top card) ---- */}
