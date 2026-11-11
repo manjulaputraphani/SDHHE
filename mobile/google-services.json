@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "987189733393",
+    "project_id": "sdhhe-88e59",
+    "storage_bucket": "sdhhe-88e59.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:987189733393:android:1fb861345d35c347a7e9b0",
+        "android_client_info": {
+          "package_name": "com.sdhhe.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqEK3GaSNzbdZbP-yMG8MQLLm4J4J_4Bk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

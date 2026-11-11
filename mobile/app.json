@@ -22,6 +22,7 @@
     "android": {
       "package": "com.sdhhe.mobile",
       "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
       "allowBackup": true,
       "permissions": [
         "NOTIFICATIONS"
