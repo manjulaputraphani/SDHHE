@@ -6,7 +6,7 @@
  * owner Add/Edit/Delete, and the per-item Lots ledger (purchase batches →
  * sold qty/value → profit → pending) from GET /api/items/:id/batches/ledger.
  */
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   View,
@@ -75,6 +75,7 @@ type ItemForm = {
 const EMPTY_FORM: ItemForm = { id: null, name: "", unit: "kg", category: "", hsnCode: "", minStock: "", imageUrl: "" };
 
 export default function ItemsScreen() {
+  const router = useRouter();
   const { theme, user } = useAuth();
   const insets = useSafeAreaInsets();
   const isOwner = user?.role === "owner";

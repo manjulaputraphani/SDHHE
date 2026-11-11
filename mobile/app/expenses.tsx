@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 /**
  * Expenses screen — web parity.
  *
@@ -6,7 +7,7 @@
  * The list shows the real ExpenseRow fields (the old screen read
  * `title`/`status`, which the API never returns — rows rendered blank).
  */
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   View,
@@ -53,6 +54,7 @@ type Draft = { date: string; type: "general" | "purchase" | "sale"; category: st
 const EMPTY_DRAFT: Draft = { date: todayIso(), type: "general", category: "", amount: "", paidTo: "", note: "" };
 
 export default function ExpensesScreen() {
+  const router = useRouter();
   const { theme, user } = useAuth();
   const insets = useSafeAreaInsets();
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);

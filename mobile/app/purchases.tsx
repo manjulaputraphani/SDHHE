@@ -8,7 +8,7 @@
  * API never returns (GET /api/purchases is raw SQL with name/qty_base/
  * total_paise…), so every row rendered blank.
  */
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   View,
@@ -69,6 +69,7 @@ type Draft = { itemId: number | ""; qty: string; rate: string; expenses: string;
 const EMPTY_DRAFT: Draft = { itemId: "", qty: "", rate: "", expenses: "", supplier: "", date: todayIso() };
 
 export default function PurchasesScreen() {
+  const router = useRouter();
   const { theme, user } = useAuth();
   const insets = useSafeAreaInsets();
   const canCreate = user?.role === "owner" || user?.role === "staff";

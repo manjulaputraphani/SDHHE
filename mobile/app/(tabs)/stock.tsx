@@ -22,6 +22,7 @@ import {
   Pressable,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { api, type ItemRow, type StockEntryRow } from "../../lib/api";
@@ -74,6 +75,7 @@ function formatDate(date: string): string {
 export default function StockScreen() {
   const { theme, user } = useAuth();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const canCreate = user?.role === "owner" || user?.role === "staff";
 
   const [items, setItems] = useState<ItemRow[]>([]);
