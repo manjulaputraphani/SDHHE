@@ -1,9 +1,10 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-11 by OpenCode (PWA install removed — APK is the only installable app)
+Last updated: 2026-11-11 by OpenCode (PWA removed; APK is the only installable app + legacy-shortcut hint added)
 Tool: OpenCode
 
 ## Current state
+- **Legacy-shortcut hint (2026-11-11)** — new `web/src/components/AndroidAppInstall.tsx` used by both sidebars + More sheet. When it detects the OLD home-screen PWA shortcut (standalone display-mode + referrer ≠ `android-app://com.sdhhe.app`), it explains under the 📲 button that Chrome blocks APK downloads inside it and to use Chrome. Deployed `wrangler ae788d41`.
 - **PWA install removed from web (2026-11-11)** — `web/index.html` lost `<link rel=manifest>` + all `mobile-web-app-capable` metas, so the site no longer offers "Install app"/Add to Home Screen. Team installs `sdhhe.apk` instead. Keep serving `/manifest.webmanifest` (bubblewrap APK rebuild fetches it) and `/sw.js` (team-chat push worker). Deployed `wrangler 4f9b2b88`.
 - **Web LIVE `19177dd4`** (push notifications + delivery receipts + notification sound). Owner's real-device test is due.
 - **Phase 3+4 committed** (`facb3b9`, `beca8ed`) — all business screens + billing + EAS deploy config.

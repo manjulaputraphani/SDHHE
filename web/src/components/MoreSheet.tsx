@@ -7,6 +7,7 @@
 import type { ReactNode } from "react";
 import { useBackGuard } from "../lib/mobile";
 import ThemeToggle from "../ThemeToggle";
+import AndroidAppInstall from "./AndroidAppInstall";
 import PushToggle from "./notifications/PushToggle";
 import { IconContrast, IconMoon, IconSignOut, IconSun } from "./icons";
 
@@ -92,13 +93,10 @@ export default function MoreSheet({
             <PushToggle />
           </div>
           {typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent) && (
-            <a
-              href="/sdhhe.apk"
-              download="SDHHE.apk"
+            <AndroidAppInstall
               className="block rounded-lg bg-surface-2 px-3 py-2 text-center text-[11px] font-medium text-ink transition-colors hover:bg-surface-3"
-            >
-              📲 Install the Android app
-            </a>
+              hintClassName="px-3 text-[10px] leading-snug text-muted"
+            />
           )}
           <div className="more-sheet__user">
             <p className="truncate text-sm font-semibold text-ink">{userName}</p>

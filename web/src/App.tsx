@@ -41,6 +41,7 @@ import {
 import { formatDate, formatDateTime } from "./format";
 import ThemeToggle from "./ThemeToggle";
 import { getMode, resolveTheme, setMode, subscribeMode, watchSystemTheme } from "./theme";
+import AndroidAppInstall from "./components/AndroidAppInstall";
 import EmptyState from "./components/EmptyState";
 import FormRow from "./components/FormRow";
 import ItemPicker from "./components/ItemPicker";
@@ -2084,13 +2085,10 @@ export default function App() {
         <div className="relative z-10 mt-auto shrink-0 space-y-3 px-2 pt-6 text-[11px]">
           <ThemeToggle onDark />
           {isAndroid && (
-            <a
-              href="/sdhhe.apk"
-              download="SDHHE.apk"
+            <AndroidAppInstall
               className="block rounded-lg bg-nav-text/10 px-3 py-2 text-center text-[11px] font-medium text-nav-text transition-colors hover:bg-nav-text/20"
-            >
-              📲 Install the Android app
-            </a>
+              hintClassName="px-2 text-[10px] leading-snug text-nav-muted"
+            />
           )}
           <div className="space-y-1">
             <p className="text-nav-muted">{user.name} · {user.role}</p>
@@ -2187,13 +2185,10 @@ export default function App() {
               </nav>
               <div className="relative z-10 mt-auto space-y-2 px-2 pt-6 text-[11px]">
                 {isAndroid && (
-                  <a
-                    href="/sdhhe.apk"
-                    download="SDHHE.apk"
+                  <AndroidAppInstall
                     className="block rounded-lg bg-nav-text/10 px-3 py-2 text-center text-[11px] font-medium text-nav-text transition-colors hover:bg-nav-text/20"
-                  >
-                    📲 Install the Android app
-                  </a>
+                    hintClassName="px-2 text-[10px] leading-snug text-nav-muted"
+                  />
                 )}
                 <ThemeToggle onDark />
                 <p className="text-nav-muted">{user.name} · {user.role}</p>
