@@ -6,13 +6,14 @@
  * and CA never see — or tap — cards that would bounce them elsewhere. Design:
  * 2-column tiles with the module icon, the way the web sidebar reads.
  */
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
 import { useState } from "react";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { useAuth } from "../_layout";
 import type { ThemeColors } from "../../lib/theme";
+import type { ThemeMode } from "../../lib/theme";
 
 type Tile = {
   label: string;
@@ -23,14 +24,14 @@ type Tile = {
 };
 
 export default function MoreScreen() {
-  const { theme, setThemeMode, signOut, user } = useAuth();
+  const { theme, themeMode, setThemeMode, signOut, user } = useAuth();
   const router = useRouter();
-  const [dark, setDark] = useState(false);
 
-  function toggleTheme(value: boolean) {
-    setDark(value);
-    setThemeMode(value ? "dark" : "light");
-  }
+  const MODES: Array<{ value: ThemeMode; label: string }> = [
+    { value: "light", label: "Light" },
+    { value: "dark", label: "Dark" },
+    { value: "contrast", label: "Contrast" },
+  ];
 
   async function handleSignOut() {
     await signOut();
@@ -79,11 +80,25 @@ export default function MoreScreen() {
         <View style={[styles.row, { borderBottomColor: theme.line }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <View style={[styles.tileIcon, { backgroundColor: theme.surface2 }]}>
-              <Ionicons name="moon" size={18} color={theme.ink} />
+              <Ionicons name="contrast" size={18} color={theme.ink} />
             </View>
-            <Text style={{ fontSize: 15, color: theme.ink }}>Dark theme</Text>
+            <Text style={{ fontSize: 15, color: theme.ink }}>Theme</Text>
           </View>
-          <Switch value={dark} onValueChange={toggleTheme} trackColor={{ true: theme.primary }} thumbColor={theme.primary} />
+          <View style={[styles.segRow, { backgroundColor: theme.surface2, borderColor: theme.line }]}>
+            {MODES.map((m) => (
+              <TouchableOpacity
+                key={m.value}
+                style={[styles.seg, themeMode === m.value && { backgroundColor: theme.primary }]}
+                onPress={() => setThemeMode(m.value)}
+              >
+                <Text
+                  style={{ fontSize: 11, fontWeight: "600", color: themeMode === m.value ? theme.onPrimary : theme.ink }}
+                >
+                  {m.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
 
@@ -135,4 +150,6 @@ const styles = StyleSheet.create({
   },
   tileIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   signOutButton: { margin: 12, padding: 14, borderRadius: 12, alignItems: "center" },
+  segRow: { flexDirection: "row", borderWidth: 1, borderRadius: 8, overflow: "hidden" },
+  seg: { paddingHorizontal: 10, paddingVertical: 6 },
 });

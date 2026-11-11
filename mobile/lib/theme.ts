@@ -1,3 +1,4 @@
+import * as SecureStore from "expo-secure-store";
 /**
  * SREE DURGA HARIHARA ENTERPRISES — theme tokens.
  *
@@ -113,4 +114,26 @@ const MODES: Record<ThemeMode, ThemeColors> = {
 
 export function getColors(mode: ThemeMode): ThemeColors {
   return MODES[mode] ?? lightColors;
+}
+
+// ---- Persisted theme choice (Phase 18) ----
+// The mode follows the member across launches; web parity (light/dark/contrast).
+const THEME_KEY = "sdhhe_theme_mode";
+const VALID: ThemeMode[] = ["light", "dark", "contrast"];
+
+export async function loadThemeMode(): Promise<ThemeMode> {
+  try {
+    const stored = await SecureStore.getItemAsync(THEME_KEY);
+    return VALID.includes(stored as ThemeMode) ? (stored as ThemeMode) : "light";
+  } catch {
+    return "light";
+  }
+}
+
+export async function saveThemeMode(mode: ThemeMode): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(THEME_KEY, mode);
+  } catch {
+    // Storage unavailable — theme still applies for this session.
+  }
 }

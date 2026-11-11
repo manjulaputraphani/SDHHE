@@ -12,6 +12,7 @@ import { Stack, Redirect, usePathname, useRouter } from "expo-router";
 
 import { api, type ApiUser } from "../lib/api";
 import { enableMobilePush } from "../lib/push";
+import { loadThemeMode, saveThemeMode } from "../lib/theme";
 import { setUnreadTotal } from "../lib/unreadStore";
 import { getColors, type ThemeColors, type ThemeMode } from "../lib/theme";
 
@@ -60,6 +61,16 @@ export default function RootLayout(): ReactElement | null {
     }
     void check();
   }, []);
+
+  // Theme choice follows the member across launches (SecureStore).
+  useEffect(() => {
+    void loadThemeMode().then((mode) => setThemeMode(mode));
+  }, []);
+
+  function applyThemeMode(mode: ThemeMode) {
+    setThemeMode(mode);
+    void saveThemeMode(mode);
+  }
 
   async function signOut() {
     // Drop the push token BEFORE the cookie dies (best effort — the server
@@ -114,7 +125,7 @@ export default function RootLayout(): ReactElement | null {
   }, [lastNotificationResponse, user, loading, router]);
 
   const auth: AuthContextType = useMemo(
-    () => ({ user, theme, themeMode, setThemeMode, signOut, setUser }),
+    () => ({ user, theme, themeMode, setThemeMode: applyThemeMode, signOut, setUser }),
     [user, theme, themeMode],
   );
 
