@@ -197,21 +197,30 @@ export default function ChatRoomScreen() {
     }
   }, [room]);
 
-  // Open the room on the NEWEST message. Android ignores scrollToEnd() fired
-  // from inside the very first onContentSizeChange (the window is still
-  // hydrating), which left readers staring at the OLDEST messages — so after
-  // the history lands, retry on short timers until the bottom is pinned.
+  // Open the room on the NEWEST message. Android hydrates rows progressively:
+  // scrollToEnd fired too early (even twice) still lands on the OLDEST
+  // messages once more rows render beneath it. So keep scrolling until the
+  // list's own scroll state reports we are genuinely at the bottom.
   const initiallyScrolledRoomRef = useRef<string | null>(null);
+  const initialScrollTickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (loading || messages.length === 0) return;
     if (initiallyScrolledRoomRef.current === room) return;
     initiallyScrolledRoomRef.current = room;
-    listRef.current?.scrollToEnd({ animated: false });
-    const retry = setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 150);
-    const retry2 = setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 500);
+    let tries = 0;
+    const tick = () => {
+      tries += 1;
+      // The first few scrolls unconditionally pin the bottom (atBottomRef can
+      // still be stale-true before the first scroll event); after that, only
+      // retry while the list says we are NOT at the bottom.
+      if (tries > 3 && atBottomRef.current) return;
+      listRef.current?.scrollToEnd({ animated: false });
+      if (tries >= 16) return;
+      initialScrollTickRef.current = setTimeout(tick, 250);
+    };
+    initialScrollTickRef.current = setTimeout(tick, 150);
     return () => {
-      clearTimeout(retry);
-      clearTimeout(retry2);
+      if (initialScrollTickRef.current) clearTimeout(initialScrollTickRef.current);
     };
   }, [loading, messages, room]);
 
