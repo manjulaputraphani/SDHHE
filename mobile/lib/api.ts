@@ -325,6 +325,14 @@ export const api = {
     } catch { /* server may not be reachable */ }
   },
 
+  /** Native push (Phase 18): register this device's Expo push token for chat. */
+  registerPushToken: (token: string) =>
+    request<{ ok: boolean }>("/api/chat/push-token", { method: "POST", body: { token } }),
+
+  /** Drop ALL this member's device tokens (best effort on sign-out, before the cookie dies). */
+  deletePushToken: () =>
+    request<{ ok: boolean }>("/api/chat/push-token", { method: "DELETE" }),
+
   // ---- Conversations (direct + group chat) ----
 
   chatConversations: () =>

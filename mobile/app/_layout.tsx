@@ -7,9 +7,12 @@
 import { useState, useMemo, createContext, useContext, useEffect, type ReactNode, type ReactElement } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { Stack, Redirect, usePathname } from "expo-router";
+import * as Notifications from "expo-notifications";
+import { Stack, Redirect, usePathname, useRouter } from "expo-router";
 
-import { api, type ApiUser } from "../lib/api";import { getColors, type ThemeColors, type ThemeMode } from "../lib/theme";
+import { api, type ApiUser } from "../lib/api";
+import { enableMobilePush } from "../lib/push";
+import { getColors, type ThemeColors, type ThemeMode } from "../lib/theme";
 
 type AuthContextType = {
   user: ApiUser | null;
@@ -58,9 +61,32 @@ export default function RootLayout(): ReactElement | null {
   }, []);
 
   async function signOut() {
+    // Drop the push token BEFORE the cookie dies (best effort — the server
+    // forgets every device of this member).
+    try { await api.deletePushToken(); } catch { /* server may be down */ }
     try { await api.logout(); } catch { /* best effort */ }
     setUser(null);
   }
+
+  // Signed in → register the device for chat pushes (Phase 18, best effort).
+  useEffect(() => {
+    if (user) void enableMobilePush();
+  }, [user]);
+
+  // A tapped notification opens the chat list — the worker's data.url is the
+  // web route ("/team-chat?notify=1"), which maps onto the (tabs) chats here.
+  const router = useRouter();
+  const lastNotificationResponse = Notifications.useLastNotificationResponse();
+  useEffect(() => {
+    if (!lastNotificationResponse) return;
+    const data = lastNotificationResponse.notification.request.content.data as
+      | { url?: string }
+      | undefined;
+    if (lastNotificationResponse.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER && typeof data?.url === "string") {
+      router.push(data.url.startsWith("/team-chat") ? "/chats" : (data.url as never));
+      Notifications.clearLastNotificationResponse();
+    }
+  }, [lastNotificationResponse, router]);
 
   const auth: AuthContextType = useMemo(
     () => ({ user, theme, themeMode, setThemeMode, signOut, setUser }),

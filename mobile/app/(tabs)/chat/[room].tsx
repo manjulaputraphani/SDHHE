@@ -197,6 +197,24 @@ export default function ChatRoomScreen() {
     }
   }, [room]);
 
+  // Open the room on the NEWEST message. Android ignores scrollToEnd() fired
+  // from inside the very first onContentSizeChange (the window is still
+  // hydrating), which left readers staring at the OLDEST messages — so after
+  // the history lands, retry on short timers until the bottom is pinned.
+  const initiallyScrolledRoomRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || messages.length === 0) return;
+    if (initiallyScrolledRoomRef.current === room) return;
+    initiallyScrolledRoomRef.current = room;
+    listRef.current?.scrollToEnd({ animated: false });
+    const retry = setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 150);
+    const retry2 = setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 500);
+    return () => {
+      clearTimeout(retry);
+      clearTimeout(retry2);
+    };
+  }, [loading, messages, room]);
+
   // Mark the room as read when this screen opens.
   useEffect(() => {
     void api.markChatRead(room).catch(() => undefined);
@@ -1119,7 +1137,11 @@ export default function ChatRoomScreen() {
           return "isDay" in m ? m.key + index : String(m.id);
         }}
         contentContainerStyle={{ padding: 12, paddingBottom: 80 }}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        onContentSizeChange={() => {
+          // Follow the newest message — but never yank the reader while
+          // they were scrolling up (atBottomRef tracks it).
+          if (atBottomRef.current) listRef.current?.scrollToEnd({ animated: false });
+        }}
         onScroll={handleScroll}
         scrollEventThrottle={16}
         onScrollToIndexFailed={(info) =>
