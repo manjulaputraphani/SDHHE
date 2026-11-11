@@ -15,7 +15,7 @@ describe("role permission defaults", () => {
     }
   });
 
-  it("CA: view+export on finance modules, view on items/customers/stock, nothing else", () => {
+  it("CA: view+export on finance modules, view on items/customers — NO stock (owner decision 2026-11-11)", () => {
     const ca = DEFAULT_ROLE_PERMISSIONS.ca;
     for (const moduleKey of ["dashboard", "bills", "purchases", "expenses", "investments", "reports"] as const) {
       expect(allowed(ca, moduleKey, "view")).toBe(true);
@@ -24,8 +24,12 @@ describe("role permission defaults", () => {
       expect(allowed(ca, moduleKey, "edit")).toBe(false);
       expect(allowed(ca, moduleKey, "delete")).toBe(false);
     }
-    for (const moduleKey of ["items", "customers", "stock"] as const) {
+    for (const moduleKey of ["items", "customers"] as const) {
       expect(allowed(ca, moduleKey, "view")).toBe(true);
+    }
+    // Stock is not applicable for CA — every action denied.
+    for (const action of PERMISSION_ACTIONS) {
+      expect(allowed(ca, "stock", action)).toBe(false);
     }
     for (const moduleKey of ["billing", "activity", "team", "settings"] as const) {
       for (const action of PERMISSION_ACTIONS) {
