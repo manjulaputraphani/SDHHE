@@ -8,9 +8,11 @@ import type { ColorValue } from "react-native";
  * tab bar rendered blank.
  */
 import { Tabs } from "expo-router";
+import { useSyncExternalStore } from "react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { useAuth } from "../_layout";
+import { getUnreadTotal, subscribeUnreadTotal } from "../../lib/unreadStore";
 
 /** Tab icon — Ionicons glyph names (verified against the installed glyphmap). */
 const ICONS = {
@@ -33,6 +35,9 @@ function TabGlyph({ label, colour }: { label: TabLabel; colour?: ColorValue | nu
 
 export default function TabsLayout(): React.ReactElement {
   const { theme } = useAuth();
+  // The Chats tab badge lives on EVERY screen (Dashboard included) — the same
+  // way the web sidebar carries the unread chip.
+  const unreadTotal = useSyncExternalStore(subscribeUnreadTotal, getUnreadTotal);
 
   return (
     <Tabs
@@ -65,6 +70,8 @@ export default function TabsLayout(): React.ReactElement {
         name="chats"
         options={{
           title: "Chats",
+          tabBarBadge: unreadTotal > 0 ? unreadTotal : undefined,
+          tabBarBadgeStyle: { backgroundColor: theme.badgeContact, color: theme.badgeText, fontSize: 10 },
           tabBarIcon: ({ color }) => <TabGlyph label="chats" colour={color} />,
         }}
       />

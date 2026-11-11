@@ -12,6 +12,7 @@ import { Stack, Redirect, usePathname, useRouter } from "expo-router";
 
 import { api, type ApiUser } from "../lib/api";
 import { enableMobilePush } from "../lib/push";
+import { setUnreadTotal } from "../lib/unreadStore";
 import { getColors, type ThemeColors, type ThemeMode } from "../lib/theme";
 
 type AuthContextType = {
@@ -71,6 +72,25 @@ export default function RootLayout(): ReactElement | null {
   // Signed in → register the device for chat pushes (Phase 18, best effort).
   useEffect(() => {
     if (user) void enableMobilePush();
+  }, [user]);
+
+  // Signed in → keep the global unread total fresh (the Chats tab badge lives
+  // on every screen, Dashboard included). Poll every 20s; the chats list
+  // itself refreshes it sooner via its own loads.
+  useEffect(() => {
+    if (!user) {
+      setUnreadTotal(0);
+      return;
+    }
+    const poll = setInterval(() => {
+      void api
+        .chatConversations()
+        .then(({ conversations }) =>
+          setUnreadTotal(conversations.reduce((n, c) => n + (c.unread > 0 ? c.unread : 0), 0)),
+        )
+        .catch(() => undefined);
+    }, 20_000);
+    return () => clearInterval(poll);
   }, [user]);
 
   // A tapped notification opens the chat list — the worker's data.url is the

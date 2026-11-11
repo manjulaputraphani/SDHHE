@@ -24,6 +24,7 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { api } from "../../lib/api";
+import { setUnreadTotal } from "../../lib/unreadStore";
 import { useAuth } from "../_layout";
 import { formatChatListTime, initials, isOnline } from "../../lib/chatView";
 
@@ -107,6 +108,8 @@ export default function ChatsScreen() {
       ]);
       setConversations(conversations);
       setMembers(people);
+      // Feed the global Chats-tab badge at the same time (Dashboard sees it).
+      setUnreadTotal(conversations.reduce((n, c) => n + (c.unread > 0 ? c.unread : 0), 0));
     } catch {
       // Offline — keep whatever we have.
     } finally {
