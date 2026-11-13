@@ -4,12 +4,10 @@
  * in member and Sign out. The Android back / iOS swipe-back closes this sheet
  * first (useBackGuard).
  */
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useBackGuard } from "../lib/mobile";
 import ThemeToggle from "../ThemeToggle";
-import AndroidAppInstall from "./AndroidAppInstall";
-import PushToggle from "./notifications/PushToggle";
-import { IconContrast, IconMoon, IconSignOut, IconSun } from "./icons";
+import { IconClose, IconSignOut } from "./icons";
 
 export type MoreGroup = {
   heading: string | null;
@@ -39,18 +37,52 @@ export default function MoreSheet({
   onSignOut: () => void;
 }) {
   useBackGuard(open, onClose);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dragStartY = useRef<number | null>(null);
+
   if (!open) return null;
   return (
-    <div className="sheet-layer" role="dialog" aria-label="More">
+    <div className="sheet-layer more-sheet-layer" role="dialog" aria-label="More">
       <button
         type="button"
         aria-label="Close menu"
         className="sheet-backdrop"
         onClick={onClose}
       />
-      <div className="more-sheet">
+      <div
+        className="more-sheet"
+        onTouchStart={(event) => {
+          // Only a pull from the top of the list drags the sheet down; while
+          // the menu itself is scrolled the list keeps its own momentum.
+          if ((scrollRef.current?.scrollTop ?? 0) <= 0) {
+            dragStartY.current = event.touches[0]?.clientY ?? null;
+          }
+        }}
+        onTouchMove={(event) => {
+          if (dragStartY.current == null) return;
+          const y = event.touches[0]?.clientY ?? dragStartY.current;
+          if (y - dragStartY.current > 80) {
+            dragStartY.current = null;
+            onClose();
+          }
+        }}
+        onTouchEnd={() => {
+          dragStartY.current = null;
+        }}
+      >
         <div className="sheet-grabber" />
-        <div className="thin-scrollbar max-h-[70dvh] overflow-y-auto px-3 pb-2">
+        <div className="more-sheet__header">
+          <h2 className="more-sheet__title">More</h2>
+          <button
+            type="button"
+            aria-label="Close"
+            className="more-sheet__close tap-44"
+            onClick={onClose}
+          >
+            <IconClose size={18} />
+          </button>
+        </div>
+        <div ref={scrollRef} className="thin-scrollbar more-sheet__scroll">
           {groups.map((group, groupIndex) => {
             const links = group.links.filter((link) => !TAB_KEYS.has(link.key));
             if (links.length === 0) return null;
@@ -83,31 +115,20 @@ export default function MoreSheet({
         </div>
         <div className="more-sheet__footer">
           <div className="more-sheet__theme">
-            <IconSun size={16} />
             <ThemeToggle />
-            <IconMoon size={15} />
-            <IconContrast size={15} />
           </div>
-          {/* Mobile: notifications toggle + APK download (both were desktop-only). */}
-          <div className="flex items-center gap-2 px-3 py-2">
-            <PushToggle />
-          </div>
-          {typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent) && (
-            <AndroidAppInstall
-              className="block rounded-lg bg-surface-2 px-3 py-2 text-center text-[11px] font-medium text-ink transition-colors hover:bg-surface-3"
-              hintClassName="px-3 text-[10px] leading-snug text-muted"
-            />
-          )}
-          <div className="more-sheet__user">
-            <p className="truncate text-sm font-semibold text-ink">{userName}</p>
-            <p className="text-[11px] uppercase tracking-wide text-muted">{userRole}</p>
-          </div>
-          <button type="button" className="more-sheet__row more-sheet__row--danger tap-44" onClick={onSignOut}>
-            <span className="more-sheet__icon">
-              <IconSignOut size={18} />
+          <div className="more-sheet__account">
+            <span className="more-sheet__avatar" aria-hidden="true">
+              {userName.slice(0, 1).toUpperCase()}
             </span>
-            Sign out
-          </button>
+            <div className="more-sheet__who">
+              <p className="more-sheet__name">{userName}</p>
+              <p className="more-sheet__role">{userRole}</p>
+            </div>
+            <button type="button" className="more-sheet__signout tap-44" onClick={onSignOut}>
+              <IconSignOut size={16} /> Sign out
+            </button>
+          </div>
         </div>
       </div>
     </div>

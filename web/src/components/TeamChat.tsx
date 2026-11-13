@@ -1448,17 +1448,21 @@ export default function TeamChat({ user, initialRoom }: Props) {
   const dm = membersOf(room);
   const contactId =
     dm ? (dm.userId === user?.id ? dm.otherId : dm.userId) : (activeConversation?.other?.id ?? null);
+  /** Mobile: the open conversation owns the full screen (nav + app bar hidden). */
+  const mobileRoomOpen = isMobile && (mobileView === "room" || infoOpen);
 
   return (
     <section
       // On a phone the chat bleeds edge-to-edge (the main's px-4/py-6 is
       // negated here) so it fills the screen like WhatsApp — no card margin,
       // no outer rounded border. On md+ it sits back inside the main padding.
-      className="chat-shell relative flex min-w-0 flex-col -mx-4 -mt-6 -mb-6 sm:-mx-6 md:mx-0 md:my-0"
+      className={`chat-shell relative flex min-w-0 flex-col -mx-4 -mt-6 -mb-6 sm:-mx-6 md:mx-0 md:my-0 ${mobileRoomOpen ? "chat-shell--room" : ""}`}
       style={
         keyboardOffset > 0
           ? {
-              height: `calc(100dvh - 3.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardOffset}px)`,
+              height: mobileRoomOpen
+                ? `calc(100dvh - ${keyboardOffset}px)`
+                : `calc(100dvh - 3.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - ${keyboardOffset}px)`,
             }
           : undefined
       }
@@ -2395,7 +2399,7 @@ export default function TeamChat({ user, initialRoom }: Props) {
 
           <form
             onSubmit={send}
-            className="relative z-10 border-t border-line bg-surface px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+            className="chat-composer-bar relative z-10 border-t border-line bg-surface px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
           >
             {/* Editing lives in the composer, full width (T-16.2). */}
             {editing && (
@@ -2540,7 +2544,7 @@ export default function TeamChat({ user, initialRoom }: Props) {
                   ))}
                 </div>
               </details>
-              <div className="flex min-w-0 flex-1 items-end gap-1 rounded-[22px] border border-line bg-surface-2 px-2 py-1.5 transition-colors focus-within:border-primary">
+              <div className="composer-pill__inner flex min-w-0 flex-1 items-end gap-1 rounded-[22px] border border-line bg-surface-2 px-2 py-1.5 transition-colors focus-within:border-primary">
                 <textarea
                   ref={composerRef}
                   className="chat-composer min-w-0 flex-1 px-2.5 py-2 text-sm"

@@ -47,5 +47,8 @@ web/dist
 web-worker/.wrangler
 .wrangler
 
+# local-only LAN preview config (test-only; strips Secure from proxied cookies)
+web/vite.local.config.ts
+
 # Database backups (contain customer + user data, keep them out of git)
 docs/db-backup-*.sql

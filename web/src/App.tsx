@@ -66,6 +66,7 @@ import {
   IconActivity,
   IconBanknote,
   IconBarChart,
+  IconBell,
   IconBill,
   IconCalculator,
   IconCalendar,
@@ -433,6 +434,17 @@ export default function App() {
   const [emailStatus, setEmailStatus] = useState<string | null>(null);
   const [loginPhotoOk, setLoginPhotoOk] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Mobile dashboard header: refetch tick + the last-fetched time.
+  const [dashRefreshTick, setDashRefreshTick] = useState(0);
+  const [dashUpdatedAt, setDashUpdatedAt] = useState<string | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  function refreshDashboard() {
+    setDashRefreshTick((tick) => tick + 1);
+  }
+  // Leaving the Dashboard should never leave the account menu open behind it.
+  useEffect(() => {
+    setAccountOpen(false);
+  }, [view]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerMsg, setCustomerMsg] = useState<string | null>(null);
@@ -1360,8 +1372,12 @@ export default function App() {
     if (canView("purchases")) jobs.push(api.purchases().then((r) => setPurchasesList(r.purchases)));
     if (canView("bills")) jobs.push(api.bills().then((r) => setBills(r.bills)));
     if (canView("items")) jobs.push(api.items().then((r) => setItems(r.items)));
-    void Promise.allSettled(jobs);
-  }, [user]);
+    void Promise.allSettled(jobs).then(() => {
+      setDashUpdatedAt(
+        new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+      );
+    });
+  }, [user, dashRefreshTick]);
 
   /** The Activity screen: fetch the next page of 20 rows and append it. */
   async function loadMoreActivity() {
@@ -2027,7 +2043,13 @@ export default function App() {
       <ToastHost />
       {/* Everything that is due after a sign-in — one thing at a time. The
           banners sit above the app shell so they are full width. */}
-      <div className="px-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:px-6">
+      <div
+        className={
+          immersive
+            ? "hidden"
+            : `px-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:px-6 ${view === "dashboard" ? "mobile-dash-notices" : ""}`
+        }
+      >
         <NotificationsHost
           signedInElsewhere={signedInElsewhere}
           startTour={tourToStart}
@@ -2110,7 +2132,7 @@ export default function App() {
       {/* Mobile: icon-only header + a side drawer that opens when the menu is tapped */}
       {/* Mobile (max-width 767px): the app header hides while an open chat or
           its info page owns the screen; otherwise it keeps its desktop look. */}
-      <div className={immersive ? "hidden" : "md:hidden"}>
+      <div className={`${immersive ? "hidden" : "md:hidden"} ${view === "dashboard" ? "mobile-dash-oldbar" : ""}`}>
         {/* The top bar is 3.5rem tall + the notch inset; the chat page's
             height calc in styles.css (.chat-shell) counts on exactly this. */}
         <header className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-nav px-3 pb-1.5 pt-[calc(0.375rem+env(safe-area-inset-top))] text-nav-text">
@@ -2216,7 +2238,67 @@ export default function App() {
 
         {view === "dashboard" && (
           <>
-          <section className="card space-y-3 p-4" data-testid="web-ai-chat">
+          {/* Mobile (≤640px): one compact sticky bar replaces the stacked
+              brand block + page title. Desktop keeps its sidebar + h1. */}
+          <header className="mobile-dash-bar">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="mobile-dash-logo">S</span>
+              <div className="min-w-0">
+                <p className="mobile-dash-title">SDHHE</p>
+                <p className="mobile-dash-sub">
+                  Dashboard · Updated {dashUpdatedAt ?? "…"}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="mobile-dash-btn"
+                aria-label="Refresh dashboard"
+                onClick={refreshDashboard}
+              >
+                <IconRefresh size={17} />
+              </button>
+            </div>
+            <div className="relative flex items-center">
+              <button
+                type="button"
+                className="mobile-dash-btn"
+                aria-label="Notifications"
+                onClick={() => { setAccountOpen(false); setView("team-chat"); }}
+              >
+                <IconBell size={18} />
+              </button>
+              <button
+                type="button"
+                className="mobile-dash-avatar"
+                aria-label="Account"
+                onClick={() => setAccountOpen((open) => !open)}
+              >
+                {user.name.slice(0, 1).toUpperCase()}
+              </button>
+              {accountOpen && (
+                <div className="mobile-dash-menu" role="menu">
+                  <p className="mobile-dash-menu-name">{user.name}</p>
+                  <p className="mobile-dash-menu-role">{user.role === "owner" ? "Owner" : user.role === "ca" ? "Admin" : "Staff"}</p>
+                  <button
+                    type="button"
+                    className="mobile-dash-menu-logout"
+                    onClick={() => { setAccountOpen(false); void api.logout().then(() => { clearWelcomeFlag(); setUser(null); }); }}
+                  >
+                    <IconSignOut size={14} /> Logout
+                  </button>
+                </div>
+              )}
+              {accountOpen && (
+                <button
+                  type="button"
+                  aria-label="Close account menu"
+                  className="fixed inset-0 z-10 cursor-default"
+                  onClick={() => setAccountOpen(false)}
+                />
+              )}
+            </div>
+          </header>
+          <section className="card mobile-dash-content space-y-3 p-4" data-testid="web-ai-chat">
             <h2 className="text-lg font-semibold tracking-tight">Ask AI</h2>
             <div className="max-h-72 space-y-2 overflow-y-auto text-sm" data-testid="web-ai-messages">
               {aiMessages.length === 0 && (
@@ -2251,7 +2333,7 @@ export default function App() {
             </form>
           </section>
           <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="mobile-dash-hide flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight md:text-2xl">
                   <span className="size-2 rounded-full bg-accent" aria-hidden="true" />

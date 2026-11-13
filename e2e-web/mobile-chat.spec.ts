@@ -177,7 +177,7 @@ async function expectFits(page: Page, label: string) {
 
 async function openApp(page: Page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Dashboard/ }).first()).toBeVisible();
+  await expect(page.locator(".mobile-dash-bar")).toBeVisible();
 }
 
 async function openChats(page: Page) {
@@ -267,7 +267,7 @@ test.describe("mobile details", () => {
     await expect(page.getByRole("dialog", { name: "More" })).toBeVisible();
     await page.goBack();
     await expect(page.getByRole("dialog", { name: "More" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: /Dashboard/ }).first()).toBeVisible();
+    await expect(page.locator(".mobile-dash-bar")).toBeVisible();
   });
 
   test("the 1:1-style Message info shows Read / Delivered rows only", async ({ page }) => {

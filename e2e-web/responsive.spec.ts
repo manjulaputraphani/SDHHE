@@ -268,10 +268,15 @@ for (const width of [360, 375, 390, 430]) {
     test("every page fits the screen and has 16px+ fields", async ({ page }) => {
       await mockApp(page);
       await page.goto("/");
-      await expect(page.getByRole("heading", { name: /Dashboard/ }).first()).toBeVisible();
+      await expect(page.locator(".mobile-dash-bar")).toBeVisible();
       for (const entry of PAGES) {
         await goTo(page, entry.label);
-        await expect(page.getByRole("heading", { name: entry.title }).first()).toBeVisible();
+        if (entry.label === "Dashboard") {
+          // The phone dashboard uses the compact sticky bar, not the h1.
+          await expect(page.locator(".mobile-dash-bar")).toBeVisible();
+        } else {
+          await expect(page.getByRole("heading", { name: entry.title }).first()).toBeVisible();
+        }
         await expectFits(page, `${entry.label} at ${width}px`);
         await expectNoAutoZoom(page, `${entry.label} at ${width}px`);
       }

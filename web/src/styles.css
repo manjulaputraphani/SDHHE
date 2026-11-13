@@ -1356,17 +1356,61 @@ summary {
     border: 0;
     background: rgb(28 22 18 / 0.5);
   }
+  /* The More sheet sits ABOVE the 64px bottom nav — the nav stays visible and
+     tappable (the backdrop stops at its top edge). */
+  .more-sheet-layer {
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+  .more-sheet-layer .sheet-backdrop {
+    background: rgb(0 0 0 / 0.35);
+  }
   .more-sheet {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 120px);
+    overflow: hidden;
     border-radius: 24px 24px 0 0;
     background: var(--c-surface);
     border-top: 1px solid var(--c-line);
-    padding: 8px 8px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 8px 8px 10px;
     box-shadow: 0 -8px 24px rgb(28 22 18 / 0.18);
     animation: auth-slide 250ms ease-out;
+  }
+  .more-sheet__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 0 6px 4px 12px;
+  }
+  .more-sheet__title {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--c-ink);
+  }
+  .more-sheet__close {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    color: var(--c-muted);
+  }
+  .more-sheet__close:hover {
+    background: var(--c-surface-2);
+  }
+  .more-sheet__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 12px 8px;
   }
   .sheet-grabber {
     width: 36px;
@@ -1404,6 +1448,7 @@ summary {
     color: var(--c-accent);
   }
   .more-sheet__footer {
+    flex-shrink: 0;
     border-top: 1px solid var(--c-line);
     margin-top: 8px;
     padding-top: 8px;
@@ -1412,11 +1457,65 @@ summary {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 12px;
+    padding: 4px 12px 8px;
     color: var(--c-muted);
   }
-  .more-sheet__user {
-    padding: 6px 12px;
+  .more-sheet__account {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--c-line);
+    border-radius: 14px;
+    background: var(--c-surface-2);
+  }
+  .more-sheet__avatar {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--c-primary);
+    color: var(--c-on-primary);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .more-sheet__who {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+  .more-sheet__name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--c-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .more-sheet__role {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--c-muted);
+  }
+  .more-sheet__signout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-error);
+    white-space: nowrap;
+  }
+  .more-sheet__signout:hover {
+    background: var(--c-error-soft);
   }
 
   /* ---- Chat header (56px) ---- */
@@ -1572,31 +1671,67 @@ summary {
     color: #c4a57f;
   }
 
-  /* ---- Composer: ONE pill + a 44px round brown button ---- */
+  /* ---- Composer: ONE pill + a 48px round button ---- */
   .composer-pill {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 2px;
     flex: 1;
     min-width: 0;
+    min-height: 48px;
     border: 1px solid var(--c-line);
     border-radius: 24px;
-    background: var(--c-surface-2);
-    padding: 2px 6px;
+    background: var(--c-surface);
+    padding: 0 4px;
   }
   .composer-pill__inner {
     flex: 1;
+    min-width: 0;
     border: none;
+    border-radius: 0;
     background: transparent;
     padding: 0;
+  }
+  .composer-pill .chat-composer {
+    min-height: 46px;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
   .chat-composer {
     max-height: 7.5rem;
     overflow-y: auto;
   }
   .composer-send {
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
+  }
+
+  /* ---- The open room owns the viewport (app bar + nav are hidden) ---- */
+  .chat-shell--room {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: -webkit-fill-available;
+    min-height: 0;
+    overflow: hidden;
+  }
+  @supports (height: 100dvh) {
+    .chat-shell--room {
+      height: 100dvh;
+    }
+  }
+  .chat-shell--room .chat-header {
+    flex-shrink: 0;
+  }
+  .chat-shell--room .chat-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .chat-shell--room .chat-composer-bar {
+    flex-shrink: 0;
+    margin-bottom: 0;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
   }
 
   /* ---- Group info / Contact info (full-screen) ---- */
@@ -1795,6 +1930,129 @@ summary {
   .switch--static {
     pointer-events: none;
     opacity: 0.7;
+  }
+}
+
+/* =====================================================================
+   Dashboard header, mobile only (max-width 640px).
+   One compact sticky bar replaces the stacked brand block + page title.
+   Hidden by default so the desktop layout (sidebar + h1) is untouched.
+   ===================================================================== */
+.mobile-dash-bar {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  /* The dashboard bar carries the notch inset itself, so the notification
+     wrapper above the shell must not add its own 12px gap. */
+  .mobile-dash-notices {
+    padding-top: 0;
+  }
+  /* The old mobile brand bar would otherwise sit above the new one. */
+  .mobile-dash-oldbar {
+    display: none !important;
+  }
+  .mobile-dash-bar {
+    /* Full-bleed at any phone width: cancels <main>'s horizontal padding and
+       its 24px top padding so the bar sits flush at the very top. */
+    margin: -24px calc(50% - 50vw) 0;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
+    background: #f6efe6;
+    border-bottom: 1px solid #e6d9c7;
+  }
+  .mobile-dash-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: #3b2a20;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .mobile-dash-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #3b2a20;
+    line-height: 1.1;
+  }
+  .mobile-dash-sub {
+    font-size: 12px;
+    color: #6e5e4e;
+    margin-top: 2px;
+    /* Keeps the time on one line beside the refresh button on 360px phones. */
+    letter-spacing: -0.2px;
+  }
+  .mobile-dash-btn {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: transparent;
+    color: #3b2a20;
+  }
+  .mobile-dash-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #c8963e;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .mobile-dash-menu {
+    position: absolute;
+    right: 0;
+    top: 46px;
+    z-index: 30;
+    min-width: 170px;
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: #ffffff;
+    border: 1px solid #e6d9c7;
+    box-shadow: 0 10px 26px rgb(28 22 18 / 0.14);
+  }
+  .mobile-dash-menu-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #3b2a20;
+  }
+  .mobile-dash-menu-role {
+    font-size: 11px;
+    color: #6e5e4e;
+    margin-top: 1px;
+  }
+  .mobile-dash-menu-logout {
+    margin-top: 8px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #b84a3a;
+    background: #fdeeea;
+  }
+  /* Legacy gold dot / heading / subtitle are replaced by the bar. */
+  .mobile-dash-hide {
+    display: none !important;
+  }
+  /* Content starts 12px under the sticky header. */
+  .mobile-dash-content {
+    margin-top: 12px !important;
   }
 }
 

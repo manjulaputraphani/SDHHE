@@ -52,11 +52,17 @@ export default function BottomNav({
   // Hidden: open chat, Group info page, keyboard open (login has no shell).
   if (immersive || keyboardOpen) return null;
 
+  /** Any nav tap closes the sheet — including the More tab itself. */
+  function navigate(key: string) {
+    setMoreOpen(false);
+    onNavigate(key);
+  }
+
   return (
     <>
       <nav className="bottom-nav" aria-label="Main">
         {TABS.map((tab) => {
-          const active = view === tab.key;
+          const active = !moreOpen && view === tab.key;
           const Icon = tab.icon;
           return (
             <button
@@ -64,7 +70,7 @@ export default function BottomNav({
               type="button"
               className={`bottom-nav__tab tap-44 ${active ? "bottom-nav__tab--active" : ""}`}
               aria-current={active ? "page" : undefined}
-              onClick={() => onNavigate(tab.key)}
+              onClick={() => navigate(tab.key)}
             >
               <span className="bottom-nav__icon">
                 <span className="bottom-nav__pill" aria-hidden="true" />
@@ -82,7 +88,8 @@ export default function BottomNav({
         <button
           type="button"
           className={`bottom-nav__tab tap-44 ${moreOpen ? "bottom-nav__tab--active" : ""}`}
-          onClick={() => setMoreOpen(true)}
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen((open) => !open)}
         >
           <span className="bottom-nav__icon">
             <span className="bottom-nav__pill" aria-hidden="true" />
@@ -96,7 +103,7 @@ export default function BottomNav({
         onClose={() => setMoreOpen(false)}
         groups={groups}
         view={view}
-        onNavigate={onNavigate}
+        onNavigate={navigate}
         userName={userName}
         userRole={userRole}
         onSignOut={onSignOut}
