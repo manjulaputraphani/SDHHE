@@ -12,7 +12,7 @@ import { useSyncExternalStore } from "react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { useAuth } from "../_layout";
-import { getUnreadTotal, subscribeUnreadTotal } from "../../lib/unreadStore";
+import { getUnread, subscribeUnread } from "../../lib/unreadStore";
 
 /** Tab icon — Ionicons glyph names (verified against the installed glyphmap). */
 const ICONS = {
@@ -37,7 +37,7 @@ export default function TabsLayout(): React.ReactElement {
   const { theme, user } = useAuth();
   // The Chats tab badge lives on EVERY screen (Dashboard included) — the same
   // way the web sidebar carries the unread chip.
-  const unreadTotal = useSyncExternalStore(subscribeUnreadTotal, getUnreadTotal);
+  const unreadStore = useSyncExternalStore(subscribeUnread, getUnread, getUnread);
 
   // Permission-aware tabs (same matrix as the web sidebar): a tab shows only
   // when the role's matrix allows it. More stays for everyone (it carries
@@ -86,7 +86,7 @@ export default function TabsLayout(): React.ReactElement {
         options={{
           title: "Chats",
           href: can("chat") ? undefined : null,
-          tabBarBadge: unreadTotal > 0 ? unreadTotal : undefined,
+          tabBarBadge: unreadStore.total > 0 ? (unreadStore.total > 99 ? "99+" : unreadStore.total) : undefined,
           tabBarBadgeStyle: { backgroundColor: theme.badgeContact, color: theme.badgeText, fontSize: 10 },
           tabBarIcon: ({ color }) => <TabGlyph label="chats" colour={color} />,
         }}

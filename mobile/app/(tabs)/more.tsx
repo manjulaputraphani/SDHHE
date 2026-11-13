@@ -7,13 +7,11 @@
  * 2-column tiles with the module icon, the way the web sidebar reads.
  */
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
-import { useState } from "react";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { useAuth } from "../_layout";
-import type { ThemeColors } from "../../lib/theme";
-import type { ThemeMode } from "../../lib/theme";
+import type { ThemeColors, ThemeMode } from "../../lib/theme";
 
 type Tile = {
   label: string;
@@ -27,7 +25,7 @@ export default function MoreScreen() {
   const { theme, themeMode, setThemeMode, signOut, user } = useAuth();
   const router = useRouter();
 
-  const MODES: Array<{ value: ThemeMode; label: string }> = [
+  const MODES: { value: ThemeMode; label: string }[] = [
     { value: "light", label: "Light" },
     { value: "dark", label: "Dark" },
     { value: "contrast", label: "Contrast" },

@@ -37,7 +37,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, type ChatMessage, type ChatPin, type ChatReceipt } from "../../lib/api";
 import { useAuth } from "../_layout";
 import { playNotificationSound } from "../../lib/notificationSound";
-import { membersOf } from "../../lib/chatPrivacy";
+import { membersOf } from "../../lib/chatPrivacy"
+import { markRoomRead } from "../../lib/unreadStore";
 import {
   REACTION_EMOJIS,
   formatRupees,
@@ -252,9 +253,12 @@ export default function ChatRoomScreen() {
     [],
   );
 
-  // Mark the room as read when this screen opens.
+  // Mark the room as read when this screen opens — server-side (the worker
+  // does the same) AND the local badge, which drops the moment the member
+  // opens the chat, exactly like the web.
   useEffect(() => {
     void api.markChatRead(room).catch(() => undefined);
+    markRoomRead(room as string);
   }, [room]);
 
   // Members (presence) for the header subtitle + Group/Contact info — same as web.
@@ -827,11 +831,11 @@ export default function ChatRoomScreen() {
           accessibilityLabel="Open info"
           activeOpacity={0.7}
         >
-          <View style={[styles.headerAvatar, { backgroundColor: theme.surface3 }]}>
+          <View style={[styles.headerAvatar, { backgroundColor: theme.primary }]}>
             {isGroup ? (
-              <Ionicons name="people" size={18} color={theme.muted} />
+              <Ionicons name="people" size={18} color={theme.onPrimary} />
             ) : (
-              <Text style={{ fontSize: 14, fontWeight: "600", color: theme.muted }}>{initials(displayName)}</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: theme.onPrimary }}>{initials(displayName)}</Text>
             )}
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>

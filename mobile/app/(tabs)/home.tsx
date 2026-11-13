@@ -238,7 +238,10 @@ export default function HomeScreen() {
 
         {/* ---- 1. Ask AI ---- */}
         <View style={[styles.card, surface]}>
-          <Text style={[styles.cardTitle, { color: theme.ink }]}>Ask AI</Text>
+          <View style={styles.cardTitleRow}>
+                <Ionicons name="sparkles" size={15} color={theme.accent} />
+                <Text style={[styles.cardTitle, { color: theme.ink, marginBottom: 0 }]}>Ask AI</Text>
+              </View>
           <View style={styles.aiBox}>
             {aiMessages.length === 0 ? (
               <Text style={[styles.muted, { color: theme.muted }]}>
@@ -417,9 +420,12 @@ export default function HomeScreen() {
 
             {rotation.trend.length > 0 ? (
               <View style={[styles.card, surface]}>
-                <Text style={[styles.cardTitle, { color: theme.ink }]}>
+                <View style={styles.cardTitleRow}>
+                <Ionicons name="trending-up" size={15} color={theme.accent} />
+                <Text style={[styles.cardTitle, { color: theme.ink, marginBottom: 0 }]}>
                   Rotation trend (net sales, last 30 days)
                 </Text>
+              </View>
                 <BarChart
                   theme={theme}
                   values={rotation.trend.map((t) => Number(t.netSalesPaise))}
@@ -433,7 +439,10 @@ export default function HomeScreen() {
         {lowOpen ? (
           <View style={[styles.card, surface]}>
             <View style={[styles.row, { justifyContent: "space-between" }]}>
-              <Text style={[styles.cardTitle, { color: theme.ink }]}>Low stock items</Text>
+              <View style={styles.cardTitleRow}>
+                <Ionicons name="alert-circle" size={15} color={theme.accent} />
+                <Text style={[styles.cardTitle, { color: theme.ink, marginBottom: 0 }]}>Low stock items</Text>
+              </View>
               <TouchableOpacity onPress={() => setLowOpen(false)}>
                 <Text style={{ color: theme.accentInk, fontSize: 13, fontWeight: "600" }}>Close</Text>
               </TouchableOpacity>
@@ -472,7 +481,10 @@ export default function HomeScreen() {
         {canCreateExpense ? (
           <View style={[styles.card, surface]}>
             <View style={[styles.row, { justifyContent: "space-between" }]}>
-              <Text style={[styles.cardTitle, { color: theme.ink }]}>Quick expense</Text>
+              <View style={styles.cardTitleRow}>
+                <Ionicons name="cash" size={15} color={theme.accent} />
+                <Text style={[styles.cardTitle, { color: theme.ink, marginBottom: 0 }]}>Quick expense</Text>
+              </View>
               <TouchableOpacity onPress={() => router.push("/expenses")}>
                 <Text style={{ color: theme.accentInk, fontSize: 13, fontWeight: "600" }}>
                   Full form →
@@ -524,7 +536,10 @@ export default function HomeScreen() {
         {/* ---- 6. last 14 days ---- */}
         <View style={[styles.card, surface]}>
           <View style={[styles.row, { justifyContent: "space-between" }]}>
-            <Text style={[styles.cardTitle, { color: theme.ink }]}>Last 14 days</Text>
+            <View style={styles.cardTitleRow}>
+                <Ionicons name="bar-chart" size={15} color={theme.accent} />
+                <Text style={[styles.cardTitle, { color: theme.ink, marginBottom: 0 }]}>Last 14 days</Text>
+              </View>
             <View style={styles.row}>
               <Legend color={theme.accent} label="Sales" theme={theme} />
               <Legend color={theme.secondary} label="Expenses" theme={theme} />
@@ -571,7 +586,10 @@ export default function HomeScreen() {
 
         {/* ---- 7. expenses by category ---- */}
         <View style={[styles.card, surface]}>
-          <Text style={[styles.cardTitle, { color: theme.ink }]}>Expenses by category (month)</Text>
+          <View style={styles.cardTitleRow}>
+                <Ionicons name="pie-chart" size={15} color={theme.accent} />
+                <Text style={[styles.cardTitle, { color: theme.ink, marginBottom: 0 }]}>Expenses by category (month)</Text>
+              </View>
           {categories.length === 0 ? (
             <Text style={[styles.muted, { color: theme.muted }]}>
               No expenses this month — add rent, transport or any other cost to see the split.
@@ -609,7 +627,10 @@ export default function HomeScreen() {
 
         {/* ---- 8. recent activity ---- */}
         <View style={[styles.card, surface]}>
-          <Text style={[styles.cardTitle, { color: theme.ink }]}>Recent activity</Text>
+          <View style={styles.cardTitleRow}>
+                <Ionicons name="pulse" size={15} color={theme.accent} />
+                <Text style={[styles.cardTitle, { color: theme.ink, marginBottom: 0 }]}>Recent activity</Text>
+              </View>
           {activity.length === 0 ? (
             <Text style={[styles.muted, { color: theme.muted }]}>Nothing yet.</Text>
           ) : (
@@ -787,7 +808,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
   },
-  cardTitle: { fontSize: 15, fontWeight: "600", marginBottom: 10 },
+  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 10 },
+  cardTitle: { fontSize: 15, fontWeight: "600" },
   block: { gap: 8 },
   sectionTitle: { fontSize: 17, fontWeight: "700" },
   sectionSub: { fontSize: 12, marginBottom: 4 },

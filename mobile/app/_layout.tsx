@@ -4,7 +4,8 @@
  * Wraps every screen with the theme provider and handles auth state:
  * signed out → /login, signed in → bottom-tabs shell.
  */
-import { useState, useMemo, createContext, useContext, useEffect, type ReactNode, type ReactElement } from "react";
+import { useState, useMemo, createContext, useContext, useEffect, useRef, type ReactNode, type ReactElement } from "react";
+import { AppState } from "react-native";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
@@ -13,7 +14,7 @@ import { Stack, Redirect, usePathname, useRouter } from "expo-router";
 import { api, type ApiUser } from "../lib/api";
 import { enableMobilePush } from "../lib/push";
 import { loadThemeMode, saveThemeMode } from "../lib/theme";
-import { setUnreadTotal } from "../lib/unreadStore";
+import { setUnreadFromConversations } from "../lib/unreadStore";
 import { getColors, type ThemeColors, type ThemeMode } from "../lib/theme";
 
 type AuthContextType = {
@@ -88,20 +89,34 @@ export default function RootLayout(): ReactElement | null {
   // Signed in → keep the global unread total fresh (the Chats tab badge lives
   // on every screen, Dashboard included). Poll every 20s; the chats list
   // itself refreshes it sooner via its own loads.
+  const unreadPollingRef = useRef(false);
   useEffect(() => {
     if (!user) {
-      setUnreadTotal(0);
+      setUnreadFromConversations([]); // badge clears on sign-out
       return;
     }
-    const poll = setInterval(() => {
+    // Web parity: a pull at sign-in, every 5s, and whenever the app returns
+    // to the foreground — guarded so slow networks never stack requests.
+    const refresh = () => {
+      if (unreadPollingRef.current) return;
+      unreadPollingRef.current = true;
       void api
         .chatConversations()
-        .then(({ conversations }) =>
-          setUnreadTotal(conversations.reduce((n, c) => n + (c.unread > 0 ? c.unread : 0), 0)),
-        )
-        .catch(() => undefined);
-    }, 20_000);
-    return () => clearInterval(poll);
+        .then(({ conversations }) => setUnreadFromConversations(conversations))
+        .catch(() => undefined)
+        .finally(() => {
+          unreadPollingRef.current = false;
+        });
+    };
+    void refresh();
+    const timer = setInterval(refresh, 5000);
+    const appState = AppState.addEventListener("change", (status) => {
+      if (status === "active") void refresh();
+    });
+    return () => {
+      clearInterval(timer);
+      appState.remove();
+    };
   }, [user]);
 
   // A tapped notification opens the exact chat when the push carries the room

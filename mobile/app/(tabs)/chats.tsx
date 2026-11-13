@@ -24,7 +24,7 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { api } from "../../lib/api";
-import { setUnreadTotal } from "../../lib/unreadStore";
+import { setUnreadFromConversations } from "../../lib/unreadStore";
 import { useAuth } from "../_layout";
 import { formatChatListTime, initials, isOnline } from "../../lib/chatView";
 
@@ -110,7 +110,7 @@ export default function ChatsScreen() {
       setConversations(conversations);
       setMembers(people);
       // Feed the global Chats-tab badge at the same time (Dashboard sees it).
-      setUnreadTotal(conversations.reduce((n, c) => n + (c.unread > 0 ? c.unread : 0), 0));
+      setUnreadFromConversations(conversations);
       setError(null);
     } catch (err) {
       // Surface the reason on screen (session expired / offline / permissions)
@@ -176,14 +176,33 @@ export default function ChatsScreen() {
     <View style={[styles.screen, { backgroundColor: theme.bg }]}>
       {/* ---- title + actions (web .chatlist-header) ---- */}
       <View style={styles.header}>
-        <Text
-          style={[
-            styles.title,
-            { color: theme.ink, fontFamily: Platform.OS === "ios" ? "Georgia" : undefined },
-          ]}
-        >
-          Chats
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+          <View
+            style={[
+              {
+                width: 42,
+                height: 42,
+                borderRadius: 13,
+                backgroundColor: theme.primary,
+                alignItems: "center",
+                justifyContent: "center",
+              },
+            ]}
+          >
+            <Ionicons name="chatbubbles" size={21} color={theme.onPrimary} />
+          </View>
+          <View>
+            <Text
+              style={[
+                styles.title,
+                { color: theme.ink, fontFamily: Platform.OS === "ios" ? "Georgia" : undefined, fontSize: 22 },
+              ]}
+            >
+              Chats
+            </Text>
+            <Text style={{ fontSize: 11, color: theme.muted, marginTop: 1 }}>Team messages — live</Text>
+          </View>
+        </View>
         <View style={styles.headerActions}>
           <IconButton
             name="search"
@@ -228,7 +247,7 @@ export default function ChatsScreen() {
           onPress={() => void load()}
         >
           <Text style={{ color: theme.errorInk, fontSize: 13, textAlign: "center" }}>
-            Couldn't load chats: {error} — tap to retry
+            Couldn&apos;t load chats: {error} — tap to retry
           </Text>
         </TouchableOpacity>
       ) : null}
