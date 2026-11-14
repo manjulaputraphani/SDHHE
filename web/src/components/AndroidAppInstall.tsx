@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 
 /**
- * The "📲 Install the Android app" button — used by the desktop sidebar, the
+ * The "📲 Download the mobile app" button — used by the desktop sidebar, the
  * mobile drawer, and the More sheet (all gated on an Android user-agent).
+ * It downloads the native Expo build (`/sdhhe-mobile.apk`), not the light TWA
+ * wrapper. The TWA (`/sdhhe.apk`) still works for anyone who prefers it.
  *
  * Why it is not just a plain <a download>: on phones that still have the old
  * home-screen shortcut (installed while the site was a PWA, before 2026-11-11),
@@ -36,8 +38,8 @@ export default function AndroidAppInstall({
 
   return (
     <>
-      <a href="/sdhhe.apk" download="SDHHE.apk" className={className}>
-        📲 Install the Android app
+      <a href="/sdhhe-mobile.apk" download="SDHHE-Mobile.apk" className={className}>
+        📲 Download the mobile app
       </a>
       {legacyShortcut && (
         <p className={hintClassName}>

@@ -7,6 +7,7 @@
 import { useRef, type ReactNode } from "react";
 import { useBackGuard } from "../lib/mobile";
 import ThemeToggle from "../ThemeToggle";
+import AndroidAppInstall from "./AndroidAppInstall";
 import { IconClose, IconSignOut } from "./icons";
 
 export type MoreGroup = {
@@ -114,6 +115,12 @@ export default function MoreSheet({
           })}
         </div>
         <div className="more-sheet__footer">
+          <div className="more-sheet__download">
+            <AndroidAppInstall
+              className="more-sheet__download-link tap-44"
+              hintClassName="more-sheet__download-hint"
+            />
+          </div>
           <div className="more-sheet__theme">
             <ThemeToggle />
           </div>

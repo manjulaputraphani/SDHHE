@@ -1453,6 +1453,34 @@ summary {
     margin-top: 8px;
     padding-top: 8px;
   }
+  .more-sheet__download {
+    padding: 2px 12px 8px;
+  }
+  .more-sheet__download-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--c-line);
+    border-radius: 12px;
+    background: var(--c-surface-2);
+    color: var(--c-ink);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .more-sheet__download-link:hover {
+    background: var(--c-surface-3);
+  }
+  .more-sheet__download-hint {
+    padding: 6px 2px 0;
+    font-size: 10px;
+    line-height: 1.35;
+    color: var(--c-muted);
+  }
   .more-sheet__theme {
     display: flex;
     align-items: center;
