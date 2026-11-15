@@ -7,12 +7,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { setupTestDb, testDbUrl, resetAll } from "./test-utils";
 import {
+  cashBalanceAsOf,
   creditAging,
   workingCapital,
   rotationTrend,
   type CreditAgingRow,
 } from "./cashLedger";
-import { items, saleBills, customers, openingBalance } from "./schema";
+import { cashLedger, items, saleBills, customers, openingBalance } from "./schema";
 
 // ---- Pure helper: days between two dates ----
 
@@ -101,6 +102,27 @@ if (db && url) {
         const wc = await workingCapital(db, "2026-04-01");
         expect(wc.investmentPaise).toBe(100_000_000);
         expect(wc.cashInBankPaise).toBe(100_000_000);
+      });
+
+      it("cash balance counts entries dated today (inclusive) but not future entries", async () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const tomorrow = new Date();
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+        await db.insert(openingBalance).values({
+          amountPaise: 100_000,
+          asOfDate: "2026-04-01",
+          note: "seed",
+        });
+        await db.insert(cashLedger).values([
+          { type: "sale", amountPaise: 5_000, entryDate: today },
+          { type: "expense", amountPaise: -2_000, entryDate: today },
+          { type: "sale", amountPaise: 9_000, entryDate: tomorrowStr },
+        ]);
+
+        // 100000 + 5000 - 2000 — tomorrow's entry must stay out.
+        expect(await cashBalanceAsOf(db, today)).toBe(103_000);
       });
 
       it("credit aging groups unpaid bills by bucket", async () => {

@@ -8,7 +8,7 @@
  *
  * Credit aging groups unpaid sale bills by days overdue.
  */
-import { and, asc, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import type { Db, TxDb } from "./client";
 import {
   cashLedger,
@@ -54,7 +54,7 @@ export async function cashBalanceAsOf(db: Db, date: string): Promise<number> {
       total: sql<number>`coalesce(sum(${cashLedger.amountPaise}), 0)`.mapWith(Number),
     })
     .from(cashLedger)
-    .where(lt(cashLedger.entryDate, date));
+    .where(lte(cashLedger.entryDate, date));
 
   return base + (ledger?.total ?? 0);
 }
