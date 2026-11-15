@@ -51,4 +51,4 @@ web-worker/.wrangler
 web/vite.local.config.ts
 
 # Database backups (contain customer + user data, keep them out of git)
-docs/db-backup-*.sql
+docs/db-backup-*
