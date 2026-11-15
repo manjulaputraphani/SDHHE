@@ -111,6 +111,7 @@ import {
   IconUsers,
   IconUserX,
 } from "./components/icons";
+import { DeleteRowButton, EditRowButton, RowActions } from "./components/RowActions";
 
 type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "roasting" | "stock" | "expenses" | "suppliers" | "activity" | "team-chat" | "team" | "settings";
 
@@ -138,25 +139,6 @@ function IconEye() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
       <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function IconEdit() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
-function IconTrash() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M8 6V4h8v2" />
-      <path d="M19 6l-1 14H6L5 6" />
     </svg>
   );
 }
@@ -2773,10 +2755,10 @@ export default function App() {
                   align: "right",
                   mobileLabel: "Actions",
                   cell: (customer) => (
-                    <span className="flex flex-wrap justify-end gap-2">
+                    <RowActions>
                       {can("customers", "edit") && (
-                        <button
-                          className="btn-mini"
+                        <EditRowButton
+                          label="Edit customer"
                           onClick={() =>
                             setCustomerForm({
                               id: customer.id,
@@ -2787,13 +2769,11 @@ export default function App() {
                               address: customer.address ?? "",
                             })
                           }
-                        >
-                          Edit
-                        </button>
+                        />
                       )}
                       {can("customers", "delete") && (
-                        <button
-                          className="btn-mini text-error-ink hover:bg-error-soft"
+                        <DeleteRowButton
+                          label="Delete customer"
                           onClick={async () => {
                             if (!window.confirm(`Remove ${customer.name} from the customer master?`)) return;
                             try {
@@ -2804,11 +2784,9 @@ export default function App() {
                               showToast(err instanceof Error ? err.message : String(err), "error", 4000);
                             }
                           }}
-                        >
-                          Delete
-                        </button>
+                        />
                       )}
-                    </span>
+                    </RowActions>
                   ),
                 },
               ]}
@@ -2944,9 +2922,7 @@ export default function App() {
                           mobileLabel: "Actions",
                           hideOnMobile: true,
                           cell: (p: PurchaseRow) => (
-                            <button className="btn-mini" onClick={() => openPurchaseEdit(p)}>
-                              Edit
-                            </button>
+                            <EditRowButton label="Edit purchase" onClick={() => openPurchaseEdit(p)} />
                           ),
                         },
                       ]
@@ -3395,10 +3371,10 @@ export default function App() {
                         mobileLabel: "Actions",
                         hideOnMobile: true,
                         cell: (x: ExpenseRow) => (
-                          <span className="flex flex-wrap justify-end gap-2">
-                            <button className="btn-mini" onClick={() => openExpenseEdit(x)}>Edit</button>
-                            <button className="btn-mini btn-mini-danger" onClick={() => void deleteExpenseRow(x)}>Delete</button>
-                          </span>
+                          <RowActions>
+                            <EditRowButton label="Edit expense" onClick={() => openExpenseEdit(x)} />
+                            <DeleteRowButton label="Delete expense" onClick={() => void deleteExpenseRow(x)} />
+                          </RowActions>
                         ),
                       },
                     ]
@@ -3644,9 +3620,7 @@ export default function App() {
                     mobileLabel: "Actions",
                     cell: (row) => (
                       can("investments", "delete") ? (
-                        <button className="btn-mini btn-mini-danger" onClick={() => void removeInvestment(row.id)}>
-                          <IconTrash /> Delete
-                        </button>
+                        <DeleteRowButton label="Delete investment" onClick={() => void removeInvestment(row.id)} />
                       ) : null
                     ),
                   },
@@ -3718,8 +3692,8 @@ export default function App() {
                     const canDelete = can("bills", "delete");
                     const view = <button className="btn-mini" onClick={() => void openBill(row.id)}><IconEye /> View</button>;
                     const deleteButton = canDelete ? (
-                      <button
-                        className="btn-mini btn-destructive"
+                      <DeleteRowButton
+                        label={`Delete bill ${row.billNo}`}
                         onClick={async () => {
                           if (window.confirm(`Delete bill ${row.billNo}? This cannot be undone.`)) {
                             try {
@@ -3730,18 +3704,16 @@ export default function App() {
                             }
                           }
                         }}
-                      >
-                        Delete
-                      </button>
+                      />
                     ) : null;
 
                     if (row.cancelled) {
                       // If cancelled, show delete button if allowed, else show cancelled label
                       return canDelete ? (
-                        <span className="flex flex-wrap justify-end gap-2">
+                        <RowActions>
                           {deleteButton}
                           {view}
-                        </span>
+                        </RowActions>
                       ) : (
                         <span className="btn-mini">Cancelled</span>
                       );
@@ -3754,16 +3726,16 @@ export default function App() {
                     if (isPaid || !canEdit) {
                       // If paid or cannot edit, show view and delete (if allowed)
                       return (
-                        <span className="flex flex-wrap justify-end gap-2">
+                        <RowActions>
                           {deleteButton}
                           {view}
-                        </span>
+                        </RowActions>
                       );
                     }
 
                     // Can edit and not paid: show record payment, view, and delete
                     return (
-                      <span className="flex flex-wrap justify-end gap-2">
+                      <RowActions>
                         {deleteButton}
                         <button
                           className="btn-mini"
@@ -3795,7 +3767,7 @@ export default function App() {
                           Record payment
                         </button>
                         {view}
-                      </span>
+                      </RowActions>
                     );
                   },
                 },
@@ -4145,14 +4117,19 @@ export default function App() {
                   align: "right",
                   mobileLabel: "Actions",
                   cell: (item) => (
-                    <span className="flex flex-wrap justify-end gap-2">
+                    <RowActions>
                       {can("items", "edit") && (
-                        <button className="btn-mini" onClick={() => setItemForm({ id: item.id, name: item.name, unit: item.unit, category: item.category ?? "", hsnCode: item.hsnCode ?? "", minStock: String(item.minStockBase / unitFactor(item.unit)), imageUrl: item.imageUrl ?? "" })}><IconEdit /> Edit</button>
+                        <EditRowButton
+                          label="Edit item"
+                          onClick={() =>
+                            setItemForm({ id: item.id, name: item.name, unit: item.unit, category: item.category ?? "", hsnCode: item.hsnCode ?? "", minStock: String(item.minStockBase / unitFactor(item.unit)), imageUrl: item.imageUrl ?? "" })
+                          }
+                        />
                       )}
                       <button className="btn-mini" onClick={() => void openLots(item)}>Lots</button>
                       {can("items", "delete") && (
-                        <button
-                          className="btn-mini btn-mini-danger"
+                        <DeleteRowButton
+                          label="Delete item"
                           onClick={async () => {
                             if (!window.confirm(`Delete ${item.name}?`)) return;
                             try {
@@ -4163,11 +4140,9 @@ export default function App() {
                               setItemsMsg(err instanceof Error ? err.message : String(err));
                             }
                           }}
-                        >
-                          Delete
-                        </button>
+                        />
                       )}
-                    </span>
+                    </RowActions>
                   ),
                 },
               ]}

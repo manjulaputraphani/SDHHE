@@ -84,7 +84,7 @@ export default function ResponsiveTable<T>({
                     {columns.map((column) => (
                       <td
                         key={column.key}
-                        className={`px-4 py-2 align-middle ${column.align === "right" ? "text-right" : ""} ${
+                        className={`px-4 py-1.5 align-middle ${column.align === "right" ? "text-right" : ""} ${
                           column.className ?? ""
                         }`}
                       >

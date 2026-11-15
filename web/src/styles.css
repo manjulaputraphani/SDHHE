@@ -454,6 +454,45 @@
     background: color-mix(in oklab, var(--c-secondary-soft) 80%, var(--c-secondary) 20%);
   }
 
+  /* Icon-only row actions (Edit / Delete) — one 36px circle per action */
+  .row-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    padding: 0;
+    border: 1px solid #e6dccf;
+    border-radius: 999px;
+    background: #fbf7f1;
+    color: #5c4632;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .row-action:hover {
+    background-color: #f1e7da;
+    border-color: #d9cbb8;
+  }
+  .row-action:focus-visible {
+    outline: 2px solid #5c4632;
+    outline-offset: 2px;
+  }
+  .row-action svg {
+    width: 18px;
+    height: 18px;
+  }
+  .row-action-danger {
+    color: #b0412e;
+  }
+  .row-action-danger:hover {
+    background-color: #fbe9e5;
+    border-color: #f0d2c9;
+  }
+  .row-action-danger:focus-visible {
+    outline-color: #b0412e;
+  }
+
   .badge {
     display: inline-flex;
     align-items: center;

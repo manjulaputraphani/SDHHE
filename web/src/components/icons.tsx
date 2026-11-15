@@ -400,6 +400,23 @@ export const IconCheckCheck = (p: IconProps) => (
   </Svg>
 );
 
+export const IconPencil = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497Z" />
+    <path d="m15 5 4 4" />
+  </Svg>
+);
+
+export const IconTrash2 = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 6h18" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" x2="10" y1="11" y2="17" />
+    <line x1="14" x2="14" y1="11" y2="17" />
+  </Svg>
+);
+
 export const IconEye = (p: IconProps) => (
   <Svg {...p}>
     <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
