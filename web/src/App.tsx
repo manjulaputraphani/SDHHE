@@ -447,8 +447,11 @@ export default function App() {
   }, [view]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
-  const [customerMsg, setCustomerMsg] = useState<string | null>(null);
   const [customerSaving, setCustomerSaving] = useState(false);
+  const [itemSearch, setItemSearch] = useState("");
+  const [billSearch, setBillSearch] = useState("");
+  const [purchaseSearch, setPurchaseSearch] = useState("");
+  const [expenseSearch, setExpenseSearch] = useState("");
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
   const [customerForm, setCustomerForm] = useState<{
     id: number | null;
@@ -1092,7 +1095,7 @@ export default function App() {
     if (!customerForm) return null;
     const name = customerForm.name.trim();
     if (!name) {
-      setCustomerMsg("Customer name is required");
+      showToast("Customer name is required", "error", 4000);
       return null;
     }
     return {
@@ -1107,17 +1110,16 @@ export default function App() {
   /** Create only — never updates an existing row. */
   async function createCustomerNow() {
     if (!customerForm || customerSaving) return;
-    setCustomerMsg(null);
     const body = customerPayload();
     if (!body) return;
     setCustomerSaving(true);
     try {
       await api.createCustomer(body);
-      setCustomerMsg(`${body.name} created`);
+      showToast(`${body.name} created`, "success", 3000);
       setCustomerForm(null);
       setCustomers((await api.customers(customerSearch)).customers);
     } catch (err) {
-      setCustomerMsg(err instanceof Error ? err.message : String(err));
+      showToast(err instanceof Error ? err.message : String(err), "error", 4000);
     } finally {
       setCustomerSaving(false);
     }
@@ -1126,17 +1128,16 @@ export default function App() {
   /** Update the customer currently being edited. */
   async function updateCustomerNow() {
     if (!customerForm || customerForm.id === null || customerSaving) return;
-    setCustomerMsg(null);
     const body = customerPayload();
     if (!body) return;
     setCustomerSaving(true);
     try {
       await api.updateCustomer(customerForm.id, body);
-      setCustomerMsg(`${body.name} updated`);
+      showToast(`${body.name} updated`, "success", 3000);
       setCustomerForm(null);
       setCustomers((await api.customers(customerSearch)).customers);
     } catch (err) {
-      setCustomerMsg(err instanceof Error ? err.message : String(err));
+      showToast(err instanceof Error ? err.message : String(err), "error", 4000);
     } finally {
       setCustomerSaving(false);
     }
@@ -2681,26 +2682,28 @@ export default function App() {
 
         {view === "customers" && (
           <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
+            <div className="list-header">
+              <div className="list-title">
                 <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Customers</h1>
                 <p className="text-sm text-muted">Saved client details — picked by name when you bill.</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  className="input max-w-52"
-                  placeholder="Search name, phone, GSTIN…"
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.currentTarget.value)}
-                />
-                {can("customers", "create") && (
-                  <button
-                    className="btn btn-primary whitespace-nowrap"
-                    onClick={() => setCustomerForm({ id: null, name: "", phone: "", email: "", gstin: "", address: "" })}
-                  >
-                    <span className="flex items-center gap-1.5"><IconPlus size={15} /> Add customer</span>
-                  </button>
-                )}
+              <div className="list-actions">
+                <div className="search-row">
+                  <input
+                    className="input search-input"
+                    placeholder="Search name, phone or GSTIN"
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.currentTarget.value)}
+                  />
+                  {can("customers", "create") && (
+                    <button
+                      className="btn btn-primary whitespace-nowrap"
+                      onClick={() => setCustomerForm({ id: null, name: "", phone: "", email: "", gstin: "", address: "" })}
+                    >
+                      <span className="flex items-center gap-1.5"><IconPlus size={15} /> Add customer</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
             {customerForm && (
@@ -2713,7 +2716,6 @@ export default function App() {
                   <input className="input" placeholder="GSTIN (optional — leave blank if no GST)" value={customerForm.gstin} onChange={(e) => setCustomerForm({ ...customerForm, gstin: e.currentTarget.value.toUpperCase() })} />
                   <input className="input sm:col-span-2" placeholder="Address" value={customerForm.address} onChange={(e) => setCustomerForm({ ...customerForm, address: e.currentTarget.value })} />
                 </div>
-                {customerMsg && <p role="status" className="rounded bg-surface-2 px-3 py-2 text-sm text-muted">{customerMsg}</p>}
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     className="btn btn-primary"
@@ -2733,24 +2735,27 @@ export default function App() {
               rows={customers}
               rowKey={(customer) => customer.id}
               minWidthClass="min-w-[720px]"
-              widths={["w-[22%]", "w-[14%]", "w-[16%]", "w-[9%]", "w-[13%]", "w-[12%]", "w-[14%]"]}
+              widths={["w-[30%]", "w-[14%]", "w-[16%]", "w-[8%]", "w-[12%]", "w-[10%]", "w-[10%]"]}
               columns={[
                 {
                   key: "customer",
                   header: "Customer",
+                  className: "min-w-0",
                   cell: (customer) => (
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-2 min-w-0">
                       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary-soft text-[11px] font-semibold text-secondary-ink">
                         {customer.name.trim().charAt(0).toUpperCase()}
                       </span>
-                      <span className="font-medium">{customer.name}</span>
+                      <span title={customer.name} className="block truncate min-w-0 font-medium">
+                        {customer.name}
+                      </span>
                     </span>
                   ),
                 },
                 { key: "phone", header: "Phone", cell: (customer) => customer.phone ?? "—" },
                 { key: "gstin", header: "GSTIN", cell: (customer) => customer.gstin ?? "—" },
-                { key: "bills", header: "Bills", align: "right", cell: (customer) => customer.billCount },
-                { key: "billed", header: "Billed", align: "right", cell: (customer) => money(customer.billedPaise) },
+                { key: "bills", header: "Bills", align: "right", cell: (customer) => (customer.billCount === 0 ? <span className="text-muted">0</span> : customer.billCount) },
+                { key: "billed", header: "Billed", align: "right", cell: (customer) => (customer.billedPaise === 0 ? <span className="text-muted">{money(0)}</span> : money(customer.billedPaise)) },
                 {
                   key: "credit",
                   header: "Credit",
@@ -2788,15 +2793,15 @@ export default function App() {
                       )}
                       {can("customers", "delete") && (
                         <button
-                          className="btn-mini btn-mini-danger"
+                          className="btn-mini text-error-ink hover:bg-error-soft"
                           onClick={async () => {
                             if (!window.confirm(`Remove ${customer.name} from the customer master?`)) return;
                             try {
                               await api.deleteCustomer(customer.id);
                               setCustomers((await api.customers(customerSearch)).customers);
-                              setCustomerMsg(`${customer.name} removed`);
+                              showToast(`${customer.name} removed`, "success", 3000);
                             } catch (err) {
-                              setCustomerMsg(err instanceof Error ? err.message : String(err));
+                              showToast(err instanceof Error ? err.message : String(err), "error", 4000);
                             }
                           }}
                         >
@@ -2817,7 +2822,6 @@ export default function App() {
                 />
               }
             />
-            {customerMsg && <p role="status" className="text-sm text-muted">{customerMsg}</p>}
           </section>
         )}
 
@@ -2827,9 +2831,21 @@ export default function App() {
           const purchaseTotalPaise = purchaseQty > 0 ? Math.round(purchaseQty * purchaseRatePaise) : 0;
           return (
             <section className="space-y-4">
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Purchases</h1>
-                <p className="text-sm text-muted">Record stock you buy from suppliers.</p>
+              <div className="list-header">
+                <div className="list-title">
+                  <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Purchases</h1>
+                  <p className="text-sm text-muted">Record stock you buy from suppliers.</p>
+                </div>
+                <div className="list-actions">
+                  <div className="search-row">
+                    <input
+                      className="input search-input"
+                      placeholder="Search item, supplier or date"
+                      value={purchaseSearch}
+                      onChange={(e) => setPurchaseSearch(e.currentTarget.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="card p-4">
@@ -2897,7 +2913,15 @@ export default function App() {
 
               <ResponsiveTable
                 title="Recent purchases"
-                rows={purchasesList}
+                rows={purchasesList.filter((p) => {
+                  const q = purchaseSearch.toLowerCase();
+                  return (
+                    !q ||
+                    p.name.toLowerCase().includes(q) ||
+                    (p.supplier_name ?? "").toLowerCase().includes(q) ||
+                    p.purchase_date.includes(q)
+                  );
+                })}
                 rowKey={(p) => p.id}
                 minWidthClass="min-w-[900px]"
                 widths={user?.role === "owner"
@@ -3252,7 +3276,21 @@ export default function App() {
 
         {view === "expenses" && (
           <section className="space-y-4">
-            <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Expenses</h1>
+            <div className="list-header">
+              <div className="list-title">
+                <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Expenses</h1>
+              </div>
+              <div className="list-actions">
+                <div className="search-row">
+                  <input
+                    className="input search-input"
+                    placeholder="Search category, paid to or note"
+                    value={expenseSearch}
+                    onChange={(e) => setExpenseSearch(e.currentTarget.value)}
+                  />
+                </div>
+              </div>
+            </div>
 
             <div className="card p-4">
               <FormRow desktop="min-[1200px]:grid-cols-[1fr_1fr_1.2fr_1fr_1.2fr_1.6fr_auto]">
@@ -3328,7 +3366,15 @@ export default function App() {
                   This month: <span className="font-semibold text-ink">{money(monthExpensesPaise)}</span>
                 </span>
               }
-              rows={expensesList}
+              rows={expensesList.filter((x) => {
+                const q = expenseSearch.toLowerCase();
+                return (
+                  !q ||
+                  x.category.toLowerCase().includes(q) ||
+                  (x.paidTo ?? "").toLowerCase().includes(q) ||
+                  (x.note ?? "").toLowerCase().includes(q)
+                );
+              })}
               rowKey={(x) => x.id}
               minWidthClass="min-w-[760px]"
               widths={user?.role === "owner"
@@ -3621,9 +3667,26 @@ export default function App() {
 
         {view === "bills" && (
           <section className="space-y-4">
-            <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Invoices</h1>
+            <div className="list-header">
+              <div className="list-title">
+                <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Invoices</h1>
+              </div>
+              <div className="list-actions">
+                <div className="search-row">
+                  <input
+                    className="input search-input"
+                    placeholder="Search bill no or customer"
+                    value={billSearch}
+                    onChange={(e) => setBillSearch(e.currentTarget.value)}
+                  />
+                </div>
+              </div>
+            </div>
             <ResponsiveTable
-              rows={bills}
+              rows={bills.filter((row) => {
+                const q = billSearch.toLowerCase();
+                return !q || row.billNo.toLowerCase().includes(q) || (row.customerName ?? "").toLowerCase().includes(q);
+              })}
               rowKey={(row) => row.id}
               minWidthClass="min-w-[640px]"
               widths={["w-[16%]", "w-[13%]", "w-[20%]", "w-[14%]", "w-[15%]", "w-[22%]"]}
@@ -3993,13 +4056,28 @@ export default function App() {
 
         {view === "items" && (
           <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Items</h1>
-              {can("items", "create") && (
-                <button className="btn btn-primary" onClick={() => setItemForm({ id: null, name: "", unit: "kg", category: "", hsnCode: "", minStock: "", imageUrl: "" })}>
-                  <span className="flex items-center gap-1.5"><IconPlus size={15} /> Add item</span>
-                </button>
-              )}
+            <div className="list-header">
+              <div className="list-title">
+                <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Items</h1>
+              </div>
+              <div className="list-actions">
+                <div className="search-row">
+                  <input
+                    className="input search-input"
+                    placeholder="Search items by name, HSN or category"
+                    value={itemSearch}
+                    onChange={(e) => setItemSearch(e.currentTarget.value)}
+                  />
+                  {can("items", "create") && (
+                    <button
+                      className="btn btn-primary whitespace-nowrap"
+                      onClick={() => setItemForm({ id: null, name: "", unit: "kg", category: "", hsnCode: "", minStock: "", imageUrl: "" })}
+                    >
+                      <span className="flex items-center gap-1.5"><IconPlus size={15} /> Add item</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
             {itemForm && (
               <div className="card max-w-3xl space-y-2 p-4">
@@ -4034,7 +4112,15 @@ export default function App() {
             )}
             {itemsMsg && <p role="status" className="text-sm text-muted">{itemsMsg}</p>}
             <ResponsiveTable
-              rows={items}
+              rows={items.filter((item) => {
+                const q = itemSearch.toLowerCase();
+                return (
+                  !q ||
+                  item.name.toLowerCase().includes(q) ||
+                  (item.hsnCode ?? "").toLowerCase().includes(q) ||
+                  (item.category ?? "").toLowerCase().includes(q)
+                );
+              })}
               rowKey={(item) => item.id}
               minWidthClass="min-w-[680px]"
               widths={["w-[26%]", "w-[12%]", "w-[8%]", "w-[16%]", "w-[14%]", "w-[24%]"]}

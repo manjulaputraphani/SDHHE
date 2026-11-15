@@ -71,7 +71,7 @@ export default function ResponsiveTable<T>({
                   {columns.map((column) => (
                     <th
                       key={column.key}
-                      className={`px-4 py-2 ${column.align === "right" ? "text-right" : ""}`}
+                      className={`px-4 py-2 align-middle ${column.align === "right" ? "text-right" : ""}`}
                     >
                       {column.header}
                     </th>
@@ -84,7 +84,7 @@ export default function ResponsiveTable<T>({
                     {columns.map((column) => (
                       <td
                         key={column.key}
-                        className={`px-4 py-2 ${column.align === "right" ? "text-right" : ""} ${
+                        className={`px-4 py-2 align-middle ${column.align === "right" ? "text-right" : ""} ${
                           column.className ?? ""
                         }`}
                       >
@@ -106,7 +106,7 @@ export default function ResponsiveTable<T>({
                   .map((column) => (
                     <div
                       key={column.key}
-                      className={`flex items-start justify-between gap-3 py-0.5 ${
+                      className={`flex items-center justify-between gap-3 py-0.5 ${
                         column.align === "right" ? "text-right" : ""
                       }`}
                     >
