@@ -1,6 +1,6 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-14 by OpenCode (web `386d827b` live — mobile download link restored; Expo Android v8 hosted)
+Last updated: 2026-11-15 by OpenCode (added `.github/workflows/web.yml` — web build + PWA asset check, uploads `web-dist`; deploy stays manual)
 Tool: OpenCode
 ## Current state
 - **Expo Android v8 hosted (2026-11-14)** — EAS build `0c576b95` (profile `preview`, versionCode 1) → `/sdhhe-mobile.apk` (R2 `apk/sdhhe-mobile.apk`, 81,743,869 bytes, SHA-256 `24a100f5…`; Desktop `~/Desktop/SDHHE-Mobile.apk`); includes dashboard card icons, unread-by-room badges, splash art v2. Web app stays `386d827b` (TWA `/sdhhe.apk`).

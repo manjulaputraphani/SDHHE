@@ -1,0 +1,86 @@
+name: web
+
+# Builds the browser edition and checks that the PWA assets still land in the
+# bundle. /manifest.webmanifest feeds `bubblewrap` when the TWA APK is rebuilt,
+# and /sw.js is the Team Chat push worker, so both must survive every build.
+# Deployment stays manual (`wrangler deploy` in web-worker/).
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build web app + PWA
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Typecheck web app
+        run: npm run typecheck --prefix web
+
+      - name: Build web app
+        run: npm run build --prefix web
+
+      - name: Verify PWA assets in dist
+        run: |
+          missing=0
+          for file in manifest.webmanifest sw.js apple-touch-icon.png favicon.svg \
+                      icons/icon-192.png icons/icon-512.png icons/maskable-512.png; do
+            if [ ! -f "web/dist/$file" ]; then
+              echo "::error file=web/dist/$file::PWA asset missing from the build"
+              missing=1
+            fi
+          done
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const manifest = JSON.parse(readFileSync("web/dist/manifest.webmanifest", "utf8"));
+            const problems = [];
+            if (manifest.display !== "standalone") problems.push("display must be standalone");
+            if (!manifest.start_url) problems.push("start_url is missing");
+            if (!manifest.scope) problems.push("scope is missing");
+            if (!Array.isArray(manifest.icons) || manifest.icons.length === 0) problems.push("icons are missing");
+            if (problems.length) {
+              for (const problem of problems) console.log(`::error::manifest.webmanifest: ${problem}`);
+              process.exit(1);
+            }
+            console.log(`PWA manifest OK: ${manifest.name} (${manifest.icons.length} icons)`);
+          '
+          exit $missing
+
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 14
+          if-no-files-found: error
