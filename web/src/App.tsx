@@ -2271,14 +2271,16 @@ export default function App() {
                 type="button"
                 className="mobile-dash-avatar"
                 aria-label="Account"
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
                 onClick={() => setAccountOpen((open) => !open)}
               >
-                {user.name.slice(0, 1).toUpperCase()}
+                A
               </button>
               {accountOpen && (
                 <div className="mobile-dash-menu" role="menu">
                   <p className="mobile-dash-menu-name">{user.name}</p>
-                  <p className="mobile-dash-menu-role">{user.role === "owner" ? "Owner" : user.role === "ca" ? "Admin" : "Staff"}</p>
+                  <p className="mobile-dash-menu-role">{user.role === "staff" ? "Staff" : "Admin"}</p>
                   <button
                     type="button"
                     className="mobile-dash-menu-logout"

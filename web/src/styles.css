@@ -1997,6 +1997,7 @@ summary {
   .mobile-dash-logo {
     width: 32px;
     height: 32px;
+    flex: none;
     border-radius: 9px;
     display: grid;
     place-items: center;
@@ -2022,6 +2023,7 @@ summary {
   .mobile-dash-btn {
     width: 40px;
     height: 40px;
+    flex: none;
     display: grid;
     place-items: center;
     border-radius: 10px;
@@ -2031,6 +2033,7 @@ summary {
   .mobile-dash-avatar {
     width: 34px;
     height: 34px;
+    flex: none;
     border-radius: 50%;
     display: grid;
     place-items: center;

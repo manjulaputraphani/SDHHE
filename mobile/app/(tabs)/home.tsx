@@ -26,10 +26,13 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Pressable,
 } from "react-native";
 import { useCallback, useEffect, useState, type ComponentProps } from "react";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   api,
@@ -39,6 +42,7 @@ import {
   type RotationSummary,
   type Stats,
 } from "../../lib/api";
+import type { ThemeColors, ThemeMode } from "../../lib/theme";
 import { useAuth } from "../_layout";
 
 const QTY_FACTORS: Record<string, number> = { kg: 1000, l: 1000, "60 kg bag": 60_000 };
@@ -71,10 +75,18 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** "5:16 PM" — the last-fetched time shown under the Dashboard title. */
+function formatClock(date = new Date()): string {
+  let hours = date.getHours();
+  const suffix = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  return `${hours}:${String(date.getMinutes()).padStart(2, "0")} ${suffix}`;
+}
+
 type Tone = { bg: string; fg: string };
 
 export default function HomeScreen() {
-  const { theme, user } = useAuth();
+  const { theme, themeMode, user, signOut } = useAuth();
   const router = useRouter();
 
   const [stats, setStats] = useState<Stats | null>(null);
@@ -88,6 +100,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   const [aiMessages, setAiMessages] = useState<AiTurn[]>([]);
   const [aiInput, setAiInput] = useState("");
@@ -127,6 +140,7 @@ export default function HomeScreen() {
       setLoadError("Couldn't load the dashboard — pull to retry.");
     } finally {
       setLoading(false);
+      setLastUpdated(formatClock());
     }
   }, []);
 
@@ -192,6 +206,7 @@ export default function HomeScreen() {
 
   const lowStockCount = stats?.low_stock ?? 0;
   const unpaidBills = stats?.credit_bills ?? 0;
+  const roleLabel = user?.role === "staff" ? "Staff" : "Admin";
 
   const surface = { backgroundColor: theme.surface, shadowColor: theme.shadow };
 
@@ -208,28 +223,26 @@ export default function HomeScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ flex: 1, backgroundColor: theme.bg }}
     >
+      {/* One compact sticky bar replaces the old SDHHE/user block, the gold
+          dot, the large Dashboard title and the subtitle. The bar stays put
+          while the ScrollView below it scrolls. */}
+      <DashboardHeader
+        theme={theme}
+        themeMode={themeMode}
+        userName={user?.name ?? ""}
+        roleLabel={roleLabel}
+        lastUpdated={lastUpdated}
+        refreshing={refreshing}
+        onRefresh={() => void onRefresh()}
+        onOpenChats={() => router.push("/chats")}
+        onLogout={signOut}
+      />
       <ScrollView
         style={styles.screen}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* ---- header ---- */}
-        <View style={styles.header}>
-          <Text style={[styles.shop, { color: theme.ink }]}>SDHHE</Text>
-          <Text style={[styles.name, { color: theme.muted }]}>{user?.name}</Text>
-        </View>
-
-        <View style={styles.titleRow}>
-          <View style={[styles.titleDot, { backgroundColor: theme.accent }]} />
-          <View>
-            <Text style={[styles.title, { color: theme.ink }]}>Dashboard</Text>
-            <Text style={[styles.subtitle, { color: theme.muted }]}>
-              Sales, stock, expenses and money in rotation — live.
-            </Text>
-          </View>
-        </View>
-
         {loadError ? (
           <View style={[styles.card, surface]}>
             <Text style={{ color: theme.errorInk, fontSize: 13 }}>{loadError}</Text>
@@ -651,6 +664,147 @@ export default function HomeScreen() {
   );
 }
 
+/**
+ * The phone Dashboard header. Fixed above the ScrollView — the native
+ * equivalent of `position: sticky; top: 0` — so it never scrolls away.
+ * Light mode uses the exact cream/brown palette from the design; dark and
+ * contrast modes borrow the matching theme tokens.
+ */
+function DashboardHeader({
+  theme,
+  themeMode,
+  userName,
+  roleLabel,
+  lastUpdated,
+  refreshing,
+  onRefresh,
+  onOpenChats,
+  onLogout,
+}: {
+  theme: ThemeColors;
+  themeMode: ThemeMode;
+  userName: string;
+  roleLabel: string;
+  lastUpdated: string | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onOpenChats: () => void;
+  onLogout: () => void | Promise<void>;
+}) {
+  const insets = useSafeAreaInsets();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const light = themeMode === "light";
+  const barBg = light ? "#f6efe6" : theme.surface;
+  const barLine = light ? "#e6d9c7" : theme.line;
+  const barInk = light ? "#3b2a20" : theme.ink;
+  const barMuted = light ? "#6e5e4e" : theme.muted;
+  const logoBg = light ? "#3b2a20" : theme.primary;
+  const logoInk = light ? "#ffffff" : theme.onPrimary;
+
+  return (
+    <>
+      <View
+        accessibilityRole="header"
+        style={[
+          styles.dashHeader,
+          {
+            paddingTop: insets.top + 8,
+            backgroundColor: barBg,
+            borderBottomColor: barLine,
+          },
+        ]}
+      >
+        <View style={styles.dashHeaderLeft}>
+          <View style={[styles.dashLogo, { backgroundColor: logoBg }]}>
+            <Text style={[styles.dashLogoText, { color: logoInk }]}>S</Text>
+          </View>
+          <View style={styles.dashHeading}>
+            <Text style={[styles.dashTitle, { color: barInk }]}>SDHHE</Text>
+            <Text style={[styles.dashSub, { color: barMuted }]} numberOfLines={1}>
+              Dashboard · Updated {lastUpdated ?? "…"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Refresh dashboard"
+            onPress={onRefresh}
+            disabled={refreshing}
+            style={styles.dashIconBtn}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          >
+            <Ionicons name="refresh" size={17} color={barInk} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.dashHeaderRight}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Notifications"
+            onPress={onOpenChats}
+            style={styles.dashIconBtn}
+          >
+            <Ionicons name="notifications-outline" size={19} color={barInk} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Account"
+            accessibilityState={{ expanded: menuOpen }}
+            onPress={() => setMenuOpen(true)}
+            style={[styles.dashAvatar, { backgroundColor: theme.accent }]}
+            hitSlop={{ top: 8, bottom: 8, right: 8 }}
+          >
+            <Text style={styles.dashAvatarText}>A</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close account menu"
+          style={styles.dashMenuBackdrop}
+          onPress={() => setMenuOpen(false)}
+        >
+          <Pressable
+            style={[
+              styles.dashMenu,
+              {
+                top: insets.top + 64,
+                backgroundColor: theme.surface,
+                borderColor: theme.line,
+                shadowColor: theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.dashMenuName, { color: theme.ink }]} numberOfLines={1}>
+              {userName}
+            </Text>
+            <Text style={[styles.dashMenuRole, { color: theme.muted }]}>{roleLabel}</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Logout"
+              style={[styles.dashMenuLogout, { backgroundColor: theme.errorSoft }]}
+              onPress={() => {
+                setMenuOpen(false);
+                void onLogout();
+              }}
+            >
+              <Ionicons name="log-out-outline" size={15} color={theme.errorInk} />
+              <Text style={[styles.dashMenuLogoutText, { color: theme.errorInk }]}>Logout</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 /** Largest value in a daily column — used to scale the bars. */
 function dailyMax(daily: { sales: string; expenses: string }[], key: "sales" | "expenses"): number {
   return Math.max(...daily.map((d) => Number(d[key]) || 0), 1);
@@ -792,14 +946,79 @@ function StatCard({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center" },
-  content: { padding: 16, paddingTop: 48, paddingBottom: 40, gap: 12 },
-  header: { marginBottom: 4 },
-  shop: { fontSize: 20, fontWeight: "700", letterSpacing: 1.6 },
-  name: { fontSize: 12, marginTop: 2 },
-  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 4 },
-  titleDot: { width: 8, height: 8, borderRadius: 4, marginTop: 7 },
-  title: { fontSize: 22, fontWeight: "700", letterSpacing: -0.3 },
-  subtitle: { fontSize: 12, marginTop: 2 },
+  content: { padding: 16, paddingTop: 12, paddingBottom: 40, gap: 12 },
+  dashHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    zIndex: 20,
+    elevation: 20,
+  },
+  dashHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
+  },
+  dashLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  dashLogoText: { fontSize: 14, fontWeight: "700" },
+  dashHeading: { flexShrink: 1, minWidth: 0 },
+  dashTitle: { fontSize: 16, fontWeight: "700", letterSpacing: 1, lineHeight: 18 },
+  dashSub: { fontSize: 12, marginTop: 2, letterSpacing: -0.2, lineHeight: 15 },
+  dashIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  dashHeaderRight: { flexDirection: "row", alignItems: "center", gap: 2, flexShrink: 0 },
+  dashAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dashAvatarText: { color: "#ffffff", fontSize: 13, fontWeight: "700" },
+  dashMenuBackdrop: { flex: 1, backgroundColor: "rgba(28, 22, 18, 0.18)" },
+  dashMenu: {
+    position: "absolute",
+    right: 16,
+    width: 200,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    elevation: 10,
+    shadowOpacity: 0.14,
+    shadowRadius: 13,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  dashMenuName: { fontSize: 13, fontWeight: "600" },
+  dashMenuRole: { fontSize: 11, marginTop: 2 },
+  dashMenuLogout: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  dashMenuLogoutText: { fontSize: 13, fontWeight: "600" },
   card: {
     borderRadius: 14,
     padding: 14,
