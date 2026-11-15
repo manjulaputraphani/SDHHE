@@ -48,7 +48,7 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       # Expo SDK 58 compiles against Android API 37 and uses NDK 27.1.
       - name: Install Android SDK packages
