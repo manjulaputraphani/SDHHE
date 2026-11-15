@@ -19,18 +19,37 @@ export function initials(name: string): string {
   return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
 }
 
+/**
+ * Parse a timestamp returned by the API.
+ *
+ * The worker used to send Postgres' `timestamptz::text` form
+ * ("2026-11-15 09:55:51.840273+00"). Chrome and Safari accept it, but Hermes
+ * (the React Native engine) requires a two-part UTC offset and rejects the
+ * hour-only `+00` — `new Date(...)` then returns Invalid Date, which showed up
+ * in a 1:1 chat as "Last seen Invalid Date at Invalid Date". Normalise the
+ * space and the short offset to strict ISO 8601 before parsing.
+ */
+export function parseChatDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const text = value
+    .trim()
+    .replace(/^(\d{4}-\d{2}-\d{2})[ T]/, "$1T")
+    .replace(/(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)([+-]\d{2})$/, "$1$2:00");
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /** Online if the member was seen in the last 60 seconds. */
 export function isOnline(lastSeenAt: string | null | undefined, now: number = Date.now()): boolean {
-  if (!lastSeenAt) return false;
-  const at = new Date(lastSeenAt).getTime();
-  return Number.isFinite(at) && now - at < 60_000;
+  const at = parseChatDate(lastSeenAt);
+  return at !== null && now - at.getTime() < 60_000;
 }
 
 /** "Online" / "Last seen today at 16:20" / "Offline". */
 export function presenceLabel(lastSeenAt: string | null | undefined, now: Date = new Date()): string {
   if (isOnline(lastSeenAt, now.getTime())) return "Online";
-  if (!lastSeenAt) return "Offline";
-  const at = new Date(lastSeenAt);
+  const at = parseChatDate(lastSeenAt);
+  if (!at) return "Offline";
   const time = at.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
   const startOf = (value: Date) =>
     new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
@@ -41,8 +60,8 @@ export function presenceLabel(lastSeenAt: string | null | undefined, now: Date =
 }
 
 function formatChatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
+  const date = parseChatDate(iso);
+  if (!date) return "";
   const meridiem = date.getHours() < 12 ? "AM" : "PM";
   const hours = date.getHours() % 12 || 12;
   const minutes = String(date.getMinutes()).padStart(2, "0");
@@ -51,13 +70,12 @@ function formatChatTime(iso: string): string {
 
 /** Chat-list row time: "04:20 PM" · "Yesterday" · "Tue, 3 Nov". */
 export function formatChatListTime(iso: string | null | undefined, now: Date = new Date()): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
+  const date = parseChatDate(iso);
+  if (!date) return "";
   const startOf = (value: Date) =>
     new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
   const days = Math.round((startOf(now) - startOf(date)) / 86_400_000);
-  if (days <= 0) return formatChatTime(iso);
+  if (days <= 0) return formatChatTime(iso!);
   if (days === 1) return "Yesterday";
   return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]}`;
 }

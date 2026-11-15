@@ -1641,9 +1641,14 @@ const handler = {
       }
 
       if (url.pathname === "/api/chat/members" && request.method === "GET") {
+        // Strict ISO 8601 (not timestamptz::text): Hermes on the phone cannot
+        // parse Postgres' "2026-11-15 09:55:51.840273+00" and rendered the
+        // presence line as "Last seen Invalid Date at Invalid Date".
         const rows = await sqlQuery(
           env,
-          `select id, name, role, last_seen_at::text as "lastSeenAt" from app_users
+          `select id, name, role,
+                  to_char(last_seen_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "lastSeenAt"
+           from app_users
            where active = true and id <> $1 order by name`,
           [session.uid],
         );

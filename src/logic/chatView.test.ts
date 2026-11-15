@@ -10,9 +10,12 @@ import {
   filterMessages,
   formatChatListTimeRow as formatChatListTime,
   groupReactions,
+  isOnline,
+  presenceLabel,
   type ConversationListEntry,
   type ViewMessage,
 } from "./chatView";
+import { parseChatDate } from "./chat";
 
 function message(id: number, createdAt: string, body = `m${id}`, author = "RAJU"): ViewMessage {
   return {
@@ -157,6 +160,49 @@ describe("filterMessages", () => {
 
   it("returns everything for a blank query", () => {
     expect(filterMessages(messages, " ")).toHaveLength(2);
+  });
+});
+
+describe("presence (last seen)", () => {
+  /** A timestamp in Postgres' timestamptz::text form — what the old API sent. */
+  function pgText(date: Date): string {
+    const iso = date.toISOString(); // 2026-11-06T06:55:00.000Z
+    return `${iso.slice(0, 10)} ${iso.slice(11, 19)}.000000+00`;
+  }
+
+  const now = new Date(2026, 10, 6, 12, 0); // Fri 6 Nov 2026, 12:00 local
+
+  it("parses the Postgres text form and keeps ISO strings unchanged", () => {
+    expect(parseChatDate("2026-11-15 09:55:51.840273+00")?.toISOString()).toBe(
+      "2026-11-15T09:55:51.840Z",
+    );
+    expect(parseChatDate("2026-11-15T09:55:51.840+00:00")?.toISOString()).toBe(
+      "2026-11-15T09:55:51.840Z",
+    );
+    // A date-only value must not have its own "-15" turned into a timezone.
+    expect(parseChatDate("2026-11-15")?.toISOString()).toBe("2026-11-15T00:00:00.000Z");
+  });
+
+  it("returns null for blank or unparseable values", () => {
+    expect(parseChatDate(null)).toBeNull();
+    expect(parseChatDate(undefined)).toBeNull();
+    expect(parseChatDate("  ")).toBeNull();
+    expect(parseChatDate("not a date")).toBeNull();
+  });
+
+  it("marks a recent heartbeat online (Postgres text form)", () => {
+    expect(isOnline(pgText(new Date(now.getTime() - 5_000)), now.getTime())).toBe(true);
+    expect(isOnline(pgText(new Date(now.getTime() - 5 * 60_000)), now.getTime())).toBe(false);
+  });
+
+  it("never shows Invalid Date when the timestamp is unparseable", () => {
+    expect(presenceLabel("not a date", now)).toBe("Offline");
+  });
+
+  it("labels a recent-but-offline member as Last seen today", () => {
+    const label = presenceLabel(pgText(new Date(now.getTime() - 10 * 60_000)), now);
+    expect(label).toMatch(/^Last seen today at \d{1,2}:\d{2}\s?(am|pm)$/i);
+    expect(label).not.toContain("Invalid");
   });
 });
 

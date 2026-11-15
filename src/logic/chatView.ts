@@ -7,7 +7,7 @@
  * - my messages sit on the right in the brand colour,
  * - the ticks show sent / delivered / read.
  */
-import { formatChatDayLabel, formatChatListTime } from "./chat";
+import { formatChatDayLabel, formatChatListTime, parseChatDate } from "./chat";
 import { tickState, type MemberState } from "./chatStates";
 
 /** The part of a message the view needs (both apps use their own type). */
@@ -139,9 +139,8 @@ export function initials(name: string): string {
 
 /** Is this member online? (a heartbeat in the last 60 seconds) */
 export function isOnline(lastSeenAt: string | null | undefined, now: number = Date.now()): boolean {
-  if (!lastSeenAt) return false;
-  const at = new Date(lastSeenAt).getTime();
-  return Number.isFinite(at) && now - at < 60_000;
+  const at = parseChatDate(lastSeenAt);
+  return at !== null && now - at.getTime() < 60_000;
 }
 
 /** "Online" or "Last seen today at 16:20" (Phase 1). */
@@ -150,8 +149,8 @@ export function presenceLabel(
   now: Date = new Date(),
 ): string {
   if (isOnline(lastSeenAt, now.getTime())) return "Online";
-  if (!lastSeenAt) return "Offline";
-  const at = new Date(lastSeenAt);
+  const at = parseChatDate(lastSeenAt);
+  if (!at) return "Offline";
   const time = at.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
   const startOf = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
   const days = Math.round((startOf(now) - startOf(at)) / 86_400_000);
