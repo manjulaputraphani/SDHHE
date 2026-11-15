@@ -13,6 +13,7 @@ Tool: OpenCode
   - Below 768px the header stacks (title top, actions full width, search flex:1); tables keep scrolling horizontally inside their cards.
 - Same header pattern (title left, search + primary button right, one row) applied to Items, Invoices (bills), Purchases and Expenses lists, each with client-side search over already-loaded rows (no data logic changed).
 - Verified: `web` `tsc --noEmit` clean, `npm run build` (vite) clean, root suite 533 tests pass, root `tsc` errors unchanged from clean tree (pre-existing test-file issues).
+- **Deployed 2026-11-15**: worker `sdhhe-api` version `489f7f7e-4d79-4cfc-a0d9-eddb9529f506` — live at https://sdhhe-api.blvphani.workers.dev, site + `/api/health` 200, new CSS/JS assets confirmed.
 
 ## Next task
 **Every mobile screen now at web parity.** Phone-test the new screens (Reports/Suppliers/Activity/Team + Items/Purchases/Expenses/Stock/New Bill), fix anything the test finds — first ship the chat scroll fix via `eas update` and confirm a chat opens on its newest message, then Phase 5: `eas build` → Play Store + App Store (also re-add the Cloudflare Access policy before shipping).
