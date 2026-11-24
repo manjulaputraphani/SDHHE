@@ -44,6 +44,7 @@ export default defineConfig({
     "public.chat_conversation_members",
     "public.chat_message_states",
     "public.push_subscriptions",
+    "public.pricing_calculations",
   ],
   dbCredentials: { url },
 });

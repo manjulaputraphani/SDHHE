@@ -48,6 +48,7 @@ import ItemPicker from "./components/ItemPicker";
 import CustomerPicker from "./components/CustomerPicker";
 import ItemThumb from "./components/ItemThumb";
 import ResponsiveTable from "./components/ResponsiveTable";
+import PricingCalculator from "./components/PricingCalculator";
 import SalesChart from "./components/SalesChart";
 import RotationChart from "./components/RotationChart";
 import TeamChat from "./components/TeamChat";
@@ -113,7 +114,7 @@ import {
 } from "./components/icons";
 import { DeleteRowButton, EditRowButton, RowActions } from "./components/RowActions";
 
-type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "items" | "purchases" | "roasting" | "stock" | "expenses" | "suppliers" | "activity" | "team-chat" | "team" | "settings";
+type View = "dashboard" | "reports" | "customers" | "investments" | "bills" | "billing" | "pricing" | "items" | "purchases" | "roasting" | "stock" | "expenses" | "suppliers" | "activity" | "team-chat" | "team" | "settings";
 
 /** Views that share another module's permission (Roasting uses Stock, Team Chat uses Chat). */
 const viewModule = (view: View): ModuleKey =>
@@ -1973,6 +1974,7 @@ export default function App() {
       links: [
         { key: "billing", label: "New Bill", icon: <IconBill size={16} /> },
         { key: "bills", label: "Invoices", icon: <IconInvoice size={16} /> },
+        { key: "pricing", label: "Pricing Calculator", icon: <IconCalculator size={16} /> },
       ],
     },
     {
@@ -2582,6 +2584,8 @@ export default function App() {
           </section>
           </>
         )}
+
+        {view === "pricing" && can("pricing", "view") && <PricingCalculator user={user} />}
 
         {view === "reports" && (
           <section className="space-y-4">

@@ -737,3 +737,30 @@ export const pushTokens = pgTable(
   },
   (t) => [index("push_tokens_user_idx").on(t.userId)],
 );
+
+/**
+ * Saved Green Coffee Pricing Calculator quotes.
+ *
+ * Inputs and the results calculated from them are stored together so a quote
+ * can be reloaded exactly as it was, even after the default margins change.
+ * Money is quoted rupees here (the pricing tool), not ledger paise.
+ */
+export const pricingCalculations = pgTable(
+  "pricing_calculations",
+  {
+    id: serial("id").primaryKey(),
+    /** Coffee grade, e.g. "Robusta Cherry" / "Arabica Plantation". */
+    grade: text("grade").notNull(),
+    note: text("note"),
+    inputs: jsonb("inputs").notNull(),
+    results: jsonb("results").notNull(),
+    createdBy: integer("created_by").references(() => appUsers.id, { onDelete: "set null" }),
+    /** Snapshot of the name — survives a removed account. */
+    createdByName: text("created_by_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pricing_calculations_created_idx").on(t.createdAt),
+    index("pricing_calculations_grade_idx").on(t.grade),
+  ],
+);

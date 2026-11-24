@@ -1,5 +1,6 @@
 import type { Role, RolePermissions } from "../../src/logic/permissions";
 import type { MessageInfo } from "../../src/logic/messageInfo";
+import type { PricingInputs, PricingResult } from "../../src/logic/pricing";
 
 export type User = { id: number; name: string; role: Role; permissions: RolePermissions };
 
@@ -416,6 +417,24 @@ export type ActivityRow = {
   summary: string;
 };
 
+// ---- Green Coffee Pricing Calculator ----
+export type PricingCalculation = {
+  id: number;
+  grade: string;
+  note: string | null;
+  inputs: PricingInputs;
+  results: PricingResult;
+  createdBy: number | null;
+  createdByName: string;
+  createdAt: string;
+};
+
+export type LatestStockPrice = {
+  itemName: string;
+  pricePerKg: number;
+  purchaseDate: string;
+};
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
@@ -500,6 +519,31 @@ export const api = {
   createBill: (body: Record<string, unknown>) => request<{ bill: { saleId: number; billNo: string; totalPaise: number } }>("/api/bills", { method: "POST", body: JSON.stringify(body) }),
   bills: () => request<{ bills: BillRow[] }>("/api/bills?limit=100"),
   bill: (id: number) => request<{ bill: BillDetail }>(`/api/bills/${id}`),
+  pricingCalculations: (filter: { grade?: string; from?: string; to?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (filter.grade) params.set("grade", filter.grade);
+    if (filter.from) params.set("from", filter.from);
+    if (filter.to) params.set("to", filter.to);
+    const query = params.toString();
+    return request<{ calculations: PricingCalculation[] }>(
+      `/api/pricing${query ? `?${query}` : ""}`,
+    );
+  },
+  savePricingCalculation: (body: {
+    grade: string;
+    note?: string;
+    inputs: PricingInputs;
+  }) =>
+    request<{ calculation: PricingCalculation }>("/api/pricing", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deletePricingCalculation: (id: number) =>
+    request<{ ok: boolean }>(`/api/pricing/${id}`, { method: "DELETE" }),
+  latestPricingPrice: (grade: string) =>
+    request<{ latest: LatestStockPrice | null }>(
+      `/api/pricing/latest-price?grade=${encodeURIComponent(grade)}`,
+    ),
   activity: (limit = 25, offset = 0) =>
     request<{ activity: ActivityRow[] }>(`/api/activity?limit=${limit}&offset=${offset}`),
   shop: () => request<{ shop: Record<string, string> }>("/api/shop"),

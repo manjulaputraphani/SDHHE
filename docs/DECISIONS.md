@@ -182,3 +182,8 @@
    second one. Dead tokens (`UNREGISTERED`/`NOT_FOUND`/bad registration token) are deleted from `push_tokens`, Expo and FCM tokens are split
    by `isExpoPushToken` before their fan-outs, and a browser switching from VAPID drops its old row in the same subscribe call so nobody is
    pushed twice. The key itself lives in `web-worker/.secrets/` (gitignored) + the `FCM_SERVICE_ACCOUNT` wrangler secret — never committed.
+- 2026-11-24 · **Pricing calculator quotes in rupees, not ledger paise** — the Green Coffee Pricing Calculator is a live quoting tool:
+  percentages, 365-day interest and the ₹5 ceil step produce inherently fractional answers, so `src/logic/pricing.ts` returns rupee
+  numbers (2-decimal results, whole prices/totals) and `pricing_calculations` stores the inputs + results jsonb. The invoice/purchase
+  ledger still uses integer paise everywhere; the shared pure function is imported by the web UI and the worker (server recomputes the
+  results before saving, so a saved quote can never disagree with its inputs).

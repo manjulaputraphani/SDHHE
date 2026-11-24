@@ -32,6 +32,13 @@ import { getCostingMethod, setCostingMethod } from "../../src/db/costing";
 import { finYearOptions, finYearReport, dealProfits, batchLedger } from "../../src/db/reports";
 import { getRoleMatrix, loadPermissionsForRole, saveRolePermissions } from "../../src/db/permissions";
 import {
+  deletePricingCalculation,
+  latestPurchasePriceForGrade,
+  listPricingCalculations,
+  savePricingCalculation,
+} from "../../src/db/pricing";
+import { formatPricingMoney, pricingInputsFromRecord, validatePricingInputs } from "../../src/logic/pricing";
+import {
   decodeReceiptKey,
   readReceipt,
   uploadReceipt,
@@ -234,6 +241,12 @@ function routePermission(
   if (/^\/api\/bills\/\d+\/cancel$/.test(pathname)) return { module: "bills", action: "edit" };
   if (/^\/api\/bills\/\d+\/payment$/.test(pathname)) return { module: "bills", action: "edit" };
   if (/^\/api\/bills\/\d+\/email$/.test(pathname)) return { module: "bills", action: "export" };
+
+  if (pathname === "/api/pricing") return { module: "pricing", action: read ? "view" : "create" };
+  if (pathname === "/api/pricing/latest-price") return { module: "pricing", action: "view" };
+  if (/^\/api\/pricing\/\d+$/.test(pathname)) {
+    return { module: "pricing", action: method === "DELETE" ? "delete" : "view" };
+  }
 
   if (pathname === "/api/expenses") return { module: "expenses", action: read ? "view" : "create" };
   if (/^\/api\/expenses\/\d+$/.test(pathname)) return { module: "expenses", action: method === "DELETE" ? "delete" : "edit" };
@@ -1509,6 +1522,23 @@ const handler = {
         return json({ roastings: await listRoastings(db) });
       }
 
+      // ---- Green Coffee Pricing Calculator ----
+      if (url.pathname === "/api/pricing" && request.method === "GET") {
+        return json({
+          calculations: await listPricingCalculations(db, {
+            grade: url.searchParams.get("grade") ?? undefined,
+            from: url.searchParams.get("from") ?? undefined,
+            to: url.searchParams.get("to") ?? undefined,
+          }),
+        });
+      }
+
+      if (url.pathname === "/api/pricing/latest-price" && request.method === "GET") {
+        const grade = (url.searchParams.get("grade") ?? "").trim();
+        if (!grade) return json({ error: "Choose a coffee grade" }, { status: 400 });
+        return json({ latest: await latestPurchasePriceForGrade(db, grade) });
+      }
+
       if (url.pathname === "/api/purchases" && request.method === "GET") {
         const rows = await sqlQuery(env, `select p.id, p.qty_base, p.unit_price_paise, p.total_paise, p.paid_paise, p.purchase_date,
             p.expenses_paise, p.payment_mode, p.note, i.name, i.unit, s.name as supplier_name
@@ -1741,6 +1771,54 @@ const handler = {
       const body = (["POST", "PUT", "DELETE", "PATCH"].includes(request.method)
         ? await request.json().catch(() => ({}))
         : {}) as Record<string, unknown>;
+
+      // ---- Green Coffee Pricing Calculator: save + delete ----
+      if (url.pathname === "/api/pricing" && request.method === "POST") {
+        const inputs = pricingInputsFromRecord(
+          (body.inputs && typeof body.inputs === "object" ? body.inputs : {}) as Record<string, unknown>,
+        );
+        const inputError = Object.values(validatePricingInputs(inputs))[0];
+        if (inputError) return json({ error: inputError }, { status: 400 });
+        const grade = String(body.grade ?? "").trim();
+        if (!grade) return json({ error: "Choose a coffee grade" }, { status: 400 });
+        if (grade.length > 80) return json({ error: "Coffee grade is too long" }, { status: 400 });
+        const note = body.note == null ? null : String(body.note).trim();
+        if (note && note.length > 500) return json({ error: "Note is too long" }, { status: 400 });
+        const saved = await savePricingCalculation(db, {
+          grade,
+          note,
+          inputs,
+          userId: session.uid,
+          userName: session.name,
+        });
+        await asActor(actor, () =>
+          logActivity(db, {
+            event: "pricing.save",
+            summary: `Price saved for ${saved.grade}: regular ${formatPricingMoney(saved.results.regularPrice)}/kg`,
+            entity: "pricing",
+            entityId: saved.id,
+          }),
+        );
+        return json({ calculation: saved }, { status: 201 });
+      }
+
+      if (/^\/api\/pricing\/\d+$/.test(url.pathname) && request.method === "DELETE") {
+        // Deleting a saved quote is an admin (owner) action.
+        if (session.role !== "owner") return json({ error: "Owner only" }, { status: 403 });
+        const id = Number(url.pathname.split("/").pop());
+        if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid calculation id" }, { status: 400 });
+        const removed = await deletePricingCalculation(db, id);
+        if (!removed) return json({ error: "Calculation not found" }, { status: 404 });
+        await asActor(actor, () =>
+          logActivity(db, {
+            event: "pricing.delete",
+            summary: `Saved price #${id} removed`,
+            entity: "pricing",
+            entityId: id,
+          }),
+        );
+        return json({ ok: true });
+      }
 
       if (url.pathname === "/api/chat/rename" && request.method === "POST") {
         // Renaming a group is an owner job (the admin).

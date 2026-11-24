@@ -13,6 +13,7 @@ export const MODULES = [
   "dashboard",
   "billing",
   "bills",
+  "pricing",
   "items",
   "purchases",
   "stock",
@@ -38,6 +39,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   dashboard: "Dashboard",
   billing: "New Bill",
   bills: "Invoices",
+  pricing: "Pricing Calculator",
   items: "Items",
   purchases: "Purchases",
   stock: "Stock Check",
@@ -89,6 +91,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
   ca: build({
     dashboard: ["view", "export"],
     bills: ["view", "export"],
+    pricing: ["view", "export"],
     purchases: ["view", "export"],
     expenses: ["view", "export"],
     suppliers: ["view", "export"],
@@ -109,6 +112,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
     stock: ["view", "create"],
     customers: ["view", "create"],
     bills: ["view"],
+    pricing: ["view", "create"],
     items: ["view"],
     /** Staff may talk in the chat and submit a receipt, but not approve one. */
     chat: ["view", "create"],
