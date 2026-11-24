@@ -2399,6 +2399,27 @@ export default function App() {
               </button>
             </div>
 
+            {can("pricing", "view") && (
+              <button
+                type="button"
+                onClick={() => setView("pricing")}
+                className="card card-hover flex w-full items-center justify-between gap-3 p-4 text-left"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent-ink">
+                    <IconCalculator size={18} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Pricing calculator</span>
+                    <span className="block text-[11px] text-muted">
+                      Green coffee price per kg for bulk, regular and small buyers.
+                    </span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm font-medium text-accent-ink">Open →</span>
+              </button>
+            )}
+
             {rotation && (
               <section className="space-y-3">
                 <div>

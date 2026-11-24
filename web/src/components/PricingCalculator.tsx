@@ -13,6 +13,7 @@ import {
 } from "../api";
 import { formatDate, formatDateTime } from "../format";
 import { showToast } from "./notifications/toastStore";
+import ResponsiveTable from "./ResponsiveTable";
 import { DeleteRowButton, RowActions } from "./RowActions";
 import { IconCalculator, IconRefresh } from "./icons";
 import {
@@ -389,7 +390,7 @@ export default function PricingCalculator({ user }: { user: User }) {
                     <div className="flex flex-wrap items-end justify-between gap-4">
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Regular buyer price</p>
-                        <p className="font-display text-5xl font-semibold leading-none text-accent-ink">
+                        <p className="font-display text-4xl font-semibold leading-none text-accent-ink sm:text-5xl">
                           {formatPricingMoney(result.regularPrice)}
                           <span className="ml-1 text-sm font-normal text-muted">/ kg</span>
                         </p>
@@ -445,7 +446,8 @@ export default function PricingCalculator({ user }: { user: User }) {
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    {/* Desktop table */}
+                    <div className="hidden overflow-x-auto sm:block">
                       <table className="w-full min-w-[430px] text-sm" aria-label="Buyer prices">
                         <thead>
                           <tr>
@@ -477,6 +479,45 @@ export default function PricingCalculator({ user }: { user: User }) {
                           </tr>
                         </tbody>
                       </table>
+                    </div>
+
+                    {/* Phone cards — no horizontal scrolling on a narrow screen. */}
+                    <div className="space-y-2 sm:hidden">
+                      {result.tiers.map((tier) => (
+                        <div key={tier.key} className="rounded-xl border border-line bg-surface-2 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium">{tier.label}</p>
+                              <p className="text-[11px] text-muted">
+                                {tier.marginPct}% margin · {tier.kgPerMonth.toLocaleString("en-IN")} kg / month
+                              </p>
+                            </div>
+                            <p className="shrink-0 text-lg font-semibold">
+                              {formatPricingMoney(tier.sellingPrice)}
+                              <span className="text-[11px] font-normal text-muted"> / kg</span>
+                            </p>
+                          </div>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <p className="text-muted">Profit / kg</p>
+                              <p className="font-medium">{formatPricingMoney(tier.profitPerKg, 2)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-muted">Monthly profit</p>
+                              <p className="font-medium">{formatPricingMoney(tier.monthlyProfit)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-3 p-3 font-semibold">
+                        <div>
+                          <p>Total</p>
+                          <p className="text-[11px] font-normal text-muted">
+                            {result.tiers.reduce((sum, tier) => sum + tier.kgPerMonth, 0).toLocaleString("en-IN")} kg / month
+                          </p>
+                        </div>
+                        <p>{formatPricingMoney(result.totalMonthlyProfit)}</p>
+                      </div>
                     </div>
 
                     <p className="text-[11px] text-muted">Prices are ex-GST — GST is not included in this calculation.</p>
@@ -565,63 +606,83 @@ export default function PricingCalculator({ user }: { user: User }) {
             </p>
           )}
 
-          <div className="card">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-              <h2 className="text-sm font-medium">
-                Saved calculations {historyLoading ? "…" : `(${history.length})`}
-              </h2>
-            </div>
-            {history.length === 0 ? (
-              <div className="px-4 pb-6 pt-2 text-center text-sm text-muted">
+          <ResponsiveTable
+            title={`Saved calculations ${historyLoading ? "…" : `(${history.length})`}`}
+            rows={history}
+            rowKey={(row) => row.id}
+            minWidthClass="min-w-[860px]"
+            widths={["w-[15%]", "w-[13%]", "w-[10%]", "w-[9%]", "w-[11%]", "w-[11%]", "w-[17%]", "w-[14%]"]}
+            columns={[
+              {
+                key: "saved",
+                header: "Saved",
+                mobileLabel: "Saved",
+                cell: (row) => <span className="whitespace-nowrap">{formatDateTime(row.createdAt)}</span>,
+              },
+              {
+                key: "grade",
+                header: "Grade",
+                cell: (row) => <span className="font-medium">{row.grade}</span>,
+              },
+              {
+                key: "regular",
+                header: "Regular / kg",
+                align: "right",
+                cell: (row) => formatPricingMoney(row.results.regularPrice),
+              },
+              {
+                key: "landed",
+                header: "Landed",
+                align: "right",
+                cell: (row) => formatPricingMoney(row.results.landedCost, 1),
+              },
+              {
+                key: "monthly",
+                header: "Monthly profit",
+                align: "right",
+                cell: (row) => formatPricingMoney(row.results.totalMonthlyProfit),
+              },
+              {
+                key: "by",
+                header: "By",
+                cell: (row) => row.createdByName,
+              },
+              {
+                key: "note",
+                header: "Note",
+                cell: (row) => (
+                  <span className="block max-w-[220px] truncate text-muted" title={row.note ?? ""}>
+                    {row.note ?? "—"}
+                  </span>
+                ),
+              },
+              {
+                key: "actions",
+                header: "Actions",
+                align: "right",
+                cell: (row) => (
+                  <RowActions>
+                    <button type="button" className="btn-mini" onClick={() => openCalculation(row)}>
+                      Open
+                    </button>
+                    {isAdmin && (
+                      <DeleteRowButton
+                        label="Delete saved calculation"
+                        onClick={() => void removeCalculation(row)}
+                      />
+                    )}
+                  </RowActions>
+                ),
+              },
+            ]}
+            empty={
+              <div className="py-4 text-center text-sm text-muted">
                 {historyLoading
                   ? "Loading saved calculations…"
                   : "No saved calculations match these filters yet. Save one from the Calculator tab."}
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] text-sm">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-2 text-left">Saved</th>
-                      <th className="px-4 py-2 text-left">Grade</th>
-                      <th className="px-4 py-2 text-right">Regular / kg</th>
-                      <th className="px-4 py-2 text-right">Landed</th>
-                      <th className="px-4 py-2 text-right">Monthly profit</th>
-                      <th className="px-4 py-2 text-left">By</th>
-                      <th className="px-4 py-2 text-left">Note</th>
-                      <th className="px-4 py-2 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((row) => (
-                      <tr key={row.id} className="border-t border-line">
-                        <td className="whitespace-nowrap px-4 py-2">{formatDateTime(row.createdAt)}</td>
-                        <td className="px-4 py-2 font-medium">{row.grade}</td>
-                        <td className="px-4 py-2 text-right">{formatPricingMoney(row.results.regularPrice)}</td>
-                        <td className="px-4 py-2 text-right">{formatPricingMoney(row.results.landedCost, 1)}</td>
-                        <td className="px-4 py-2 text-right">{formatPricingMoney(row.results.totalMonthlyProfit)}</td>
-                        <td className="whitespace-nowrap px-4 py-2">{row.createdByName}</td>
-                        <td className="max-w-[220px] truncate px-4 py-2 text-muted" title={row.note ?? ""}>{row.note ?? "—"}</td>
-                        <td className="px-4 py-2">
-                          <RowActions>
-                            <button type="button" className="btn-mini" onClick={() => openCalculation(row)}>
-                              Open
-                            </button>
-                            {isAdmin && (
-                              <DeleteRowButton
-                                label="Delete saved calculation"
-                                onClick={() => void removeCalculation(row)}
-                              />
-                            )}
-                          </RowActions>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+            }
+          />
 
           <p className="text-xs text-muted">Delete is available to the owner (admin) only.</p>
         </div>

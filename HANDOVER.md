@@ -1,6 +1,6 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-24 by OpenCode (Green Coffee Pricing Calculator added to the web app + worker)
+Last updated: 2026-11-24 by OpenCode (Pricing Calculator responsive + deployed; native mobile screen in progress)
 Tool: OpenCode
 
 ## Current state
@@ -10,12 +10,15 @@ Tool: OpenCode
   - Worker `web-worker/src/index.ts`: `GET /api/pricing` (filters), `GET /api/pricing/latest-price?grade=`, `POST /api/pricing` (server re-validates + recomputes results), `DELETE /api/pricing/:id` (owner only). Route permission maps to new `pricing` module.
   - DB `src/db/pricing.ts` + `src/db/schema.ts` (`pricingCalculations`) + migration `drizzle/0021_pricing_calculations.sql`: grade, note, inputs jsonb, results jsonb, created_by/name, created_at. `latestPurchasePriceForGrade()` matches item name/category (exact then contains) and returns the newest batch price per kg (on-hand first, then latest ever).
   - Permissions `src/logic/permissions.ts`: `pricing` module added (owner all; CA view/export; Staff view/create). Decisions log updated (quotes in rupees, ledger stays paise).
+- **Phone layout + discoverability:** buyer table becomes stacked cards below 640px (no sideways scroll), history uses `ResponsiveTable` stacked cards, headline shrinks to `text-4xl` on phones, and the Dashboard has a "Pricing calculator" shortcut card (visible when the role can view pricing) in addition to Sales → Pricing Calculator in the sidebar/More sheet.
+- **Live:** Neon `pricing_calculations` table created (migration 0021 applied 2026-11-24); worker deployed as version `a7d22cc1-8109-46fb-9e37-6fcb8e483eeb`; live asset `assets/index-ulwgX9bT.js`; `/api/health` 200.
+- **Mobile app (separate, uncommitted working-tree work):** `mobile/app/pricing.tsx`, `mobile/lib/pricingStore.ts`, `mobile/lib/api.ts`, `mobile/package*.json` add an offline-first native screen. It was NOT written/modified by this session and is not deployed yet — needs an EAS update/build.
 - Verified: `web` `tsc --noEmit` clean, `npm run build` clean, root suite 553 pass / 2 skipped. Root `tsc` shows only the pre-existing test-assertion errors; worker `tsc` shows only the pre-existing `deletePushTokensForUser` + fcm.test errors.
-- Not yet done: apply `drizzle/0021_pricing_calculations.sql` (or `npx drizzle-kit push` on the dev Neon branch), deploy the worker (`wrangler deploy`) and rebuild the web assets. No DB was touched in this session.
 
 ## Next task
-1. Apply migration 0021, deploy worker + web build, then open Pricing Calculator and check defaults (regular ₹365, landed ₹337.4, roaster max ₹380) and save/history/delete.
-2. Older pending work still open: phone-test the mobile screens, ship the chat scroll fix via `eas update`, then Phase 5 `eas build` → Play Store + App Store (re-add Cloudflare Access before shipping).
+1. On a phone browser: sign in → Dashboard "Pricing calculator" or More → Sales → Pricing Calculator. Check defaults (regular ₹365, landed ₹337.4, roaster max ₹380), Save, History filters/Open, and owner Delete.
+2. Finish/publish the native mobile pricing screen (currently the separate uncommitted work above): typecheck, then `eas update` / `eas build` so installed Android/iOS apps receive it.
+3. Older pending work still open: phone-test the mobile screens, ship the chat scroll fix via `eas update`, then Phase 5 `eas build` → Play Store + App Store (re-add Cloudflare Access before shipping).
 
 ## Blockers
 - None.
