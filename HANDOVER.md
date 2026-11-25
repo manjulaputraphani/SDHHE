@@ -1,6 +1,6 @@
 # HANDOVER (keep under 60 lines — overwrite each time, history is in git)
 
-Last updated: 2026-11-25 by OpenCode (native mobile pricing screen finished + typechecked; web/PWA deployed)
+Last updated: 2026-11-25 by OpenCode (native mobile pricing screen finished; docs updated; web/PWA deployed)
 Tool: OpenCode
 
 ## Current state
@@ -14,6 +14,7 @@ Tool: OpenCode
 - **Live:** Neon `pricing_calculations` table created (migration 0021 applied 2026-11-24); worker deployed as version `a7d22cc1-8109-46fb-9e37-6fcb8e483eeb`; live asset `assets/index-ulwgX9bT.js`; `/api/health` 200.
 - **Mobile app:** `mobile/app/pricing.tsx` + `mobile/lib/pricingStore.ts` add the native screen (same shared `calculatePricing`, offline-first local queue in AsyncStorage, saved quotes sync when online, share quote, grade + note, history, latest stock price). It is linked from More → Pricing Calculator; `metro.config.js` watches `src/logic` so Metro can import the shared module; the Android APK workflow now also triggers on `src/logic/pricing.ts`. `mobile` `tsc --noEmit` clean. Not yet published — needs an EAS update/build.
 - Verified: `web` `tsc --noEmit` clean, `npm run build` clean, root suite 553 pass / 2 skipped, `mobile` `tsc --noEmit` clean. Root `tsc` shows only the pre-existing test-assertion errors; worker `tsc` shows only the pre-existing `deletePushTokensForUser` + fcm.test errors.
+- **Docs updated:** `README.md` (module row, stack, structure, data model, RBAC, commands, mobile run steps), `docs/BLUEPRINT.md` §4/§7/§10, `docs/BUILD_PLAN.md` P-1…P-9, `docs/TESTING.md` A6 + C4, `docs/SETUP.md` §7–8, `docs/MOBILE_APP_PLAN.md` shipped section, `docs/DECISIONS.md` (rupee-quote decision).
 
 ## Next task
 1. On a phone browser: sign in → Dashboard "Pricing calculator" or More → Sales → Pricing Calculator. Check defaults (regular ₹365, landed ₹337.4, roaster max ₹380), Save, History filters/Open, and owner Delete.

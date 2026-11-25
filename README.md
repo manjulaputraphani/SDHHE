@@ -1,6 +1,6 @@
 # Stock Tracker (SDHHE) — Billing · Inventory · Expenses · GST
 
-A complete shop-management application: GST billing, stock tracking with batch/FIFO & weighted-average costing, purchase and expense tracking, credit (udhaar) management, financial reports, role-based access control, a live **Team Chat** (groups, receipts approval, AI polish, reactions, replies, pins), phone push notifications, an installable PWA, and a live web edition — backed by a cloud Postgres database so the data survives any laptop.
+A complete shop-management application: GST billing, stock tracking with batch/FIFO & weighted-average costing, purchase and expense tracking, credit (udhaar) management, financial reports, role-based access control, a live **Team Chat** (groups, receipts approval, AI polish, reactions, replies, pins), a **Green Coffee Pricing Calculator** (web + native mobile), phone push notifications, an installable PWA, and a live web edition — backed by a cloud Postgres database so the data survives any laptop.
 
 - **Live web app:** https://sdhhe-api.blvphani.workers.dev (behind Cloudflare Access)
 - **Desktop app:** Tauri 2 (macOS `.app` + `.dmg` built; Windows/Linux via CI)
@@ -16,6 +16,7 @@ A complete shop-management application: GST billing, stock tracking with batch/F
 | **Items (Inventory)** | One row per item; `unit` = kg / l / pcs; category, minimum stock, image URL, live stock and value computed from open batches |
 | **Purchases** | Supplier, qty, unit price, payment mode, notes, purchase expenses (transport / loading / commission) that raise the stock cost; editing/deleting an old purchase rebuilds that item's cost pool from the remaining batches |
 | **Batches & costing** | Every purchase = one batch. Costing method per settings: **FIFO** (oldest first) or **weighted average** (value pool per item: `stock_value_paise` + `avg_cost_paise`) |
+| **Green Coffee Pricing Calculator** | Live selling price per kg for bulk / regular / small buyers from purchase, transport, handling, weight loss, credit cost and margin. Rounds UP to ₹5, checks the roaster's ceiling, shows the cost/profit bar and monthly profit, saves quotes with grade + note + user + time, filters history by grade/date, reloads a saved quote, owner-only delete, and fills the purchase price from the latest stock batch for the grade. Same pure formula module on web + native mobile; mobile quotes queue offline. |
 | **Stock check** | Enter what is physically left → app computes used qty + cost (FIFO preview "used X, cost ₹Y" before confirming) and writes STOCK_CHECK movements with batch links |
 | **Billing (GST invoices)** | Bill number `SD-YYYY-NNNNNN`, HSN per line, buyer GSTIN + address, CGST/SGST (exact split, basis points, rounded paise), discount, sale expenses (delivery, packing) charged to the deal, cost snapshot per line so later purchases never change past profit |
 | **Printing & email** | GST invoice layout follows the SDHHE sample PDF; print via hidden iframe + system dialog (Save as PDF); email via Rust `lettre` SMTP (Gmail app password in OS keychain), HTML invoice body |
@@ -58,8 +59,9 @@ A complete shop-management application: GST billing, stock tracking with batch/F
 | Database | Neon Postgres (serverless) + Drizzle ORM (`@neondatabase/serverless`), drizzle-kit for push/generate |
 | Server (web) | Cloudflare Workers (`web-worker/`), `@noble/hashes` for argon2id verification (Workers block dynamic WASM) |
 | Charts / export | Recharts 3, jspdf, xlsx (Excel export) |
+| Mobile app | React Native + Expo (Expo Router), AsyncStorage (offline pricing queue), expo-network, native FCM/APNs push |
 | Validation | zod 4 |
-| Tests | Vitest 4 + React Testing Library (494 unit tests), DB integration tests (`DATABASE_URL_TEST`), Playwright e2e (70 web tests, mocked worker) |
+| Tests | Vitest 5 + React Testing Library (553 unit tests), DB integration tests (`DATABASE_URL_TEST`), Playwright e2e (70 web tests, mocked worker) |
 | AI | Ollama (cloud models) — suggestions + read-only chat |
 
 ## 4. Project structure
@@ -73,16 +75,17 @@ stock-tracker/
 │   ├── components/         # Layout (sidebar/rail), ThemeToggle, CoffeeIcon
 │   ├── logic/              # PURE functions (no DB): fifo, average, gst, gstin,
 │   │                       # billNumber, finYear, moneyWords, permissions, profit,
-│   │                       # purchase, replay, auth, errors — each with .test.ts
+│   │                       # purchase, replay, auth, errors, pricing — each with .test.ts
 │   ├── db/                 # Drizzle schema.ts + one repo per module (items,
 │   │                       # purchases, stock, billing, customers, expenses, sales,
 │   │                       # sessions, users, permissions, dashboard, reports,
-│   │                       # settings, activity, costing) + integration tests
+│   │                       # settings, activity, costing, pricing) + integration tests
 │   ├── lib/                # secrets, email, printBill, theme, url, db-context
 │   └── ai/                 # ollama, suggest, chat, tools (read-only)
 ├── src-tauri/              # Rust core + tauri.conf.json (bundles .app/.dmg/.exe/.msi/.AppImage/.deb)
 ├── web/                    # Web edition UI (React, own tsconfig, thin re-exports of shared code)
 ├── web-worker/             # Cloudflare Worker API (auth, routes, 403 permission guard)
+├── mobile/                 # React Native + Expo app (same API + shared pricing logic)
 ├── docs/                   # BLUEPRINT, BUILD_PLAN, TESTING, SETUP, DECISIONS, RELEASE_PLAN…
 ├── prompts/                # START_SESSION, END_SESSION, RECOVER, task prompts
 ├── AGENTS.md               # Master rules for AI coding agents
@@ -135,6 +138,8 @@ chat_pinned_messages(id, room, message_id unique, pinned_by, pinned_at)  # owner
 receipt_requests(id, submitted_by, title, amount_paise, r2_key, status pending|approved|rejected,
       decided_by, decision_note, message_id)           # receipts in the chat, files in R2
 push_subscriptions(id, user_id, endpoint unique, p256dh, auth)        # phone pushes (per device)
+pricing_calculations(id, grade, note, inputs jsonb, results jsonb,
+      created_by fk null, created_by_name, created_at)  # saved coffee pricing quotes
 ```
 
 ## 6. Money & quantity rules (STRICT — no floats)
@@ -159,8 +164,8 @@ Weighted average: avg ₹11/kg → used cost **₹22.00**.
 
 ## 7. Roles & permissions (RBAC)
 
-- **15 modules** (Dashboard, Billing, Bills, Items, Purchases, Stock, Customers, Expenses, Suppliers, Investments, Reports, Activity, Chat, Team, Settings) × **5 actions** (view, create, edit, delete, export).
-- Defaults: **Owner** = everything; **CA** = finance view + export, items/customers/stock view, chat view/create/edit; **Staff** = entry create + bills/items view, chat view/create. Owner can edit any cell in the Roles & permissions grid.
+- **16 modules** (Dashboard, Billing, Bills, Pricing Calculator, Items, Purchases, Stock, Customers, Expenses, Suppliers, Investments, Reports, Activity, Chat, Team, Settings) × **5 actions** (view, create, edit, delete, export).
+- Defaults: **Owner** = everything; **CA** = finance view + export, items/customers/stock view, pricing view/export, chat view/create/edit; **Staff** = entry create + bills/items view, pricing view/create, chat view/create. Owner can edit any cell in the Roles & permissions grid.
 - Chat specifics: group creation/members/pins/AI polish are **owner-only** (role check, like the rename — see `docs/DECISIONS.md`); editing is author-only within 15 minutes; deleting is author-only (owner may delete any); a receipt is deletable only while Pending.
 - Enforced on **web** (403 guard on every API route, permissions returned by `/api/auth/login`/`me`, access-until enforced, auto-inactive on expiry, `/api/roles` owner-only, last-active-owner guard) and on **desktop** (`setCurrentPermissions` after login, `can()` gates nav, routes and action buttons; Settings → Members sets Role + Access until).
 - Every permission change and login/logout is written to `activity_log` / `user_sessions`.
@@ -198,12 +203,20 @@ cd ../web-worker && npm install
 ./node_modules/.bin/wrangler deploy      # serves the API + built web assets on Workers
 ```
 
+### Native mobile app
+```bash
+cd mobile && npm install
+npx tsc --noEmit                         # typecheck the app
+npx expo start                           # Expo Go / dev build
+```
+`mobile/metro.config.js` watches the shared `src/logic/` folder so the native app imports the exact same `calculatePricing()` as web and the Worker. Publish with `eas update` (JS-only change) or `eas build` (new APK/IPA).
+
 ### Desktop release build
 ```bash
 npm run tauri build        # macOS: .app + .dmg in src-tauri/target/release/bundle/
 ```
 Windows `.exe`/`.msi`, Linux `.AppImage`/`.deb` build in CI via `release.yml` (push a tag, e.g. `v1.0.0`).
-**Android: shipped.** The app is a TWA (Trusted Web Activity) APK — `web/public/sdhhe.apk`, hosted by the worker and downloadable in-app on Android devices ("📲 Install the Android app" in the sidebar). Rebuild with Google bubblewrap from the project kept at `~/sdhhe-android-twa` (same signing keystore required for updates). Remaining release decisions: `docs/RELEASE_PLAN.md`.
+**Android:** a TWA APK is shipped at `web/public/sdhhe.apk`, hosted by the worker and downloadable in-app on Android devices ("📲 Install the Android app" in the sidebar). Rebuild with Google bubblewrap from the project kept at `~/sdhhe-android-twa` (same signing keystore required for updates). A separate React Native/Expo app lives in `mobile/` (the native Pricing Calculator is added; other screens are in progress). Remaining release decisions: `docs/RELEASE_PLAN.md`.
 
 ## 10. Commands
 
@@ -211,11 +224,12 @@ Windows `.exe`/`.msi`, Linux `.AppImage`/`.deb` build in CI via `release.yml` (p
 |---|---|
 | `npm run tauri dev` | Desktop app in dev mode |
 | `npm run dev` / `npm run build` | Web UI dev server / production build |
-| `npm test` | All 494 Vitest tests (quiet dot reporter) |
+| `npm test` | All 553 Vitest tests (quiet dot reporter) |
 | `npm run test:watch` | Watch mode |
 | `npm run test:db` | DB integration tests (needs `DATABASE_URL_TEST`) |
 | `npm run test:e2e:web` | Playwright web suite (70 tests, mocked worker) |
 | `npm run typecheck` | `tsc --noEmit` |
+| `cd mobile && npx tsc --noEmit` | Typecheck the native mobile app |
 | `npm run db:push` | `drizzle-kit push` (dev branch only!) |
 
 ## 11. Testing
@@ -224,7 +238,7 @@ Windows `.exe`/`.msi`, Linux `.AppImage`/`.deb` build in CI via `release.yml` (p
 - **Component tests** with React Testing Library for every page.
 - **DB integration tests** against a Neon dev branch (skip automatically without `DATABASE_URL_TEST`).
 - **E2E** with Playwright: `e2e-web/` (responsive at 360/375/390/430/768/1280, Team Chat, chat polish, notifications — the Cloudflare Worker is mocked).
-- 494 unit tests + 70 e2e tests green; typecheck clean across root, `web/` and `web-worker/`.
+- 553 unit tests + 70 e2e tests green; typecheck clean across root, `web/`, `web-worker/` and `mobile/`.
 
 ## 12. How this repo is built (AI-assisted workflow)
 
@@ -239,16 +253,17 @@ This app was built task-by-task with AI coding agents (OpenCode / Claude Code + 
 | `docs/TESTING.md` | Test cases per feature |
 | `docs/SETUP.md` | Toolchain install (Node, Rust, Neon, Ollama, agents) |
 | `docs/DECISIONS.md` | One line per technical decision + why (66+ entries) |
+| `docs/MOBILE_APP_PLAN.md` | Native Expo app plan + shipped pricing screen |
 | `docs/TOKEN_SAVING.md` | Rules to keep AI usage cheap |
 | `docs/RELEASE_PLAN.md` | Windows / Android / Linux release plan |
 | `prompts/*.md` | Copy-paste prompts: start / end / recover a session |
 
 To continue development with an agent: open it in this folder, paste `prompts/START_SESSION.md` — it reads `HANDOVER.md` and picks up exactly where the last session stopped. One task per session; `prompts/END_SESSION.md` commits the handover.
 
-## 13. Current status (2026-11-07)
+## 13. Current status (2026-11-25)
 
-- **Web edition live** — deployed version `cbb81787` (Cloudflare Worker + built web assets; behind Cloudflare Access). Team Chat (Phase 12–16) fully shipped: groups, receipts approval, AI polish, message actions (edit within 15 min + audit, soft delete), replies, reactions, pins, @mentions, search, PWA + default-on push notifications, full-height sticky sidebar.
-- Migrations through `drizzle/0019` are applied to the live DB. Deploy flow: apply any new `drizzle/00NN_*.sql` to Neon first, then `cd web && npm run build && cd ../web-worker && npx wrangler deploy`.
+- **Web edition live** — deployed worker version `a7d22cc1-8109-46fb-9e37-6fcb8e483eeb` (Cloudflare Worker + built web assets; behind Cloudflare Access). Team Chat (Phase 12–16) fully shipped: groups, receipts approval, AI polish, message actions (edit within 15 min + audit, soft delete), replies, reactions, pins, @mentions, search, PWA + default-on push notifications, full-height sticky sidebar. **Green Coffee Pricing Calculator shipped** on web (Sales → Pricing Calculator + Dashboard shortcut) and added to the native mobile app (More → Pricing Calculator).
+- Migrations through `drizzle/0021_pricing_calculations.sql` are applied to the live DB. Deploy flow: apply any new `drizzle/00NN_*.sql` to Neon first, then `cd web && npm run build && cd ../web-worker && npx wrangler deploy`.
 - Desktop macOS `.app` + `.dmg` built; desktop chat is blocked by Cloudflare Access until a service token exists (see HANDOVER).
-- 494 unit + 70 e2e tests green, typecheck clean (root / web / worker).
-- Next: desktop Access service token, desktop auto-logout decision, desktop Roasting screen, Windows signed build, Android PWA → TWA (see `HANDOVER.md` / `docs/BUILD_PLAN.md`).
+- 553 unit + 70 e2e tests green, typecheck clean (root / web / worker / mobile).
+- Next: publish the native mobile pricing screen (`eas update` / new APK), phone-test the mobile screens, then Phase 5 `eas build` → Play Store + App Store (see `HANDOVER.md` / `docs/BUILD_PLAN.md`).

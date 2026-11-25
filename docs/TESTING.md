@@ -40,6 +40,26 @@ Run: `npx vitest run --reporter=dot`. Logic tests live next to code: `src/logic/
 - spend 10000→11800 → +18% → "spend_up" fires.
 - no data → empty list, no crash.
 
+### A6 pricing.ts (Green Coffee Pricing Calculator)
+Defaults: purchase 320, transport 7, handling 4, loss 1 %, credit 30 days, interest 12 %,
+bulk 6 % / 500 kg, regular 8 % / 300 kg, small 11 % / 100 kg, powder 640, yield 82 %,
+processing 40, roaster profit 20 %.
+
+| Case | Expected |
+|---|---|
+| Landed cost | ₹337.36 (weight loss 3.20, credit cost 3.16) |
+| Bulk / regular / small selling price | ₹360 / ₹365 / ₹375 (always rounded UP to next ₹5) |
+| Profit per kg | ₹22.64 / ₹27.64 / ₹37.64 |
+| Monthly profit | ₹11,322 / ₹8,293 / ₹3,764; total ₹23,379 |
+| Roaster revenue / max price | ₹524.80 / ₹379.84 |
+| Default status | green "All prices are below roaster max of ₹380" |
+| Roaster max ≤ landed | red "Cannot sell profitably at these numbers" |
+| Any tier above roaster max | red, names the tier(s), suggests lowering the margin |
+| Negative field | inline "Cannot be negative", no calculation |
+| Percent outside 0–100 | inline "Must be between 0 and 100%" |
+| Empty / non-numeric field | inline "Enter a number", no calculation |
+| Indian formatting | `formatPricingMoney(23379)` → "₹23,379"; landed 1 decimal → "₹337.4" |
+
 ## B. Database / integration (Neon `dev` branch ONLY — never production)
 - B1 Add purchase → exactly 1 purchase, 1 batch, 1 PURCHASE movement; total = qty×price.
 - B2 Stock check (worked example) → batches A=0, B=2000; movement cost 2200; 2 link rows.
@@ -79,6 +99,15 @@ Reset dev data before each run (truncate tables in a test setup file).
 - Notifications default-on: pushSetup.ensurePushSubscription is idempotent (permission → key → SW → subscribe → POST), App asks once
   (sdhhe-push-asked), a denial never re-asks.
 
+
+### C4 Pricing Calculator (web + native mobile)
+- Web opens on the defaults: regular ₹365, landed ₹337.4, roaster max ₹380, total ₹23,379.
+- Typing a field updates the headline/table/bar immediately; clearing a field hides the results and shows inline errors.
+- Save stores grade + note + inputs + results + user + time; History filters by grade and date; Open restores inputs.
+- Delete appears only for the owner (admin); the Worker also rejects non-owner DELETE.
+- "Use latest purchase price" fills from the newest on-hand batch matching the grade, or says no batch was found.
+- Phone web (360–430 px): buyer/history tables are stacked cards, no page-level horizontal scroll.
+- Native mobile: same defaults; a save while offline stays queued, then syncs when the phone is online.
 
 ## D. Data safety (manual)
 - Install on 2nd laptop, enter same Neon URL → same data.

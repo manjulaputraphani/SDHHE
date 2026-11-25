@@ -30,6 +30,9 @@ stock_movements(id serial pk, item_id fk, type text check in
 movement_batch_links(movement_id fk, batch_id fk, qty_taken int, unit_price_paise int, cost_paise int)
 expenses(id serial pk, category text, amount_paise int, expense_date date, payment_mode text, note text)
 settings(key text pk, value text)            -- costing_method = FIFO | AVERAGE
+pricing_calculations(id serial pk, grade text, note text, inputs jsonb, results jsonb,
+      created_by fk app_users null, created_by_name text, created_at timestamptz default now())
+      -- saved Green Coffee Pricing quotes (inputs + derived results as quoted rupees)
 ai_suggestions(id serial pk, type text, item_id int null, message text, priority int,
       created_at timestamptz default now(), dismissed bool default false)
 ```
@@ -59,7 +62,8 @@ Remaining: B 2000 g, value ₹24.00. Weighted average: avg ₹11.50/kg, used cos
 
 ## 7. Screens
 Setup (Neon URL + PIN, first launch) · PIN lock · Dashboard · Items · Item detail (batches, price chart, usage) ·
-Add Purchase · Stock Check (preview "used X, cost ₹Y" → confirm) · Expenses · Reports · AI Suggestions · Settings.
+Add Purchase · Stock Check (preview "used X, cost ₹Y" → confirm) · Expenses · Reports · AI Suggestions ·
+**Green Coffee Pricing Calculator** (live prices for bulk/regular/small buyers, roaster ceiling, saved history) · Settings.
 
 ## 8. Security
 Neon connection string + PIN hash + Ollama API key stored in OS secure storage (Tauri plugin, e.g. keyring/stronghold).
@@ -68,3 +72,17 @@ Never in code, git, or logs. PIN hashed (argon2/bcrypt), never stored plain.
 ## 9. AI suggestions (Phase 8)
 App computes stats (src/logic/stats.ts). AI only explains. Level 1 rules (no AI) → Level 2 Ollama explains JSON stats
 → Level 3 chat with READ-ONLY tool functions. Send summaries only, never raw DB or secrets. Cache results in ai_suggestions.
+
+## 10. Green Coffee Pricing Calculator (added 2026-11-24)
+Buy green coffee, sell wholesale to roasters. Staff quote a selling price per kg for three buyer sizes.
+- **Pure logic:** `src/logic/pricing.ts` — `calculatePricing(inputs)` returns landed cost, three ₹5-rounded
+  selling prices, profit/kg, monthly profit, total, roaster revenue/ceiling, status and the stacked-bar split.
+  `validatePricingInputs` enforces no negatives and 0–100 % fields; `formatPricingMoney` uses Indian grouping.
+- **Formula:** landed = purchase + transport + handling + weight loss + credit cost; selling = CEIL(landed ×
+  (1 + margin%/100) / 5) × 5; roaster max = powder revenue − processing − roaster profit. GST is not included.
+- **Web:** `web/src/components/PricingCalculator.tsx` — live inputs, headline regular price, roaster status,
+  stacked bar, buyer table, collapsible formulas, Save + History (grade/date filters, open, owner delete),
+  "Use latest purchase price" from the newest matching stock batch.
+- **Mobile:** `mobile/app/pricing.tsx` — same shared formulas, offline draft + saved-quote queue in AsyncStorage,
+  syncs when online, share-quote sheet. Linked from More → Pricing Calculator.
+- **Data:** `pricing_calculations` stores grade, note, inputs jsonb, results jsonb, user name/id, timestamp.

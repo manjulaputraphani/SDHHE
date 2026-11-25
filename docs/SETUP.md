@@ -40,3 +40,17 @@
 - New project "stock-tracker", region Asia Pacific (Singapore).
 - Create branch `dev` for development/testing. `main` = your real data.
 - Copy `dev` connection string into `.env` → `DATABASE_URL=...` (gitignored). Never paste it into AI chat.
+
+## 7. Database migrations
+- New tables/columns are in `drizzle/*.sql`; apply them with `npx drizzle-kit push` on the **dev branch**.
+- 2026-11-24: the Green Coffee Pricing Calculator adds `pricing_calculations`
+  (`drizzle/0021_pricing_calculations.sql`). Applying it is additive — it does not change existing tables.
+
+## 8. Mobile app (React Native + Expo)
+- `cd mobile && npm install`
+- `npx tsc --noEmit` — typecheck (must be clean before an EAS update/build).
+- `mobile/metro.config.js` watches `../src` so the native app imports the shared
+  `src/logic/pricing.ts` instead of copying formulas.
+- Pricing needs `@react-native-async-storage/async-storage` (offline saved quotes) and
+  `expo-network` (online/offline sync); both are in `mobile/package.json`.
+- Publish with `eas update` for JS-only changes, or `eas build` for a new APK/IPA.

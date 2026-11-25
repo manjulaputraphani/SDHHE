@@ -27,8 +27,18 @@ TypeScript              — same language as web app
 Zustand                 — state management (replaces React context)
 expo-notifications      — native push (FCM + APNs, no VAPID)
 @react-native-async-storage — local storage
+expo-network             — online/offline detection for the saved-quote queue
 react-native-gifted-chat — chat UI (or custom bubbles)
 ```
+
+## Shipped: Green Coffee Pricing Calculator (2026-11-24)
+- [x] Shared formulas — imports `src/logic/pricing.ts` through `mobile/metro.config.js`; no duplicate maths.
+- [x] Live calculator screen — same defaults and outputs as web (₹365 regular, ₹337.4 landed, ₹379.84 roaster max).
+- [x] Offline-first saves — draft + saved quotes in AsyncStorage, pending queue retries when `expo-network` reports online.
+- [x] History — local + server quotes merged, delete synced with the backend.
+- [x] Share quote — Android/iOS share sheet with a customer-safe plain-text quote.
+- [x] More → Pricing Calculator tile, permission-aware with the rest of the modules.
+- [x] Typechecked (`mobile` `tsc --noEmit` clean). Publish with `eas update` or a new APK build.
 
 ## Phase 1: Foundation (Week 1)
 - [ ] Expo project scaffold (`npx create-expo-app sdhhe-mobile`)

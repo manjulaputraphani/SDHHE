@@ -700,3 +700,28 @@ exist in the design system (the card uses `btn-mini` + `bg-accent-soft`/`text-ac
   Roles & permissions).
 - [x] **12-hour AM/PM local times in the chat** — `formatChatTime` now renders "09:42 AM" /
   "03:05 PM" (browser-local zone) in bubbles and the chat list.
+
+## Green Coffee Pricing Calculator (added 2026-11-24 on request)
+Buy green coffee and quote a selling price per kg for bulk / regular / small wholesale buyers.
+Full spec: `docs/BLUEPRINT.md` §10; test cases: `docs/TESTING.md` A6 + C4; decision: `docs/DECISIONS.md`.
+
+- [x] **P-1 Shared pure logic** — `src/logic/pricing.ts`: `calculatePricing()`, `validatePricingInputs()`,
+  `formatPricingMoney()` + defaults. No DB, no React, reusable by web, Worker and native mobile.
+- [x] **P-2 Unit tests** — `src/logic/pricing.test.ts` (15 pass): landed ₹337.36, prices ₹360/₹365/₹375,
+  profit ₹22.64/₹27.64/₹37.64, monthly ₹11,322/₹8,293/₹3,764, total ₹23,379, roaster max ₹379.84,
+  red roaster-ceiling cases, invalid input, Indian formatting.
+- [x] **P-3 Web calculator** — `web/src/components/PricingCalculator.tsx` + Sales nav: live inputs,
+  headline regular price, landed + roaster max, stacked bar, buyer table + total, red/green status,
+  collapsible formulas, GST note, inline validation, Save, History (grade/date filters, open, owner delete),
+  "Use latest purchase price". Two columns desktop, stacked cards on phone.
+- [x] **P-4 Worker API** — `GET /api/pricing`, `GET /api/pricing/latest-price`, `POST /api/pricing`
+  (server re-validates + recomputes), `DELETE /api/pricing/:id` (owner only), permission module `pricing`.
+- [x] **P-5 Database** — `pricing_calculations` (grade, note, inputs jsonb, results jsonb, created_by/name,
+  created_at), `drizzle/0021_pricing_calculations.sql`, tablesFilter updated. Applied to Neon 2026-11-24.
+- [x] **P-6 Permissions** — Owner all; CA view/export; Staff view/create.
+- [x] **P-7 Mobile screen** — `mobile/app/pricing.tsx` + `mobile/lib/pricingStore.ts`: same shared formulas,
+  offline draft + saved-quote queue, sync when online, share quote, More → Pricing Calculator tile;
+  `metro.config.js` watches `src/logic`. `mobile` `tsc --noEmit` clean.
+- [x] **P-8 Web deploy** — Worker `a7d22cc1-8109-46fb-9e37-6fcb8e483eeb`; live asset
+  `assets/index-ulwgX9bT.js`; Dashboard shortcut + More sheet entry confirmed in the deployed JS.
+- [ ] **P-9 Native publish** — `eas update` (or a new APK/IPA build) so installed phones receive the screen.
