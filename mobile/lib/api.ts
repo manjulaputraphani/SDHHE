@@ -8,6 +8,7 @@
  */
 import * as SecureStore from "expo-secure-store";
 
+import type { PricingInputs, PricingResult } from "../../src/logic/pricing";
 
 const WORKER_URL = "https://sdhhe-api.blvphani.workers.dev";
 
@@ -51,11 +52,11 @@ export async function accessCredentialsSet(): Promise<boolean> {
 }
 
 export type PermissionSet = {
-  canView: boolean;
-  canCreate: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canExport: boolean;
+  view: boolean;
+  create: boolean;
+  edit: boolean;
+  delete: boolean;
+  export: boolean;
 };
 
 export type ApiUser = {
@@ -666,6 +667,37 @@ export const api = {
       `/api/bills/${id}/payment`,
       { method: "POST", body: { amountPaise } },
     ),
+
+  // ---- Green Coffee Pricing Calculator ----
+
+  pricingCalculations: (filter: { grade?: string; from?: string; to?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (filter.grade) params.set("grade", filter.grade);
+    if (filter.from) params.set("from", filter.from);
+    if (filter.to) params.set("to", filter.to);
+    const query = params.toString();
+    return request<{ calculations: PricingCalculation[] }>(
+      `/api/pricing${query ? `?${query}` : ""}`,
+    );
+  },
+
+  savePricingCalculation: (body: {
+    grade: string;
+    note?: string;
+    inputs: PricingInputs;
+  }) =>
+    request<{ calculation: PricingCalculation }>("/api/pricing", {
+      method: "POST",
+      body,
+    }),
+
+  deletePricingCalculation: (id: number) =>
+    request<{ ok: boolean }>(`/api/pricing/${id}`, { method: "DELETE" }),
+
+  latestPricingPrice: (grade: string) =>
+    request<{ latest: LatestStockPrice | null }>(
+      `/api/pricing/latest-price?grade=${encodeURIComponent(grade)}`,
+    ),
 };
 
 export type ChatMessage = {
@@ -864,4 +896,27 @@ export type BillRow = {
   balancePaise: number;
   status: "pending" | "paid" | "cancelled";
   createdAt: string;
+};
+
+// ---- Green Coffee Pricing Calculator ----
+// Mirrors the server shape (src/db/pricing.ts PricingCalculation). The formulas
+// themselves are never re-implemented here — they come from the shared
+// src/logic/pricing.ts module.
+
+export type PricingCalculation = {
+  id: number;
+  grade: string;
+  note: string | null;
+  inputs: PricingInputs;
+  results: PricingResult;
+  createdBy: number | null;
+  createdByName: string;
+  createdAt: string;
+};
+
+export type LatestStockPrice = {
+  itemName: string;
+  /** Rupees per kg. */
+  pricePerKg: number;
+  purchaseDate: string;
 };

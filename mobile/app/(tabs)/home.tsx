@@ -202,7 +202,7 @@ export default function HomeScreen() {
   }
 
   const canCreateExpense =
-    user?.role === "owner" || Boolean(user?.permissions?.expenses?.canCreate);
+    user?.role === "owner" || Boolean(user?.permissions?.expenses?.create);
 
   const lowStockCount = stats?.low_stock ?? 0;
   const unpaidBills = stats?.credit_bills ?? 0;

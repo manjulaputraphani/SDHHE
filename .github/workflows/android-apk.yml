@@ -11,10 +11,12 @@ on:
       - main
     paths:
       - "mobile/**"
+      - "src/logic/pricing.ts"
       - ".github/workflows/android-apk.yml"
   pull_request:
     paths:
       - "mobile/**"
+      - "src/logic/pricing.ts"
       - ".github/workflows/android-apk.yml"
 
 concurrency:

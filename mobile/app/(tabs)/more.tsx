@@ -37,9 +37,9 @@ export default function MoreScreen() {
 
   /** Can this member see the module card? permissions first, owner fallback. */
   function canSee(module: string): boolean {
-    const perms = user?.permissions as Record<string, { canView?: boolean }> | undefined;
+    const perms = user?.permissions as Record<string, { view?: boolean }> | undefined;
     const set = perms?.[module];
-    if (set) return Boolean(set.canView);
+    if (set) return Boolean(set.view);
     return user?.role === "owner";
   }
 
@@ -50,6 +50,7 @@ export default function MoreScreen() {
     { label: "Expenses", module: "expenses", icon: "cash", tint: "surface3", onPress: () => router.push("/expenses") },
     { label: "Supplier dues", module: "suppliers", icon: "wallet", tint: "surface3", onPress: () => router.push("/suppliers") },
     { label: "Reports", module: "reports", icon: "bar-chart", tint: "accentSoft", onPress: () => router.push("/reports") },
+    { label: "Pricing Calculator", module: "pricing", icon: "calculator", tint: "accentSoft", onPress: () => router.push("/pricing") },
     { label: "Activity", module: "activity", icon: "pulse", tint: "accentSoft", onPress: () => router.push("/activity") },
     { label: "Team", module: "team", icon: "people", tint: "accentSoft", onPress: () => router.push("/team") },
   ];
